@@ -1,6 +1,6 @@
 {
   "name": "@takara-ai/miru-code",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Miru (見る) — hybrid code search for agents. Bun, TypeScript, Takara embeddings.",
   "type": "module",
   "license": "MIT",
@@ -26,11 +26,8 @@
   "engines": {
     "bun": ">=1.1.0"
   },
-  "trustedDependencies": [
-    "bun"
-  ],
   "bin": {
-    "miru": "bin/miru.cjs"
+    "miru": "./src/cli.ts"
   },
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -38,7 +35,6 @@
     ".": "./src/index.ts"
   },
   "files": [
-    "bin",
     "src",
     "README.md",
     "LICENSE"
@@ -60,7 +56,6 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "bun": "^1.1.0",
     "ignore": "^7.0.5",
     "zod": "^4.4.3"
   },

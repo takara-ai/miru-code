@@ -8,15 +8,14 @@ Indexes a local directory, combines semantic search with BM25, RRF fusion, and c
 
 ## Install
 
-Miru ships **Bun as a dependency** so `miru` uses a compatible runtime after install. You still need [Node.js](https://nodejs.org) on your PATH for the install step (Bun’s `postinstall`); do not use `--ignore-scripts`.
+Requires [Bun](https://bun.sh) 1.1+ on your PATH (`curl -fsSL https://bun.sh/install | bash`).
 
 ```bash
 # Run once without installing
-bunx @takara-ai/miru-code search "auth middleware" ./src
+bun x @takara-ai/miru-code search "auth middleware" ./src
 
-# Global CLI (npm or bun)
+# Global CLI
 bun add -g @takara-ai/miru-code
-# or: npm install -g @takara-ai/miru-code
 miru search "auth middleware" ./src
 
 # Library
@@ -78,19 +77,21 @@ Run with **no arguments** to start the stdio MCP server. It indexes the **curren
 ```bash
 bun /path/to/miru/src/cli.ts
 # or after bun add -g @takara-ai/miru-code:  miru
-# or without installing:           bunx @takara-ai/miru-code
+# or without installing:           bun x @takara-ai/miru-code
 ```
 
 **Tools:** `search`, `find_related` — pass `repo` only when querying a different path or git URL.
 
 Cursor `~/.cursor/mcp.json` (or project `.cursor/mcp.json`):
 
+Use **`bun x`** (not `bunx` as the command) so Cursor does not pull the `bun` npm package postinstall, which breaks in MCP sandboxes:
+
 ```json
 {
   "mcpServers": {
     "miru": {
-      "command": "bunx",
-      "args": ["@takara-ai/miru-code"],
+      "command": "bun",
+      "args": ["x", "@takara-ai/miru-code"],
       "env": {
         "TAKARA_API_KEY": "your-takara-bearer-token",
         "MIRU_OPENAI_BASE_URL": "https://infer.dev.takara.ai/v1",
@@ -133,7 +134,7 @@ Local development (path to this repo):
 }
 ```
 
-No project path in `args` for `bunx` / global install — Cursor runs the server with `cwd` set to the open workspace, which becomes the default index. Put the bearer token in `env`; MCP will not read `.env.local` unless those vars are unset.
+No project path in `args` for `bun x` / global install — Cursor runs the server with `cwd` set to the open workspace, which becomes the default index. Put the bearer token in `env`; MCP will not read `.env.local` unless those vars are unset.
 
 ## Library
 
