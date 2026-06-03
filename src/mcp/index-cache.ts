@@ -1,14 +1,13 @@
 import { watch } from "node:fs";
 import { resolve } from "node:path";
+import { relativePathFromRoot } from "../index/incremental.ts";
 import { MiruIndex } from "../miru-index.ts";
-import { envOptionalInt } from "../env.ts";
 import type { ContentType } from "../types.ts";
 import { computeSourceCacheKey, isGitUrl } from "../utils.ts";
 
 const CACHE_MAX_SIZE = 10;
-const DEFAULT_REINDEX_DEBOUNCE_MS = 3000;
 
-/** Directory names we skip for MCP fs.watch re-index triggers (aligned with file-walker). */
+/** Directory names we skip for MCP fs.watch update triggers (aligned with file-walker). */
 const WATCH_IGNORED_DIR_NAMES = new Set([
   ".git",
   ".hg",
@@ -29,28 +28,20 @@ const WATCH_IGNORED_DIR_NAMES = new Set([
   ".eggs",
 ]);
 
-class StaleIndexError extends Error {
-  constructor() {
-    super("Index build superseded by a newer change");
-    this.name = "StaleIndexError";
-  }
-}
-
 type CacheEntry = {
-  generation: number;
+  index: MiruIndex | null;
   task: Promise<MiruIndex> | null;
+  pendingPaths: Set<string>;
+  flushQueued: boolean;
+  updateChain: Promise<void>;
 };
-
-function resolveReindexDebounceMs(): number {
-  return envOptionalInt(["MIRU_MCP_REINDEX_DEBOUNCE_MS"], 0) ?? DEFAULT_REINDEX_DEBOUNCE_MS;
-}
 
 export function mcpWatchEnabled(): boolean {
   const raw = process.env.MIRU_MCP_WATCH ?? process.env.SEMBLE_MCP_WATCH;
   return raw !== "0" && raw !== "false";
 }
 
-/** Returns true when a watch event path should not trigger a re-index. */
+/** Returns true when a watch event path should not trigger an update. */
 export function shouldIgnoreWatchPath(relativePath: string | null | undefined): boolean {
   if (!relativePath) {
     return false;
@@ -67,23 +58,10 @@ export function shouldIgnoreWatchPath(relativePath: string | null | undefined): 
 export class IndexCache {
   private readonly content: ContentType[];
   private readonly entries = new Map<string, CacheEntry>();
-  private readonly reindexTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private watcher: ReturnType<typeof watch> | null = null;
 
   constructor(content: ContentType[] = ["code"]) {
     this.content = content;
-  }
-
-  evict(source: string, ref?: string | null): void {
-    this.invalidate(computeSourceCacheKey(source, ref));
-  }
-
-  private invalidate(cacheKey: string): void {
-    const entry = this.entries.get(cacheKey);
-    if (entry) {
-      entry.generation++;
-      entry.task = null;
-    }
   }
 
   private ensureEntry(cacheKey: string): CacheEntry {
@@ -95,87 +73,134 @@ export class IndexCache {
           this.clearEntry(oldest);
         }
       }
-      entry = { generation: 0, task: null };
+      entry = {
+        index: null,
+        task: null,
+        pendingPaths: new Set(),
+        flushQueued: false,
+        updateChain: Promise.resolve(),
+      };
       this.entries.set(cacheKey, entry);
     }
     return entry;
   }
 
   private clearEntry(cacheKey: string): void {
-    const timer = this.reindexTimers.get(cacheKey);
-    if (timer) {
-      clearTimeout(timer);
-      this.reindexTimers.delete(cacheKey);
-    }
     this.entries.delete(cacheKey);
   }
 
   private startBuild(
     source: string,
     ref: string | null | undefined,
-    entry: CacheEntry,
-    generationAtStart: number,
+    cacheKey: string,
   ): Promise<MiruIndex> {
-    return (async () => {
+    const task = (async () => {
       const index = await MiruIndex.fromSource(source, this.content, undefined, ref);
-      if (entry.generation !== generationAtStart) {
-        throw new StaleIndexError();
-      }
       if (!isGitUrl(source)) {
         await index.saveToDefaultCache(resolve(source));
       }
       return index;
     })();
+
+    const entry = this.ensureEntry(cacheKey);
+    entry.task = task;
+    void task
+      .then((index) => {
+        entry.index = index;
+        void this.flushFileUpdates(cacheKey, source);
+        return index;
+      })
+      .catch(() => {
+        if (entry.task === task) {
+          entry.task = null;
+        }
+      });
+
+    return task;
   }
 
   async get(source: string, ref?: string | null): Promise<MiruIndex> {
     const cacheKey = computeSourceCacheKey(source, ref);
+    const entry = this.ensureEntry(cacheKey);
 
-    for (;;) {
-      const entry = this.ensureEntry(cacheKey);
-      const generationAtStart = entry.generation;
+    if (!entry.task) {
+      this.startBuild(source, ref, cacheKey);
+    }
 
-      if (!entry.task) {
-        entry.task = this.startBuild(source, ref, entry, generationAtStart);
-      }
+    const index = await entry.task;
+    if (!index) {
+      throw new Error(`Failed to load index for ${source}`);
+    }
+    await entry.updateChain;
+    return index;
+  }
 
-      const task = entry.task;
-      try {
-        const index = await task;
-        if (entry.generation !== generationAtStart) {
-          continue;
-        }
-        return index;
-      } catch (err) {
-        if (entry.task === task) {
-          entry.task = null;
-        }
-        if (err instanceof StaleIndexError) {
-          continue;
-        }
-        if (this.entries.get(cacheKey) === entry) {
-          this.entries.delete(cacheKey);
-        }
-        throw err;
-      }
+  private noteFileChange(source: string, filename: string | null | undefined): void {
+    if (!filename || shouldIgnoreWatchPath(filename)) {
+      return;
+    }
+
+    const cacheKey = computeSourceCacheKey(source);
+    const entry = this.ensureEntry(cacheKey);
+    const rel = relativePathFromRoot(source, filename);
+    if (!rel) {
+      return;
+    }
+    entry.pendingPaths.add(rel);
+
+    if (!entry.flushQueued) {
+      entry.flushQueued = true;
+      queueMicrotask(() => {
+        void this.flushFileUpdates(cacheKey, source);
+      });
     }
   }
 
-  private scheduleReindex(source: string, ref?: string | null): void {
-    const cacheKey = computeSourceCacheKey(source, ref);
-    const existing = this.reindexTimers.get(cacheKey);
-    if (existing) {
-      clearTimeout(existing);
+  private flushFileUpdates(cacheKey: string, source: string): void {
+    const entry = this.entries.get(cacheKey);
+    if (!entry) {
+      return;
     }
+    entry.flushQueued = false;
 
-    const debounceMs = resolveReindexDebounceMs();
-    const timer = setTimeout(() => {
-      this.reindexTimers.delete(cacheKey);
-      this.invalidate(cacheKey);
-      void this.get(source, ref).catch(() => undefined);
-    }, debounceMs);
+    const run = async (): Promise<void> => {
+      const paths = [...entry.pendingPaths];
+      entry.pendingPaths.clear();
+      if (paths.length === 0) {
+        return;
+      }
 
-    this.reindexTimers.set(cacheKey, timer);
+      let index = entry.index;
+      if (!index && entry.task) {
+        try {
+          index = await entry.task;
+        } catch {
+          for (const p of paths) {
+            entry.pendingPaths.add(p);
+          }
+          return;
+        }
+      }
+      if (!index) {
+        for (const p of paths) {
+          entry.pendingPaths.add(p);
+        }
+        return;
+      }
+
+      try {
+        await index.applyFileChanges(paths);
+        if (!isGitUrl(source)) {
+          await index.persistToCache(resolve(source));
+        }
+      } catch {
+        for (const p of paths) {
+          entry.pendingPaths.add(p);
+        }
+      }
+    };
+
+    entry.updateChain = entry.updateChain.then(run, run);
   }
 
   startWatcher(path: string): void {
@@ -185,20 +210,14 @@ export class IndexCache {
     }
 
     this.watcher = watch(resolved, { recursive: true }, (_event, filename) => {
-      if (shouldIgnoreWatchPath(filename)) {
-        return;
-      }
-      this.scheduleReindex(resolved);
+      this.noteFileChange(resolved, filename);
     });
   }
 
   close(): void {
-    for (const timer of this.reindexTimers.values()) {
-      clearTimeout(timer);
-    }
-    this.reindexTimers.clear();
     this.watcher?.close();
     this.watcher = null;
+    this.entries.clear();
   }
 }
 

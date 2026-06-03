@@ -2,15 +2,18 @@
 import { resolve } from "node:path";
 import { type AgentId, writeAgentFile } from "./agents.ts";
 import { clearCache } from "./cache.ts";
+import { loadStoredCredentials } from "./credentials.ts";
 import { loadEnvFiles } from "./env-files.ts";
 import { serveMcp } from "./mcp/serve.ts";
 import { MiruIndex } from "./miru-index.ts";
+import { ensureCredentials, runClearCredentials, runSetup } from "./setup.ts";
 import type { ContentType } from "./types.ts";
 import { formatResults, isGitUrl, resolveChunk, resolveContent } from "./utils.ts";
 
 loadEnvFiles();
+await loadStoredCredentials();
 
-const CLI_COMMANDS = new Set(["search", "find-related", "init", "clear", "-h", "--help"]);
+const CLI_COMMANDS = new Set(["search", "find-related", "init", "setup", "clear", "-h", "--help"]);
 
 const AGENTS = new Set<AgentId>(["claude", "copilot", "cursor", "gemini", "kiro", "opencode"]);
 
@@ -64,6 +67,7 @@ async function runSearch(
   topK: number,
   content: ContentType[],
 ): Promise<void> {
+  await ensureCredentials();
   const index = await MiruIndex.fromSource(path, content);
   await index.saveToDefaultCache(path);
   const results = await index.search({ query, topK });
@@ -79,6 +83,7 @@ async function runFindRelated(
   topK: number,
   content: ContentType[],
 ): Promise<void> {
+  await ensureCredentials();
   const index = await MiruIndex.fromSource(path, content);
   const chunk = resolveChunk(index.chunks, filePath, line);
   if (!chunk) {
@@ -111,6 +116,7 @@ function printHelp(): void {
 CLI:
   miru search <query> [path] [-k N] [--content code|docs|config|all]
   miru find-related <file_path> <line> [path] [-k N] [--content ...]
+  miru setup [--key KEY] [--force] [--clear]
   miru init [--agent cursor] [--force]
   miru clear [path]
 
@@ -153,6 +159,32 @@ async function runCli(argv: string[]): Promise<void> {
       }
     }
     await runInit(agent, force);
+    return;
+  }
+
+  if (command === "setup") {
+    let apiKey: string | undefined;
+    let force = false;
+    let clear = false;
+    for (let i = 0; i < rest.length; i++) {
+      const arg = rest[i];
+      if (arg === "--force") {
+        force = true;
+      } else if (arg === "--clear") {
+        clear = true;
+      } else if ((arg === "--key" || arg === "-k") && rest[i + 1]) {
+        apiKey = rest[++i];
+      }
+    }
+    if (clear) {
+      if (apiKey) {
+        console.error("Usage: miru setup --clear cannot be combined with --key.");
+        process.exit(1);
+      }
+      await runClearCredentials();
+      return;
+    }
+    await runSetup({ apiKey, force });
     return;
   }
 
@@ -229,6 +261,11 @@ async function runMcp(argv: string[]): Promise<void> {
   });
 }
 
+async function runMcpWithCredentials(argv: string[]): Promise<void> {
+  await ensureCredentials({ interactive: false });
+  await runMcp(argv);
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const first = argv[0];
@@ -236,7 +273,7 @@ async function main(): Promise<void> {
     await runCli(argv);
     return;
   }
-  await runMcp(argv);
+  await runMcpWithCredentials(argv);
 }
 
 main().catch((err) => {

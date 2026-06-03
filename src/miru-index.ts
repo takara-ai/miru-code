@@ -10,6 +10,7 @@ import {
 import { cloneGitRepository } from "./git.ts";
 import type { BM25Index } from "./index/bm25.ts";
 import { createIndexFromPath } from "./index/create.ts";
+import { applyIncrementalFileChanges } from "./index/incremental.ts";
 import { persistencePaths, saveIndexBundle } from "./index/persistence.ts";
 import type { SemanticIndex } from "./index/semantic-index.ts";
 import { hybridSearch, searchSemanticOnly } from "./search.ts";
@@ -19,16 +20,24 @@ import { computeSourceCacheKey, isGitUrl } from "./utils.ts";
 
 export class MiruIndex {
   readonly embeddings: EmbeddingBackend;
-  readonly chunks: Chunk[];
-  readonly loadedFromDisk: boolean;
+  private chunksInternal: Chunk[];
+  private bm25Index: BM25Index;
+  private semanticIndex: SemanticIndex;
+  private loadedFromDiskFlag: boolean;
 
-  private readonly bm25Index: BM25Index;
-  private readonly semanticIndex: SemanticIndex;
-  private readonly embeddingModel: string;
+  readonly embeddingModel: string;
   private readonly root: string | null;
   private readonly content: ContentType[];
-  private readonly fileMapping: Map<string, number[]>;
-  private readonly languageMapping: Map<string, number[]>;
+  private fileMapping: Map<string, number[]>;
+  private languageMapping: Map<string, number[]>;
+
+  get chunks(): Chunk[] {
+    return this.chunksInternal;
+  }
+
+  get loadedFromDisk(): boolean {
+    return this.loadedFromDiskFlag;
+  }
 
   constructor(options: {
     embeddings: EmbeddingBackend;
@@ -43,16 +52,21 @@ export class MiruIndex {
     this.embeddings = options.embeddings;
     this.bm25Index = options.bm25Index;
     this.semanticIndex = options.semanticIndex;
-    this.chunks = options.chunks;
+    this.chunksInternal = options.chunks;
     this.embeddingModel = options.embeddingModel;
     this.root = options.root ?? null;
     this.content = options.content ?? ["code"];
-    this.loadedFromDisk = options.loadedFromDisk ?? false;
-
+    this.loadedFromDiskFlag = options.loadedFromDisk ?? false;
     this.fileMapping = new Map();
     this.languageMapping = new Map();
-    for (let i = 0; i < this.chunks.length; i++) {
-      const chunk = this.chunks[i];
+    this.rebuildMappings();
+  }
+
+  private rebuildMappings(): void {
+    this.fileMapping = new Map();
+    this.languageMapping = new Map();
+    for (let i = 0; i < this.chunksInternal.length; i++) {
+      const chunk = this.chunksInternal[i];
       if (!chunk) {
         continue;
       }
@@ -203,9 +217,38 @@ export class MiruIndex {
   }
 
   async saveToDefaultCache(sourcePath: string): Promise<void> {
-    if (!this.loadedFromDisk) {
+    if (!this.loadedFromDiskFlag) {
       await this.save(findIndexCachePath(sourcePath));
     }
+  }
+
+  async persistToCache(sourcePath: string): Promise<void> {
+    await this.save(findIndexCachePath(sourcePath));
+  }
+
+  /** Re-chunk and re-embed only the given repo-relative paths; drop their old chunks. */
+  async applyFileChanges(relativePaths: readonly string[]): Promise<void> {
+    if (!this.root) {
+      throw new Error("Incremental update requires a local index with root_path set.");
+    }
+    if (relativePaths.length === 0) {
+      return;
+    }
+
+    const updated = await applyIncrementalFileChanges({
+      root: this.root,
+      content: this.content,
+      embeddings: this.embeddings,
+      chunks: this.chunksInternal,
+      semanticIndex: this.semanticIndex,
+      relativePaths,
+    });
+
+    this.chunksInternal = updated.chunks;
+    this.bm25Index = updated.bm25;
+    this.semanticIndex = updated.semantic;
+    this.loadedFromDiskFlag = false;
+    this.rebuildMappings();
   }
 
   private getSelector(filterLanguages?: string[], filterPaths?: string[]): number[] | undefined {

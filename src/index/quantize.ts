@@ -86,6 +86,30 @@ export class QuantizedVectorIndex implements SemanticIndex {
     return this.codes.length * this.dim + this.scales.byteLength;
   }
 
+  vectorAt(docIndex: number): Float32Array {
+    const codes = this.codes[docIndex];
+    const scale = this.scales[docIndex];
+    if (!codes || scale === undefined) {
+      throw new Error(`Missing quantized vector at index ${docIndex}`);
+    }
+    const out = new Float32Array(codes.length);
+    for (let i = 0; i < codes.length; i++) {
+      out[i] = (codes[i] ?? 0) * scale;
+    }
+    let norm = 0;
+    for (let i = 0; i < out.length; i++) {
+      const v = out[i] ?? 0;
+      norm += v * v;
+    }
+    norm = Math.sqrt(norm);
+    if (norm > 0) {
+      for (let i = 0; i < out.length; i++) {
+        out[i] = (out[i] ?? 0) / norm;
+      }
+    }
+    return out;
+  }
+
   query(
     queryVector: Float32Array,
     k: number,

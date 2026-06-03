@@ -38,12 +38,14 @@ const EMBEDDING_API_KEY_NAMES = [
   "SEMBLE_OPENAI_API_KEY",
 ] as const;
 
+export { EMBEDDING_API_KEY_NAMES };
+
 export function resolveEmbeddingApiKey(): string {
   const key = envFirstString([...EMBEDDING_API_KEY_NAMES], "");
   if (!key) {
     throw new Error(
-      "Embedding API key required. Set TAKARA_API_KEY, OPENAI_API_KEY, MIRU_OPENAI_API_KEY, or SEMBLE_OPENAI_API_KEY " +
-        "in your MCP server env (Cursor mcp.json) or .env.local.",
+      "Embedding API key required. Run `miru setup`, set TAKARA_API_KEY, OPENAI_API_KEY, " +
+        "MIRU_OPENAI_API_KEY, or SEMBLE_OPENAI_API_KEY in your MCP server env or .env.local.",
     );
   }
   return key;

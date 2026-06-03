@@ -72,7 +72,7 @@ function stripLoneSurrogates(text: string): string {
 }
 
 export function sanitizeEmbeddingInput(text: string): string {
-  let out = stripLoneSurrogates(text);
+  const out = stripLoneSurrogates(text);
   // Some OpenAI-compatible gateways mis-handle backslash escapes in JSON text
   // payloads. Keep a benchmark fallback mode to forcefully neutralize them.
   const mode = process.env.MIRU_EMBED_ESCAPE_MODE ?? process.env.SEMBLE_EMBED_ESCAPE_MODE ?? "quad";

@@ -22,6 +22,14 @@ export class VectorIndex implements SemanticIndex {
     return this.vectors;
   }
 
+  vectorAt(docIndex: number): Float32Array {
+    const vec = this.vectors[docIndex];
+    if (!vec) {
+      throw new Error(`Missing vector at index ${docIndex}`);
+    }
+    return vec;
+  }
+
   memoryBytes(): number {
     return this.vectors.length * this.dimensions * 4;
   }
