@@ -1,6 +1,6 @@
 import { watch } from "node:fs";
 import { resolve } from "node:path";
-import { relativePathFromRoot } from "../index/incremental.ts";
+import { normalizeRelativePath, relativePathFromRoot } from "../index/incremental.ts";
 import { MiruIndex } from "../miru-index.ts";
 import type { ContentType } from "../types.ts";
 import { computeSourceCacheKey, isGitUrl } from "../utils.ts";
@@ -135,8 +135,48 @@ export class IndexCache {
     return index;
   }
 
+  private scheduleFlush(cacheKey: string, source: string, entry: CacheEntry): void {
+    if (!entry.flushQueued) {
+      entry.flushQueued = true;
+      queueMicrotask(() => {
+        this.flushFileUpdates(cacheKey, source);
+      });
+    }
+  }
+
+  private queueIndexedPaths(source: string, index: MiruIndex): void {
+    const cacheKey = computeSourceCacheKey(source);
+    const entry = this.ensureEntry(cacheKey);
+    for (const chunk of index.chunks) {
+      entry.pendingPaths.add(normalizeRelativePath(chunk.file_path));
+    }
+    this.scheduleFlush(cacheKey, source, entry);
+  }
+
+  /** macOS recursive fs.watch often omits filename; refresh all indexed paths incrementally. */
+  private noteAmbiguousDirectoryChange(source: string): void {
+    const cacheKey = computeSourceCacheKey(source);
+    const entry = this.ensureEntry(cacheKey);
+
+    if (entry.index) {
+      this.queueIndexedPaths(source, entry.index);
+      return;
+    }
+
+    if (entry.task) {
+      void entry.task.then((index) => {
+        entry.index = index;
+        this.queueIndexedPaths(source, index);
+      });
+    }
+  }
+
   private noteFileChange(source: string, filename: string | null | undefined): void {
-    if (!filename || shouldIgnoreWatchPath(filename)) {
+    if (!filename) {
+      this.noteAmbiguousDirectoryChange(source);
+      return;
+    }
+    if (shouldIgnoreWatchPath(filename)) {
       return;
     }
 
@@ -147,13 +187,7 @@ export class IndexCache {
       return;
     }
     entry.pendingPaths.add(rel);
-
-    if (!entry.flushQueued) {
-      entry.flushQueued = true;
-      queueMicrotask(() => {
-        void this.flushFileUpdates(cacheKey, source);
-      });
-    }
+    this.scheduleFlush(cacheKey, source, entry);
   }
 
   private flushFileUpdates(cacheKey: string, source: string): void {

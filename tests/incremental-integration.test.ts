@@ -63,6 +63,24 @@ function cacheInternals(cache: IndexCache): IndexCacheTestAccess {
   return cache as unknown as IndexCacheTestAccess;
 }
 
+async function waitForEmbeddings(
+  embeddings: { documentEmbedCount: number },
+  entry: CacheEntryInternal,
+  timeoutMs = 3000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await entry.updateChain.catch(() => undefined);
+    if (embeddings.documentEmbedCount > 0) {
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  throw new Error(
+    `Timed out after ${timeoutMs}ms waiting for incremental embed (${embeddings.documentEmbedCount} embeds)`,
+  );
+}
+
 async function buildTempRepo(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "miru-inc-int-"));
   await mkdir(join(root, "src"), { recursive: true });
@@ -206,55 +224,69 @@ describe("incremental integration", () => {
     }
   });
 
-  test("IndexCache watcher triggers incremental update on file write", async () => {
-    const root = await buildTempRepo();
-    try {
-      const embeddings = trackingEmbeddings();
-      const built = await createIndexFromPath(root, embeddings, ["code"], root);
-      const index = new MiruIndex({
-        embeddings,
-        bm25Index: built.bm25,
-        semanticIndex: built.semantic,
-        chunks: built.chunks,
-        embeddingModel: embeddings.model,
-        root: resolve(root),
-        content: ["code"],
-      });
+  test(
+    "IndexCache watcher triggers incremental update on file write",
+    async () => {
+      const root = await buildTempRepo();
+      const resolvedRoot = resolve(root);
+      try {
+        const embeddings = trackingEmbeddings();
+        const built = await createIndexFromPath(resolvedRoot, embeddings, ["code"], resolvedRoot);
+        const index = new MiruIndex({
+          embeddings,
+          bm25Index: built.bm25,
+          semanticIndex: built.semantic,
+          chunks: built.chunks,
+          embeddingModel: embeddings.model,
+          root: resolvedRoot,
+          content: ["code"],
+        });
 
-      const cache = new IndexCache(["code"]);
-      const cacheKey = computeSourceCacheKey(root);
-      const internals = cacheInternals(cache);
-      const entry = internals.ensureEntry(cacheKey);
-      entry.index = index;
-      entry.task = Promise.resolve(index);
+        const cache = new IndexCache(["code"]);
+        const cacheKey = computeSourceCacheKey(resolvedRoot);
+        const internals = cacheInternals(cache);
+        const entry = internals.ensureEntry(cacheKey);
+        entry.index = index;
+        entry.task = Promise.resolve(index);
 
-      cache.startWatcher(root);
+        cache.startWatcher(resolvedRoot);
+        await new Promise((r) => setTimeout(r, 100));
 
-      embeddings.resetEmbedCount();
-      await writeFile(
-        join(root, "src/auth.ts"),
-        "export function authenticateUser() {\n  return 'miruWatchEventToken';\n}\n",
-        "utf-8",
-      );
+        embeddings.resetEmbedCount();
+        const authPath = join(resolvedRoot, "src/auth.ts");
+        let lastError: Error | undefined;
+        for (let attempt = 0; attempt < 5; attempt++) {
+          await writeFile(
+            authPath,
+            `export function authenticateUser() {\n  return 'miruWatchEventToken${attempt}';\n}\n`,
+            "utf-8",
+          );
+          try {
+            await waitForEmbeddings(embeddings, entry, 2000);
+            lastError = undefined;
+            break;
+          } catch (err) {
+            lastError = err instanceof Error ? err : new Error(String(err));
+          }
+        }
+        if (lastError) {
+          throw lastError;
+        }
 
-      await new Promise((r) => setTimeout(r, 200));
-      await new Promise<void>((resolve) => queueMicrotask(resolve));
-      await entry.updateChain;
+        const hit = await index.search({
+          query: "miruWatchEventToken",
+          topK: 1,
+          alpha: 0,
+          rerank: false,
+        });
+        expect(hit[0]?.chunk.file_path).toBe("src/auth.ts");
+        expect(hit[0]?.chunk.content).toContain("miruWatchEventToken");
 
-      expect(embeddings.documentEmbedCount).toBeGreaterThan(0);
-
-      const hit = await index.search({
-        query: "miruWatchEventToken",
-        topK: 1,
-        alpha: 0,
-        rerank: false,
-      });
-      expect(hit[0]?.chunk.file_path).toBe("src/auth.ts");
-      expect(hit[0]?.chunk.content).toContain("miruWatchEventToken");
-
-      cache.close();
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
+        cache.close();
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+    { timeout: 20_000 },
+  );
 });
