@@ -1,16 +1,73 @@
 import { watch } from "node:fs";
 import { resolve } from "node:path";
 import { MiruIndex } from "../miru-index.ts";
+import { envOptionalInt } from "../env.ts";
 import type { ContentType } from "../types.ts";
 import { computeSourceCacheKey, isGitUrl } from "../utils.ts";
 
 const CACHE_MAX_SIZE = 10;
+const DEFAULT_REINDEX_DEBOUNCE_MS = 3000;
 
-type IndexTask = Promise<MiruIndex>;
+/** Directory names we skip for MCP fs.watch re-index triggers (aligned with file-walker). */
+const WATCH_IGNORED_DIR_NAMES = new Set([
+  ".git",
+  ".hg",
+  ".svn",
+  "__pycache__",
+  "node_modules",
+  ".venv",
+  "venv",
+  ".tox",
+  ".mypy_cache",
+  ".pytest_cache",
+  ".ruff_cache",
+  ".cache",
+  ".miru",
+  ".next",
+  "dist",
+  "build",
+  ".eggs",
+]);
+
+class StaleIndexError extends Error {
+  constructor() {
+    super("Index build superseded by a newer change");
+    this.name = "StaleIndexError";
+  }
+}
+
+type CacheEntry = {
+  generation: number;
+  task: Promise<MiruIndex> | null;
+};
+
+function resolveReindexDebounceMs(): number {
+  return envOptionalInt(["MIRU_MCP_REINDEX_DEBOUNCE_MS"], 0) ?? DEFAULT_REINDEX_DEBOUNCE_MS;
+}
+
+export function mcpWatchEnabled(): boolean {
+  const raw = process.env.MIRU_MCP_WATCH ?? process.env.SEMBLE_MCP_WATCH;
+  return raw !== "0" && raw !== "false";
+}
+
+/** Returns true when a watch event path should not trigger a re-index. */
+export function shouldIgnoreWatchPath(relativePath: string | null | undefined): boolean {
+  if (!relativePath) {
+    return false;
+  }
+  const normalized = relativePath.replace(/\\/g, "/");
+  for (const segment of normalized.split("/")) {
+    if (segment && WATCH_IGNORED_DIR_NAMES.has(segment)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 export class IndexCache {
   private readonly content: ContentType[];
-  private readonly tasks = new Map<string, IndexTask>();
+  private readonly entries = new Map<string, CacheEntry>();
+  private readonly reindexTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private watcher: ReturnType<typeof watch> | null = null;
 
   constructor(content: ContentType[] = ["code"]) {
@@ -18,31 +75,107 @@ export class IndexCache {
   }
 
   evict(source: string, ref?: string | null): void {
-    this.tasks.delete(computeSourceCacheKey(source, ref));
+    this.invalidate(computeSourceCacheKey(source, ref));
+  }
+
+  private invalidate(cacheKey: string): void {
+    const entry = this.entries.get(cacheKey);
+    if (entry) {
+      entry.generation++;
+      entry.task = null;
+    }
+  }
+
+  private ensureEntry(cacheKey: string): CacheEntry {
+    let entry = this.entries.get(cacheKey);
+    if (!entry) {
+      if (this.entries.size >= CACHE_MAX_SIZE) {
+        const oldest = this.entries.keys().next().value;
+        if (oldest) {
+          this.clearEntry(oldest);
+        }
+      }
+      entry = { generation: 0, task: null };
+      this.entries.set(cacheKey, entry);
+    }
+    return entry;
+  }
+
+  private clearEntry(cacheKey: string): void {
+    const timer = this.reindexTimers.get(cacheKey);
+    if (timer) {
+      clearTimeout(timer);
+      this.reindexTimers.delete(cacheKey);
+    }
+    this.entries.delete(cacheKey);
+  }
+
+  private startBuild(
+    source: string,
+    ref: string | null | undefined,
+    entry: CacheEntry,
+    generationAtStart: number,
+  ): Promise<MiruIndex> {
+    return (async () => {
+      const index = await MiruIndex.fromSource(source, this.content, undefined, ref);
+      if (entry.generation !== generationAtStart) {
+        throw new StaleIndexError();
+      }
+      if (!isGitUrl(source)) {
+        await index.saveToDefaultCache(resolve(source));
+      }
+      return index;
+    })();
   }
 
   async get(source: string, ref?: string | null): Promise<MiruIndex> {
     const cacheKey = computeSourceCacheKey(source, ref);
-    let task = this.tasks.get(cacheKey);
-    if (!task) {
-      if (this.tasks.size >= CACHE_MAX_SIZE) {
-        const oldest = this.tasks.keys().next().value;
-        if (oldest) {
-          this.tasks.delete(oldest);
-        }
+
+    for (;;) {
+      const entry = this.ensureEntry(cacheKey);
+      const generationAtStart = entry.generation;
+
+      if (!entry.task) {
+        entry.task = this.startBuild(source, ref, entry, generationAtStart);
       }
-      task = MiruIndex.fromSource(source, this.content, undefined, ref);
-      this.tasks.set(cacheKey, task);
+
+      const task = entry.task;
+      try {
+        const index = await task;
+        if (entry.generation !== generationAtStart) {
+          continue;
+        }
+        return index;
+      } catch (err) {
+        if (entry.task === task) {
+          entry.task = null;
+        }
+        if (err instanceof StaleIndexError) {
+          continue;
+        }
+        if (this.entries.get(cacheKey) === entry) {
+          this.entries.delete(cacheKey);
+        }
+        throw err;
+      }
+    }
+  }
+
+  private scheduleReindex(source: string, ref?: string | null): void {
+    const cacheKey = computeSourceCacheKey(source, ref);
+    const existing = this.reindexTimers.get(cacheKey);
+    if (existing) {
+      clearTimeout(existing);
     }
 
-    try {
-      return await task;
-    } catch (err) {
-      if (this.tasks.get(cacheKey) === task) {
-        this.tasks.delete(cacheKey);
-      }
-      throw err;
-    }
+    const debounceMs = resolveReindexDebounceMs();
+    const timer = setTimeout(() => {
+      this.reindexTimers.delete(cacheKey);
+      this.invalidate(cacheKey);
+      void this.get(source, ref).catch(() => undefined);
+    }, debounceMs);
+
+    this.reindexTimers.set(cacheKey, timer);
   }
 
   startWatcher(path: string): void {
@@ -51,13 +184,19 @@ export class IndexCache {
       this.watcher.close();
     }
 
-    this.watcher = watch(resolved, { recursive: true }, () => {
-      this.evict(resolved);
-      void this.get(resolved).catch(() => undefined);
+    this.watcher = watch(resolved, { recursive: true }, (_event, filename) => {
+      if (shouldIgnoreWatchPath(filename)) {
+        return;
+      }
+      this.scheduleReindex(resolved);
     });
   }
 
   close(): void {
+    for (const timer of this.reindexTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.reindexTimers.clear();
     this.watcher?.close();
     this.watcher = null;
   }

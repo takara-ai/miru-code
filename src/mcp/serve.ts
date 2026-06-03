@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { ContentType } from "../types.ts";
 import { isGitUrl } from "../utils.ts";
-import { IndexCache } from "./index-cache.ts";
+import { IndexCache, mcpWatchEnabled } from "./index-cache.ts";
 import { createMcpServer } from "./server.ts";
 
 export async function serveMcp(options: {
@@ -14,7 +14,7 @@ export async function serveMcp(options: {
   const defaultSource = options.path ?? resolve(process.cwd());
 
   void cache.get(defaultSource, options.ref).catch(() => undefined);
-  if (!isGitUrl(defaultSource)) {
+  if (!isGitUrl(defaultSource) && mcpWatchEnabled()) {
     cache.startWatcher(defaultSource);
   }
 
