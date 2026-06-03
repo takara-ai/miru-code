@@ -1,0 +1,6 @@
+.env*
+tests/
+scripts/
+biome.json
+tsconfig.json
+.gitignore

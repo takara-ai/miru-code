@@ -1,0 +1,66 @@
+{
+  "name": "miru-code",
+  "version": "0.1.0",
+  "description": "Miru (見る) — hybrid code search for agents. Bun, TypeScript, Takara embeddings.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Takara",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/takara-ai/miru-code.git"
+  },
+  "homepage": "https://takara.ai",
+  "bugs": "https://github.com/takara-ai/miru-code/issues",
+  "keywords": [
+    "code-search",
+    "semantic-search",
+    "hybrid-search",
+    "mcp",
+    "embeddings",
+    "bm25",
+    "bun",
+    "agents",
+    "cursor",
+    "takara"
+  ],
+  "engines": {
+    "bun": ">=1.1.0"
+  },
+  "bin": {
+    "miru": "./src/cli.ts"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "miru": "bun run src/cli.ts",
+    "mcp": "bun run src/cli.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "prepublishOnly": "bun run typecheck && bun test",
+    "benchmark:quality": "bun run scripts/benchmark-quality.ts",
+    "benchmark:quantization": "bun run scripts/benchmark-quantization.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "ignore": "^7.0.5",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.16",
+    "@types/bun": "latest",
+    "typescript": "^5.9.3"
+  }
+}

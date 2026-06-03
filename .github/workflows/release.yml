@@ -1,0 +1,50 @@
+name: Release
+
+# Publish to npm when a GitHub Release is published.
+# Auth: npm Trusted Publishing (OIDC) — no long-lived NPM_TOKEN secret.
+#
+# One-time npm setup (https://www.npmjs.com/package/miru-code/access):
+#   1. Create the package (first publish) or open package settings on npmjs.com
+#   2. Add Trusted Publisher → GitHub Actions
+#      - Organization/user: takara-ai
+#      - Repository: miru-code
+#      - Workflow filename: release.yml
+#      - Environment: (leave blank)
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # Node 24 ships npm 11.x (required for OIDC trusted publishing).
+      # Do not set registry-url — it injects _authToken and breaks OIDC.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Verify package
+        run: |
+          bun run typecheck
+          bun test
+          npm pack --dry-run
+
+      - name: Publish to npm
+        run: npm publish --access public
+        env:
+          NPM_CONFIG_PROVENANCE: false
