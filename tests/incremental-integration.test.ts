@@ -47,15 +47,21 @@ function trackingEmbeddings(): EmbeddingBackend & {
   };
 }
 
-type IndexCacheInternals = IndexCache & {
-  ensureEntry(cacheKey: string): {
-    index: MiruIndex | null;
-    task: Promise<MiruIndex> | null;
-    pendingPaths: Set<string>;
-    updateChain: Promise<void>;
-  };
-  noteFileChange(source: string, filename: string | null): void;
+type CacheEntryInternal = {
+  index: MiruIndex | null;
+  task: Promise<MiruIndex> | null;
+  pendingPaths: Set<string>;
+  updateChain: Promise<void>;
 };
+
+type IndexCacheTestAccess = {
+  ensureEntry(cacheKey: string): CacheEntryInternal;
+  noteFileChange(source: string, filename: string | null | undefined): void;
+};
+
+function cacheInternals(cache: IndexCache): IndexCacheTestAccess {
+  return cache as unknown as IndexCacheTestAccess;
+}
 
 async function buildTempRepo(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "miru-inc-int-"));
@@ -156,7 +162,7 @@ describe("incremental integration", () => {
 
       const cache = new IndexCache(["code"]);
       const cacheKey = computeSourceCacheKey(root);
-      const internals = cache as unknown as IndexCacheInternals;
+      const internals = cacheInternals(cache);
       const entry = internals.ensureEntry(cacheKey);
       entry.index = index;
       entry.task = Promise.resolve(index);
@@ -217,7 +223,7 @@ describe("incremental integration", () => {
 
       const cache = new IndexCache(["code"]);
       const cacheKey = computeSourceCacheKey(root);
-      const internals = cache as unknown as IndexCacheInternals;
+      const internals = cacheInternals(cache);
       const entry = internals.ensureEntry(cacheKey);
       entry.index = index;
       entry.task = Promise.resolve(index);
