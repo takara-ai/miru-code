@@ -1,11 +1,26 @@
 import { describe, expect, test } from "bun:test";
-import { OpenAIEmbeddingBackend } from "../src/embeddings/openai.ts";
+import { OpenAIEmbeddingBackend, sanitizeEmbeddingInput } from "../src/embeddings/openai.ts";
 
 function oneHot(dim: number, index: number): number[] {
   const vec = Array.from({ length: dim }, () => 0);
   vec[index] = 1;
   return vec;
 }
+
+describe("sanitizeEmbeddingInput", () => {
+  test("replaces lone surrogates so JSON.stringify is valid", () => {
+    const loneHigh = "\uD800";
+    const loneLow = "\uDC00";
+    const validPair = "\uD83D\uDE00";
+
+    expect(sanitizeEmbeddingInput(loneHigh)).toBe("\uFFFD");
+    expect(sanitizeEmbeddingInput(loneLow)).toBe("\uFFFD");
+    expect(sanitizeEmbeddingInput(validPair)).toBe(validPair);
+
+    const body = JSON.stringify({ input: [sanitizeEmbeddingInput(loneHigh)] });
+    expect(() => JSON.parse(body)).not.toThrow();
+  });
+});
 
 describe("OpenAIEmbeddingBackend batching", () => {
   test("embedDocuments batches windows and assigns vectors to correct documents", async () => {

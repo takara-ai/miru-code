@@ -63,14 +63,23 @@ function splitIntoWindows(text: string, maxChars: number): string[] {
   return out;
 }
 
-function sanitizeEmbeddingInput(text: string): string {
+/** Unpaired UTF-16 surrogates are invalid in JSON and break strict API parsers. */
+function stripLoneSurrogates(text: string): string {
+  return text.replace(
+    /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g,
+    "\uFFFD",
+  );
+}
+
+export function sanitizeEmbeddingInput(text: string): string {
+  let out = stripLoneSurrogates(text);
   // Some OpenAI-compatible gateways mis-handle backslash escapes in JSON text
   // payloads. Keep a benchmark fallback mode to forcefully neutralize them.
   const mode = process.env.MIRU_EMBED_ESCAPE_MODE ?? process.env.SEMBLE_EMBED_ESCAPE_MODE ?? "quad";
   if (mode === "strip") {
-    return text.replaceAll("\\", "/");
+    return out.replaceAll("\\", "/");
   }
-  return text.replaceAll("\\", "\\\\\\\\");
+  return out.replaceAll("\\", "\\\\\\\\");
 }
 
 function isPayloadTooLargeError(err: unknown): boolean {
