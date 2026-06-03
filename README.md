@@ -12,19 +12,19 @@ Miru ships **Bun as a dependency** so `miru` uses a compatible runtime after ins
 
 ```bash
 # Run once without installing
-bunx miru-code search "auth middleware" ./src
+bunx @takara-ai/miru-code search "auth middleware" ./src
 
 # Global CLI (npm or bun)
-bun add -g miru-code
-# or: npm install -g miru-code
+bun add -g @takara-ai/miru-code
+# or: npm install -g @takara-ai/miru-code
 miru search "auth middleware" ./src
 
 # Library
-bun add miru-code
+bun add @takara-ai/miru-code
 ```
 
 ```ts
-import { MiruIndex } from "miru-code";
+import { MiruIndex } from "@takara-ai/miru-code";
 
 const index = await MiruIndex.fromPath("./src");
 ```
@@ -77,8 +77,8 @@ Run with **no arguments** to start the stdio MCP server. It indexes the **curren
 
 ```bash
 bun /path/to/miru/src/cli.ts
-# or after bun add -g miru-code:  miru
-# or without installing:           bunx miru-code
+# or after bun add -g @takara-ai/miru-code:  miru
+# or without installing:           bunx @takara-ai/miru-code
 ```
 
 **Tools:** `search`, `find_related` — pass `repo` only when querying a different path or git URL.
@@ -90,7 +90,7 @@ Cursor `~/.cursor/mcp.json` (or project `.cursor/mcp.json`):
   "mcpServers": {
     "miru": {
       "command": "bunx",
-      "args": ["miru-code"],
+      "args": ["@takara-ai/miru-code"],
       "env": {
         "TAKARA_API_KEY": "your-takara-bearer-token",
         "MIRU_OPENAI_BASE_URL": "https://infer.dev.takara.ai/v1",
@@ -102,7 +102,7 @@ Cursor `~/.cursor/mcp.json` (or project `.cursor/mcp.json`):
 }
 ```
 
-Alternatively, after `bun add -g miru-code`:
+Alternatively, after `bun add -g @takara-ai/miru-code`:
 
 ```json
 {
@@ -138,7 +138,7 @@ No project path in `args` for `bunx` / global install — Cursor runs the server
 ## Library
 
 ```ts
-import { MiruIndex } from "miru-code";
+import { MiruIndex } from "@takara-ai/miru-code";
 
 const index = await MiruIndex.fromPath("./src");
 const results = await index.search({ query: "BM25 tokenize", topK: 10 });

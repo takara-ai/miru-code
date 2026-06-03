@@ -1,5 +1,5 @@
 {
-  "name": "miru-code",
+  "name": "@takara-ai/miru-code",
   "version": "0.1.0",
   "description": "Miru (見る) — hybrid code search for agents. Bun, TypeScript, Takara embeddings.",
   "type": "module",
@@ -7,7 +7,7 @@
   "author": "Takara",
   "repository": {
     "type": "git",
-    "url": "https://github.com/takara-ai/miru-code.git"
+    "url": "git+https://github.com/takara-ai/miru-code.git"
   },
   "homepage": "https://takara.ai",
   "bugs": "https://github.com/takara-ai/miru-code/issues",
@@ -54,6 +54,7 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "prepublishOnly": "bun run typecheck && bun test",
+    "publish": "npm publish --access public",
     "benchmark:quality": "bun run scripts/benchmark-quality.ts",
     "benchmark:quantization": "bun run scripts/benchmark-quantization.ts"
   },
