@@ -8,6 +8,7 @@ node_modules
 out
 dist
 *.tgz
+miru-code.tgz
 
 # code coverage
 coverage

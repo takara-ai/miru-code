@@ -152,15 +152,23 @@ bun run typecheck
 
 ## Publishing
 
-Releases are automated via [GitHub Releases](https://github.com/takara-ai/miru-code/releases). Publishing uses [npm Trusted Publishing](https://docs.npmjs.com/trusted-publishers/) (OIDC) — no long-lived npm tokens in GitHub secrets.
+Releases use **Bun** for install, test, and `bun pm pack`. The registry upload uses **`npm publish`** on that tarball because [Bun does not yet support npm OIDC trusted publishing](https://github.com/oven-sh/bun/issues/22423) — no long-lived npm tokens in GitHub secrets.
+
+**Local first publish** (creates the package on npm):
 
 ```bash
-npm version patch   # or minor / major
+bun publish --access public
+```
+
+**CI** (after Trusted Publisher is configured on npm):
+
+```bash
+npm version patch
 git push && git push --tags
 gh release create v0.1.1 --generate-notes
 ```
 
-The `release.yml` workflow publishes to npm when the release is published.
+The `release.yml` workflow runs when the GitHub Release is published.
 
 ## License
 

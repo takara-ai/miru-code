@@ -1,15 +1,15 @@
 name: Release
 
-# Publish to npm when a GitHub Release is published.
-# Auth: npm Trusted Publishing (OIDC) — no long-lived NPM_TOKEN secret.
+# Bun for install, test, and pack. npm publish only for the registry upload —
+# bun publish does not support npm Trusted Publishing (OIDC) yet:
+# https://github.com/oven-sh/bun/issues/22423
 #
 # One-time npm setup (https://www.npmjs.com/package/miru-code/access):
-#   1. Create the package (first publish) or open package settings on npmjs.com
-#   2. Add Trusted Publisher → GitHub Actions
-#      - Organization/user: takara-ai
+#   1. First publish: bun publish --access public (logged in locally), or npm publish
+#   2. Trusted Publisher → GitHub Actions
+#      - Organization: takara-ai
 #      - Repository: miru-code
 #      - Workflow filename: release.yml
-#      - Environment: (leave blank)
 
 on:
   release:
@@ -29,12 +29,6 @@ jobs:
         with:
           bun-version: latest
 
-      # Node 24 ships npm 11.x (required for OIDC trusted publishing).
-      # Do not set registry-url — it injects _authToken and breaks OIDC.
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
@@ -42,9 +36,16 @@ jobs:
         run: |
           bun run typecheck
           bun test
-          npm pack --dry-run
+
+      - name: Pack tarball
+        run: bun pm pack --filename miru-code.tgz
+
+      # npm CLI 11.x required for OIDC; do not set registry-url on setup-node.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
 
       - name: Publish to npm
-        run: npm publish --access public
+        run: npm publish miru-code.tgz --access public
         env:
           NPM_CONFIG_PROVENANCE: false
