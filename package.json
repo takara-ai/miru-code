@@ -26,8 +26,11 @@
   "engines": {
     "bun": ">=1.1.0"
   },
+  "trustedDependencies": [
+    "bun"
+  ],
   "bin": {
-    "miru": "./src/cli.ts"
+    "miru": "bin/miru.cjs"
   },
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -35,6 +38,7 @@
     ".": "./src/index.ts"
   },
   "files": [
+    "bin",
     "src",
     "README.md",
     "LICENSE"
@@ -55,6 +59,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "bun": "^1.1.0",
     "ignore": "^7.0.5",
     "zod": "^4.4.3"
   },

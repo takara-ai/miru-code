@@ -8,14 +8,15 @@ Indexes a local directory, combines semantic search with BM25, RRF fusion, and c
 
 ## Install
 
-Requires [Bun](https://bun.sh) 1.1+.
+Miru ships **Bun as a dependency** so `miru` uses a compatible runtime after install. You still need [Node.js](https://nodejs.org) on your PATH for the install step (Bun’s `postinstall`); do not use `--ignore-scripts`.
 
 ```bash
 # Run once without installing
 bunx miru-code search "auth middleware" ./src
 
-# Global CLI
+# Global CLI (npm or bun)
 bun add -g miru-code
+# or: npm install -g miru-code
 miru search "auth middleware" ./src
 
 # Library
