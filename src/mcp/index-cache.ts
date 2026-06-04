@@ -57,11 +57,14 @@ export function shouldIgnoreWatchPath(relativePath: string | null | undefined): 
 
 export class IndexCache {
   private readonly content: ContentType[];
+  private readonly defaultRef: string | null;
   private readonly entries = new Map<string, CacheEntry>();
   private watcher: ReturnType<typeof watch> | null = null;
+  private watchedSource: string | null = null;
 
-  constructor(content: ContentType[] = ["code"]) {
+  constructor(content: ContentType[] = ["code"], defaultRef: string | null = null) {
     this.content = content;
+    this.defaultRef = defaultRef;
   }
 
   private ensureEntry(cacheKey: string): CacheEntry {
@@ -107,6 +110,7 @@ export class IndexCache {
     void task
       .then((index) => {
         entry.index = index;
+        this.maybeStartWatcher(source);
         void this.flushFileUpdates(cacheKey, source);
         return index;
       })
@@ -120,11 +124,12 @@ export class IndexCache {
   }
 
   async get(source: string, ref?: string | null): Promise<MiruIndex> {
-    const cacheKey = computeSourceCacheKey(source, ref);
+    const resolvedRef = ref ?? this.defaultRef;
+    const cacheKey = computeSourceCacheKey(source, resolvedRef);
     const entry = this.ensureEntry(cacheKey);
 
     if (!entry.task) {
-      this.startBuild(source, ref, cacheKey);
+      this.startBuild(source, resolvedRef, cacheKey);
     }
 
     const index = await entry.task;
@@ -237,6 +242,18 @@ export class IndexCache {
     entry.updateChain = entry.updateChain.then(run, run);
   }
 
+  private maybeStartWatcher(source: string): void {
+    if (!mcpWatchEnabled() || isGitUrl(source)) {
+      return;
+    }
+    const resolved = resolve(source);
+    if (this.watchedSource === resolved) {
+      return;
+    }
+    this.watchedSource = resolved;
+    this.startWatcher(resolved);
+  }
+
   startWatcher(path: string): void {
     const resolved = resolve(path);
     if (this.watcher) {
@@ -251,34 +268,33 @@ export class IndexCache {
   close(): void {
     this.watcher?.close();
     this.watcher = null;
+    this.watchedSource = null;
     this.entries.clear();
   }
 }
 
 export async function getIndexForRepo(
   repo: string | null | undefined,
-  defaultSource: string | null,
   cache: IndexCache,
   ref?: string | null,
 ): Promise<MiruIndex> {
-  if (repo && isGitUrl(repo) && !repo.startsWith("https://") && !repo.startsWith("http://")) {
+  if (!repo) {
+    throw new Error(
+      "Pass an https:// or http:// git URL or local directory path as `repo` (project root for local workspaces).",
+    );
+  }
+
+  if (isGitUrl(repo) && !repo.startsWith("https://") && !repo.startsWith("http://")) {
     throw new Error(
       `Only https://, http://, or local directory paths are accepted as \`repo\`. Got: ${repo}`,
     );
   }
 
-  const source = repo ?? defaultSource;
-  if (!source) {
-    throw new Error(
-      "No repo specified and no default index. Pass an https:// or http:// git URL or local directory path as `repo`.",
-    );
-  }
-
   try {
-    return await cache.get(source, ref);
+    return await cache.get(repo, ref);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`Failed to index ${source}: ${message}`);
+    throw new Error(`Failed to index ${repo}: ${message}`);
   }
 }
 

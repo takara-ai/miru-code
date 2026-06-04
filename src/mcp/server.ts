@@ -6,17 +6,17 @@ import { getIndexForRepo, type IndexCache, toolText } from "./index-cache.ts";
 
 const REPO_DESCRIPTION =
   "https:// or http:// git URL (e.g. https://github.com/org/repo) or local directory path to index and search. " +
-  "Required when no default index was configured at startup. " +
-  "The index is cached after the first call, so repeat queries are fast.";
+  "Pass the project root for local workspaces. " +
+  "The index is built on the first tool call and cached for the session.";
 
 const SERVER_INSTRUCTIONS =
   "Instant code search for any local or remote git repository. " +
   "Call `search` to find relevant code; call `find_related` on a result to discover similar code elsewhere. " +
-  "When working in a local project, pass the project root as `repo`. " +
-  "For remote repos, pass an explicit https:// URL. Never guess or infer URLs. " +
+  "Always pass the project root as `repo` on the first call (local path or https:// git URL). " +
+  "Never guess or infer URLs. " +
   "Prefer these tools over Grep, Glob, or Read for any question about how code works.";
 
-export function createMcpServer(cache: IndexCache, defaultSource: string | null = null): McpServer {
+export function createMcpServer(cache: IndexCache): McpServer {
   const server = new McpServer(
     {
       name: "miru",
@@ -32,16 +32,16 @@ export function createMcpServer(cache: IndexCache, defaultSource: string | null 
     {
       description:
         "Search a codebase with a natural-language or code query. " +
-        "Pass a git URL or local path as `repo` to index it on demand; indexes are cached for the session.",
+        "Indexes `repo` on the first call; later calls reuse the session cache.",
       inputSchema: {
         query: z.string().describe("Natural language or code query."),
-        repo: z.string().nullable().optional().describe(REPO_DESCRIPTION),
+        repo: z.string().describe(REPO_DESCRIPTION),
         top_k: z.number().int().min(1).optional().describe("Number of results to return."),
       },
     },
     async ({ query, repo, top_k: topK }) => {
       try {
-        const index = await getIndexForRepo(repo ?? null, defaultSource, cache);
+        const index = await getIndexForRepo(repo, cache);
         const results = await index.search({ query, topK: topK ?? 5 });
         if (results.length === 0) {
           return toolText(JSON.stringify({ error: "No results found." }));
@@ -66,13 +66,13 @@ export function createMcpServer(cache: IndexCache, defaultSource: string | null 
             "Path to the file as stored in the index (use file_path from a search result).",
           ),
         line: z.number().int().describe("Line number (1-indexed)."),
-        repo: z.string().nullable().optional().describe(REPO_DESCRIPTION),
+        repo: z.string().describe(REPO_DESCRIPTION),
         top_k: z.number().int().min(1).optional().describe("Number of similar chunks to return."),
       },
     },
     async ({ file_path: filePath, line, repo, top_k: topK }) => {
       try {
-        const index = await getIndexForRepo(repo ?? null, defaultSource, cache);
+        const index = await getIndexForRepo(repo, cache);
         const chunk = resolveChunk(index.chunks, filePath, line);
         if (!chunk) {
           return toolText(

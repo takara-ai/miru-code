@@ -135,12 +135,12 @@ describe("incremental integration", () => {
 
       expect(embeddings.documentEmbedCount).toBeGreaterThan(0);
       expect(embeddings.documentEmbedCount).toBeLessThan(initialEmbedCount);
-      expect(embeddings.lastEmbeddedTexts.every((text) => text.includes("miruAuthRotatedToken"))).toBe(
-        true,
-      );
-      expect(embeddings.lastEmbeddedTexts.some((text) => text.includes("miruUtilsCalendarHelper"))).toBe(
-        false,
-      );
+      expect(
+        embeddings.lastEmbeddedTexts.every((text) => text.includes("miruAuthRotatedToken")),
+      ).toBe(true);
+      expect(
+        embeddings.lastEmbeddedTexts.some((text) => text.includes("miruUtilsCalendarHelper")),
+      ).toBe(false);
 
       const after = await index.search({
         query: "miruAuthRotatedToken",

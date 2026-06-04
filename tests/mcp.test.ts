@@ -7,14 +7,14 @@ import {
 } from "../src/mcp/index-cache.ts";
 
 describe("IndexCache", () => {
-  test("getIndexForRepo requires repo when no default is configured", async () => {
+  test("getIndexForRepo requires repo", async () => {
     const cache = new IndexCache();
-    await expect(getIndexForRepo(null, null, cache)).rejects.toThrow(/No repo specified/);
+    await expect(getIndexForRepo(null, cache)).rejects.toThrow(/Pass an https:\/\//);
   });
 
   test("getIndexForRepo rejects unsafe git transport schemes", async () => {
     const cache = new IndexCache();
-    await expect(getIndexForRepo("git@github.com:org/repo", null, cache)).rejects.toThrow(
+    await expect(getIndexForRepo("git@github.com:org/repo", cache)).rejects.toThrow(
       /Only https:\/\//,
     );
   });

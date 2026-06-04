@@ -93,14 +93,14 @@ Run `miru init --agent <id> --force` to overwrite an existing sub-agent file.
 
 ### MCP server
 
-Run with **no arguments** to start the stdio MCP server. It indexes the **current working directory** (most IDEs set this to your workspace). Optional path/ref flags pre-index a different repo.
+Run with **no arguments** to start the stdio MCP server. Indexing begins on the first `search` or `find_related` call, using the `repo` path you pass. Optional `--ref` sets the default git ref for remote repos.
 
 ```bash
 bunx @takara-ai/miru-code
 # or after bun add -g @takara-ai/miru-code:  miru
 ```
 
-**Tools:** `search`, `find_related` — pass `repo` only when querying a different path or git URL.
+**Tools:** `search`, `find_related` — `repo` is required (project root or https:// git URL).
 
 For MCP configs, use `bunx` as the command (`bun` with `x` in `args` works too — they're equivalent).
 

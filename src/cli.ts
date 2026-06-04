@@ -8,7 +8,7 @@ import { serveMcp } from "./mcp/serve.ts";
 import { MiruIndex } from "./miru-index.ts";
 import { ensureCredentials, runClearCredentials, runSetup } from "./setup.ts";
 import type { ContentType } from "./types.ts";
-import { formatResults, isGitUrl, resolveChunk, resolveContent } from "./utils.ts";
+import { formatResults, resolveChunk, resolveContent } from "./utils.ts";
 
 loadEnvFiles();
 await loadStoredCredentials();
@@ -121,10 +121,9 @@ CLI:
   miru clear [path]
 
 MCP server (default when no CLI subcommand):
-  miru
-  miru [path] [--ref BRANCH] [--content code ...]
+  miru [--ref BRANCH] [--content code ...]
 
-  With no path, indexes the process working directory (Cursor sets this to your workspace).
+  Indexes a repo on the first search/find_related call via the tool repo argument.
 
 Examples:
   miru search "auth middleware" ./src
@@ -226,7 +225,6 @@ async function runCli(argv: string[]): Promise<void> {
 }
 
 async function runMcp(argv: string[]): Promise<void> {
-  let path: string | null = null;
   let ref: string | null = null;
   const contentTokens: string[] = [];
 
@@ -247,15 +245,10 @@ async function runMcp(argv: string[]): Promise<void> {
         contentTokens.push(value);
         i++;
       }
-      continue;
-    }
-    if (arg && !arg.startsWith("-") && path === null) {
-      path = isGitUrl(arg) ? arg : resolve(arg);
     }
   }
 
   await serveMcp({
-    path,
     ref,
     content: resolveContent(contentTokens.length > 0 ? contentTokens : ["code"]),
   });
