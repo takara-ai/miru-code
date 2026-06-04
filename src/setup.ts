@@ -1,64 +1,15 @@
-import { stdin as input, stdout as output } from "node:process";
+import { stdout as output } from "node:process";
 import {
   clearStoredCredentials,
-  hasEmbeddingApiKeyInEnv,
   loadStoredCredentials,
   readStoredCredentials,
   resolveCredentialsPath,
   saveStoredCredentials,
 } from "./credentials.ts";
 import { validateEmbeddingApiKey } from "./embeddings/validate.ts";
-import { resolveEmbeddingApiKey } from "./env.ts";
+import { hasTakaraApiKeyInEnv, resolveEmbeddingApiKey } from "./env.ts";
+import { promptHidden } from "./prompt.ts";
 import { Spinner } from "./spinner.ts";
-
-async function promptHidden(message: string): Promise<string> {
-  if (!input.isTTY) {
-    throw new Error(
-      "Cannot prompt for API key: stdin is not a TTY. Run `miru setup --key YOUR_KEY` or set TAKARA_API_KEY.",
-    );
-  }
-
-  return new Promise((resolve, reject) => {
-    output.write(message);
-    input.setRawMode?.(true);
-    input.resume();
-    input.setEncoding("utf8");
-
-    let value = "";
-    const onData = (chunk: string) => {
-      const char = chunk[0];
-      if (char === "\n" || char === "\r" || char === "\u0004") {
-        cleanup();
-        output.write("\n");
-        resolve(value.trim());
-        return;
-      }
-      if (char === "\u0003") {
-        cleanup();
-        output.write("\n");
-        reject(new Error("Setup cancelled."));
-        process.exit(130);
-      }
-      if (char === "\u007f" || char === "\b") {
-        if (value.length > 0) {
-          value = value.slice(0, -1);
-          output.write("\b \b");
-        }
-        return;
-      }
-      value += chunk;
-      output.write("*");
-    };
-
-    const cleanup = () => {
-      input.setRawMode?.(false);
-      input.pause();
-      input.removeListener("data", onData);
-    };
-
-    input.on("data", onData);
-  });
-}
 
 async function promptApiKey(): Promise<string> {
   let key = "";
@@ -78,7 +29,7 @@ export interface RunSetupOptions {
 }
 
 export async function runSetup(options: RunSetupOptions = {}): Promise<string> {
-  if (!options.force && hasEmbeddingApiKeyInEnv()) {
+  if (!options.force && hasTakaraApiKeyInEnv()) {
     const path = resolveCredentialsPath();
     const stored = await readStoredCredentials();
     if (stored) {

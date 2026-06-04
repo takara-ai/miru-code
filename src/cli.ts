@@ -4,6 +4,13 @@ import { type AgentId, writeAgentFile } from "./agents.ts";
 import { clearCache } from "./cache.ts";
 import { loadStoredCredentials } from "./credentials.ts";
 import { loadEnvFiles } from "./env-files.ts";
+import {
+  AGENT_IDS,
+  formatUnknownAgent,
+  printCommandHelp,
+  printFullHelp,
+  printMainHelp,
+} from "./help.ts";
 import { serveMcp } from "./mcp/serve.ts";
 import { MiruIndex } from "./miru-index.ts";
 import { ensureCredentials, runClearCredentials, runSetup } from "./setup.ts";
@@ -13,9 +20,18 @@ import { formatResults, resolveChunk, resolveContent } from "./utils.ts";
 loadEnvFiles();
 await loadStoredCredentials();
 
-const CLI_COMMANDS = new Set(["search", "find-related", "init", "setup", "clear", "-h", "--help"]);
+const CLI_COMMANDS = new Set([
+  "search",
+  "find-related",
+  "init",
+  "setup",
+  "clear",
+  "help",
+  "-h",
+  "--help",
+]);
 
-const AGENTS = new Set<AgentId>(["claude", "copilot", "cursor", "gemini", "kiro", "opencode"]);
+const AGENTS = new Set<AgentId>(AGENT_IDS);
 
 function parseContentArgv(argv: string[]): { content: ContentType[]; rest: string[] } {
   const rest: string[] = [];
@@ -101,8 +117,15 @@ async function runFindRelated(
 }
 
 async function runInit(agent: AgentId, force: boolean): Promise<void> {
-  const dest = await writeAgentFile(agent, { force });
-  console.log(`Created ${dest}`);
+  try {
+    const dest = await writeAgentFile(agent, { force });
+    process.stdout.write(`Wrote sub-agent: ${dest}\n`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`${message}\n`);
+    process.stderr.write("Use --force to overwrite an existing file.\n");
+    process.exit(1);
+  }
 }
 
 async function runClear(path: string): Promise<void> {
@@ -110,52 +133,54 @@ async function runClear(path: string): Promise<void> {
   console.log(`Cleared cached index for: ${path}`);
 }
 
-function printHelp(): void {
-  console.log(`Miru (見る) — hybrid code search (Bun + TypeScript + Takara)
-
-CLI:
-  miru search <query> [path] [-k N] [--content code|docs|config|all]
-  miru find-related <file_path> <line> [path] [-k N] [--content ...]
-  miru setup [--key KEY] [--force] [--clear]
-  miru init [--agent cursor] [--force]
-  miru clear [path]
-
-MCP server (default when no CLI subcommand):
-  miru [--ref BRANCH] [--content code ...]
-
-  Indexes a repo on the first search/find_related call via the tool repo argument.
-
-Examples:
-  miru search "auth middleware" ./src
-  miru find-related src/auth.ts 42 .
-
-Environment:
-  TAKARA_API_KEY / OPENAI_API_KEY / MIRU_OPENAI_API_KEY   Takara bearer token
-  MIRU_OPENAI_BASE_URL                                    Default: infer.dev.takara.ai
-`);
-}
-
 async function runCli(argv: string[]): Promise<void> {
   const [command, ...rest] = argv;
 
-  if (command === "-h" || command === "--help" || command === undefined) {
-    printHelp();
+  if (command === undefined) {
+    printMainHelp();
+    return;
+  }
+
+  if (command === "-h" || command === "--help") {
+    printFullHelp();
+    return;
+  }
+
+  if (command === "help") {
+    const topic = rest[0];
+    if (!topic) {
+      printMainHelp();
+      return;
+    }
+    printCommandHelp(topic);
     return;
   }
 
   if (command === "init") {
-    let agent: AgentId = "claude";
+    let agent: AgentId | undefined;
     let force = false;
     for (let i = 0; i < rest.length; i++) {
       const arg = rest[i];
       if (arg === "--force") {
         force = true;
-      } else if ((arg === "--agent" || arg === "-a") && rest[i + 1]) {
-        const value = rest[++i] as AgentId;
-        if (AGENTS.has(value)) {
-          agent = value;
+      } else if (arg === "--agent" || arg === "-a") {
+        const value = rest[++i];
+        if (!value) {
+          process.stderr.write("Missing value for --agent.\n");
+          printCommandHelp("init");
+          process.exit(1);
         }
+        if (!AGENTS.has(value as AgentId)) {
+          process.stderr.write(`${formatUnknownAgent(value)}\n`);
+          process.exit(1);
+        }
+        agent = value as AgentId;
       }
+    }
+    if (!agent) {
+      process.stderr.write("miru init requires --agent.\n");
+      printCommandHelp("init");
+      process.exit(1);
     }
     await runInit(agent, force);
     return;
@@ -199,7 +224,7 @@ async function runCli(argv: string[]): Promise<void> {
   if (command === "search") {
     const query = sizedRest[0];
     if (!query) {
-      console.error("Usage: miru search <query> [path] [-k N] [--content ...]");
+      printCommandHelp("search");
       process.exit(1);
     }
     const path = resolve(sizedRest[1] ?? process.cwd());
@@ -211,7 +236,7 @@ async function runCli(argv: string[]): Promise<void> {
     const filePath = sizedRest[0];
     const lineRaw = sizedRest[1];
     if (!filePath || !lineRaw) {
-      console.error("Usage: miru find-related <file_path> <line> [path] [-k N] [--content ...]");
+      printCommandHelp("find-related");
       process.exit(1);
     }
     const line = Number(lineRaw);
@@ -220,7 +245,8 @@ async function runCli(argv: string[]): Promise<void> {
     return;
   }
 
-  printHelp();
+  process.stderr.write(`Unknown command: ${command}\n`);
+  printMainHelp();
   process.exit(1);
 }
 

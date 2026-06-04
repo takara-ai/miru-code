@@ -31,21 +31,17 @@ export function envOptionalInt(names: string[], min = 1): number | undefined {
   return undefined;
 }
 
-const EMBEDDING_API_KEY_NAMES = [
-  "TAKARA_API_KEY",
-  "OPENAI_API_KEY",
-  "MIRU_OPENAI_API_KEY",
-  "SEMBLE_OPENAI_API_KEY",
-] as const;
+export const TAKARA_API_KEY_ENV = "TAKARA_API_KEY";
 
-export { EMBEDDING_API_KEY_NAMES };
+export function hasTakaraApiKeyInEnv(): boolean {
+  return Boolean(process.env[TAKARA_API_KEY_ENV]?.trim());
+}
 
 export function resolveEmbeddingApiKey(): string {
-  const key = envFirstString([...EMBEDDING_API_KEY_NAMES], "");
+  const key = process.env[TAKARA_API_KEY_ENV]?.trim() ?? "";
   if (!key) {
     throw new Error(
-      "Embedding API key required. Run `miru setup`, set TAKARA_API_KEY, OPENAI_API_KEY, " +
-        "MIRU_OPENAI_API_KEY, or SEMBLE_OPENAI_API_KEY in your MCP server env or .env.local.",
+      "Takara API key required. Run `miru setup`, or set TAKARA_API_KEY in your MCP server env or .env.local.",
     );
   }
   return key;

@@ -6,28 +6,30 @@ import { resolveEmbeddingApiKey } from "../src/env.ts";
 import { loadEnvFiles } from "../src/env-files.ts";
 
 describe("resolveEmbeddingApiKey", () => {
-  test("prefers MCP-style env vars in priority order", () => {
-    const prev = {
-      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
-      SEMBLE_OPENAI_API_KEY: process.env.SEMBLE_OPENAI_API_KEY,
-      TAKARA_API_KEY: process.env.TAKARA_API_KEY,
-    };
+  test("reads TAKARA_API_KEY", () => {
+    const prev = process.env.TAKARA_API_KEY;
     try {
-      delete process.env.OPENAI_API_KEY;
-      delete process.env.SEMBLE_OPENAI_API_KEY;
       process.env.TAKARA_API_KEY = "takara-token";
       expect(resolveEmbeddingApiKey()).toBe("takara-token");
-
-      delete process.env.TAKARA_API_KEY;
-      process.env.OPENAI_API_KEY = "openai-token";
-      expect(resolveEmbeddingApiKey()).toBe("openai-token");
     } finally {
-      for (const [key, value] of Object.entries(prev)) {
-        if (value === undefined) {
-          delete process.env[key];
-        } else {
-          process.env[key] = value;
-        }
+      if (prev === undefined) {
+        delete process.env.TAKARA_API_KEY;
+      } else {
+        process.env.TAKARA_API_KEY = prev;
+      }
+    }
+  });
+
+  test("throws when TAKARA_API_KEY is unset", () => {
+    const prev = process.env.TAKARA_API_KEY;
+    try {
+      delete process.env.TAKARA_API_KEY;
+      expect(() => resolveEmbeddingApiKey()).toThrow(/Takara API key required/);
+    } finally {
+      if (prev === undefined) {
+        delete process.env.TAKARA_API_KEY;
+      } else {
+        process.env.TAKARA_API_KEY = prev;
       }
     }
   });

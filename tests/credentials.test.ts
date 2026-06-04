@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmod, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,11 +8,32 @@ import {
   readStoredCredentials,
   saveStoredCredentials,
 } from "../src/credentials.ts";
+import { TAKARA_API_KEY_ENV } from "../src/env.ts";
+
+function snapshotTakaraApiKey(): string | undefined {
+  return process.env[TAKARA_API_KEY_ENV];
+}
+
+function restoreTakaraApiKey(value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[TAKARA_API_KEY_ENV];
+  } else {
+    process.env[TAKARA_API_KEY_ENV] = value;
+  }
+}
+
+function clearTakaraApiKey(): void {
+  delete process.env[TAKARA_API_KEY_ENV];
+}
 
 describe("credentials", () => {
   let credDir: string;
   const prevDir = process.env.MIRU_CREDENTIALS_DIR;
-  const prevKey = process.env.TAKARA_API_KEY;
+  let takaraApiKeySnapshot: string | undefined;
+
+  beforeEach(() => {
+    takaraApiKeySnapshot = snapshotTakaraApiKey();
+  });
 
   afterEach(async () => {
     if (credDir) {
@@ -23,17 +44,13 @@ describe("credentials", () => {
     } else {
       process.env.MIRU_CREDENTIALS_DIR = prevDir;
     }
-    if (prevKey === undefined) {
-      delete process.env.TAKARA_API_KEY;
-    } else {
-      process.env.TAKARA_API_KEY = prevKey;
-    }
+    restoreTakaraApiKey(takaraApiKeySnapshot);
   });
 
   test("saveStoredCredentials writes versioned file with restricted mode", async () => {
     credDir = await mkdtemp(join(tmpdir(), "miru-cred-"));
     process.env.MIRU_CREDENTIALS_DIR = credDir;
-    delete process.env.TAKARA_API_KEY;
+    clearTakaraApiKey();
 
     const path = await saveStoredCredentials("secret-token");
     const raw = JSON.parse(await readFile(path, "utf-8")) as {
@@ -52,7 +69,7 @@ describe("credentials", () => {
   test("loadStoredCredentials sets env when unset", async () => {
     credDir = await mkdtemp(join(tmpdir(), "miru-cred-"));
     process.env.MIRU_CREDENTIALS_DIR = credDir;
-    delete process.env.TAKARA_API_KEY;
+    clearTakaraApiKey();
 
     await saveStoredCredentials("stored-token");
     const loaded = await loadStoredCredentials();
@@ -60,9 +77,22 @@ describe("credentials", () => {
     expect(process.env.TAKARA_API_KEY ?? "").toBe("stored-token");
   });
 
+  test("loadStoredCredentials does not load when TAKARA_API_KEY is set", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-cred-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    clearTakaraApiKey();
+    process.env.TAKARA_API_KEY = "env-token";
+
+    await saveStoredCredentials("stored-token");
+    const loaded = await loadStoredCredentials();
+    expect(loaded).toBe(false);
+    expect(process.env.TAKARA_API_KEY).toBe("env-token");
+  });
+
   test("loadStoredCredentials does not override existing env", async () => {
     credDir = await mkdtemp(join(tmpdir(), "miru-cred-"));
     process.env.MIRU_CREDENTIALS_DIR = credDir;
+    clearTakaraApiKey();
     process.env.TAKARA_API_KEY = "env-token";
 
     await saveStoredCredentials("stored-token");
@@ -83,7 +113,7 @@ describe("credentials", () => {
   test("clearStoredCredentials removes file and unsets loaded env", async () => {
     credDir = await mkdtemp(join(tmpdir(), "miru-cred-"));
     process.env.MIRU_CREDENTIALS_DIR = credDir;
-    delete process.env.TAKARA_API_KEY;
+    clearTakaraApiKey();
 
     await saveStoredCredentials("stored-token");
     await loadStoredCredentials();
@@ -98,6 +128,7 @@ describe("credentials", () => {
   test("clearStoredCredentials does not unset unrelated env key", async () => {
     credDir = await mkdtemp(join(tmpdir(), "miru-cred-"));
     process.env.MIRU_CREDENTIALS_DIR = credDir;
+    clearTakaraApiKey();
     process.env.TAKARA_API_KEY = "env-token";
 
     await saveStoredCredentials("stored-token");

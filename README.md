@@ -60,7 +60,7 @@ Add credentials to `.env.local` (loaded automatically when you run from this rep
 
 | Variable | Default |
 |----------|---------|
-| `TAKARA_API_KEY` / `OPENAI_API_KEY` / `MIRU_OPENAI_API_KEY` | (required) Bearer token for Takara |
+| `TAKARA_API_KEY` | (required) Takara bearer token for embeddings |
 | `MIRU_OPENAI_BASE_URL` | `https://infer.dev.takara.ai/v1` |
 | `MIRU_OPENAI_EMBEDDING_MODEL` | `ds1-potion-code-16m` |
 | `MIRU_EMBEDDING_DIMENSIONS` | `256` (auto for potion) |
@@ -68,11 +68,7 @@ Add credentials to `.env.local` (loaded automatically when you run from this rep
 | `MIRU_EMBEDDING_BATCH_SIZE` | `32` (max for this model) |
 | `MIRU_CONCURRENCY` | logical CPUs **minus 2** (min 1) |
 
-`SEMBLE_*` env names are still accepted as aliases for migration.
-
 Parallelism: file reads/chunking, embedding batches (up to concurrency in flight), query embed overlapping BM25, and **BM25 scoring in Bun workers** (shards by doc range when index has 256+ chunks). BM25 uses an inverted postings list for fast single-threaded search on small indexes. Override with `MIRU_CONCURRENCY`.
-
-`OPENAI_*` env aliases are also accepted where noted in the CLI help.
 
 ## IDE integration
 
@@ -352,11 +348,13 @@ bun run typecheck
 
 Releases use **Bun** for install, test, and `bun pm pack`. The registry upload uses **`npm publish`** on that tarball because [Bun does not yet support npm OIDC trusted publishing](https://github.com/oven-sh/bun/issues/22423) — no long-lived npm tokens in GitHub secrets.
 
-**Local first publish** (creates the package on npm):
+**Local publish** (logged in to npm; `publishConfig.access` is already `public`):
 
 ```bash
-bun publish --access public
+bun publish
 ```
+
+Runs `prepublishOnly` (typecheck + tests), then a single registry upload. Do not add a `publish` script that calls `npm publish` — Bun runs lifecycle scripts after its own upload and would publish twice.
 
 **CI** (after Trusted Publisher is configured on npm):
 

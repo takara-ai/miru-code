@@ -5,7 +5,7 @@ name: Release
 # https://github.com/oven-sh/bun/issues/22423
 #
 # One-time npm setup (https://www.npmjs.com/package/@takara-ai/miru-code/access):
-#   1. First publish: bun publish --access public (logged in locally), or npm publish
+#   1. First publish: bun publish (logged in locally)
 #   2. Trusted Publisher → GitHub Actions
 #      - Organization: takara-ai
 #      - Repository: miru-code

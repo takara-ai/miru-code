@@ -1,6 +1,6 @@
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { EMBEDDING_API_KEY_NAMES, envFirstString } from "./env.ts";
+import { hasTakaraApiKeyInEnv } from "./env.ts";
 
 const CREDENTIALS_FILENAME = "credentials.json";
 const CREDENTIALS_VERSION = 1;
@@ -31,10 +31,6 @@ export function resolveCredentialsPath(): string {
   return join(resolveCredentialsDir(), CREDENTIALS_FILENAME);
 }
 
-export function hasEmbeddingApiKeyInEnv(): boolean {
-  return Boolean(envFirstString([...EMBEDDING_API_KEY_NAMES], ""));
-}
-
 export async function readStoredCredentials(): Promise<StoredCredentials | null> {
   const path = resolveCredentialsPath();
   if (!(await Bun.file(path).exists())) {
@@ -53,7 +49,7 @@ export async function readStoredCredentials(): Promise<StoredCredentials | null>
 
 /** Set TAKARA_API_KEY from the user credentials file when env is unset. */
 export async function loadStoredCredentials(): Promise<boolean> {
-  if (hasEmbeddingApiKeyInEnv()) {
+  if (hasTakaraApiKeyInEnv()) {
     return false;
   }
   const stored = await readStoredCredentials();
