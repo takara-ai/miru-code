@@ -2,128 +2,98 @@
 
 Hybrid code search for AI agents — **TypeScript**, **Bun**, and **Takara embeddings**.
 
-## How to read this doc
+Miru helps coding agents **find code by meaning**. Ask “where is auth middleware configured?” and get back the most relevant **chunks** (file path, line range, snippet) instead of grepping the whole tree.
 
-| If you want to… | Start here |
-|-----------------|------------|
-| Use Miru in an IDE (Cursor, Claude Code, etc.) | [User flow](#user-flow) → [Credentials](#credentials) → [IDE integration](#ide-integration) |
-| Run search from a terminal or script | [User flow](#user-flow) → [CLI](#cli) |
-| Embed Miru in your own tool | [Library](#library) |
-| Hack on this repo | [Developing Miru](#developing-miru) |
+## Quick start
 
-The sections below follow that order: **what Miru does**, **how you use it end to end**, then **reference** (CLI flags, env vars, per-IDE MCP JSON).
-
-## What is Miru?
-
-*Miru* (見る) means “to see” or “to look” in Japanese. Miru helps coding agents **find code by meaning** instead of guessing file paths or running exhaustive greps.
-
-When an agent asks “where is auth middleware configured?” or “how do we batch embeddings?”, Miru returns the most relevant **chunks** — file path, line range, and snippet — so the agent can read only what matters.
-
-### Why hybrid search?
-
-Pure semantic search misses exact symbol matches. Pure keyword search misses paraphrased intent. Miru combines both:
-
-1. **Dense (semantic)** — Takara code embeddings (`ds1-potion-code-16m`) over structurally chunked source files.
-2. **Sparse (BM25)** — keyword scoring with an inverted index; parallelized in Bun workers when the index has 256+ chunks.
-3. **RRF fusion** — reciprocal rank fusion merges the two ranked lists.
-4. **Reranking** — code-tuned penalties and boosts (e.g. multi-chunk files, query-term overlap).
-
-You can index **code**, **docs**, **config**, or **all** of the above via `--content` (CLI/MCP) or when building an index in the library.
-
-### Caching (what “fresh” means)
-
-| Layer | Behavior |
-|-------|----------|
-| **First search** | Builds an index (chunk → embed → BM25 + vectors), then writes a disk cache. |
-| **MCP server (local repo, same session)** | Watches the workspace and **incrementally** re-indexes changed files; updates the disk cache. Disable with `MIRU_MCP_WATCH=0`. |
-| **CLI or a new MCP session** | Reuses the disk cache if the embedding model, content types, and indexed files still match. Cache does **not** detect file edits by itself — run `miru clear <path>` after large changes, or rely on MCP live updates. |
-| **Remote `https://` repos** | Cloned per session; no filesystem watch. Use `--ref` for a branch/tag. |
-
-Cache locations: `~/Library/Caches/miru` (macOS), `~/.cache/miru` (Linux), `%LOCALAPPDATA%\miru\Cache` (Windows).
-
-### How agents use Miru
-
-| Mode | Best for | What the agent gets |
-|------|----------|---------------------|
-| **MCP server** | Cursor, Claude Code, VS Code Copilot, Gemini CLI, Kiro, OpenCode | `search` and `find_related` tools; pass `repo` (local path or `https://` git URL) |
-| **CLI sub-agent** | Any agent with shell access | `miru install` (global) or `miru init --agent <id>` (per-repo) |
-
-Both modes share the same indexing logic and disk cache layout.
-
-## User flow
-
-Typical path from zero to useful search:
-
-```text
-1. Install Bun + Miru          →  bun add -g @takara-ai/miru-code   (or bunx for one-off)
-2. Credentials                 →  miru setup   OR   TAKARA_API_KEY in MCP env / .env.local
-3. Integrate                   →  miru install   (MCP + instructions + sub-agent)
-4. Search                        →  Agent calls search("…", repo: project root)
-5. Go deeper (optional)        →  find_related(file, line) on a hit
-6. Refresh cache (if needed)   →  miru clear .   after big refactors when using CLI only
-```
-
-**Agent workflow:** `search` first → read returned chunks → `find_related` on a promising `file_path` + line → open full files only when the chunk is not enough → use grep for exhaustive literal matches.
-
-**`repo` rules:** Local workspaces use the **project root** path. Remote repos use an explicit **`https://` or `http://`** URL (not `git@` SSH). Never guess URLs.
-
-## Install
-
-Requires [Bun](https://bun.sh) 1.1+ on your PATH.
+**Requirements:** [Bun](https://bun.sh) 1.1+ and a [Takara API key](https://takara.ai) for embeddings.
 
 ```bash
-# One-off
-bunx @takara-ai/miru-code search "auth middleware" ./src
-
-# Global CLI
+# 1. Install the CLI
 bun add -g @takara-ai/miru-code
-miru search "auth middleware" ./src
 
-# Library
-bun add @takara-ai/miru-code
+# 2. Store your API key (validates against Takara)
+miru setup
+
+# 3. Wire into your agents (MCP + instructions + sub-agent)
+miru install
+
+# 4. Restart your IDE / agent session, then search
+miru search "auth middleware" ./src
 ```
+
+That’s the full path for most users. `miru install` is interactive — it detects Cursor, Claude Code, Gemini CLI, Kiro, OpenCode, GitHub Copilot, Codex, and VS Code, and lets you pick what to configure.
+
+**One-off without installing:**
+
+```bash
+bunx @takara-ai/miru-code search "auth middleware" ./src
+```
+
+**Undo agent setup:** `miru uninstall`
+
+---
+
+## How to read this doc
+
+| Goal | Section |
+|------|---------|
+| Get running in an IDE | [Quick start](#quick-start) → [IDE integration](#ide-integration) |
+| Search from terminal or scripts | [CLI](#cli) |
+| Use as a library | [Library](#library) |
+| Contribute to this repo | [Developing Miru](#developing-miru) |
+
+## Install options
+
+| Method | Command | When to use |
+|--------|---------|-------------|
+| Global CLI | `bun add -g @takara-ai/miru-code` | Daily use, `miru install`, terminal search |
+| One-off | `bunx @takara-ai/miru-code …` | Try before installing |
+| Library | `bun add @takara-ai/miru-code` | Embed search in your own tool |
+| From source | [Developing Miru](#developing-miru) | Contributors |
+
+After install, `miru` is on your PATH. Run `miru` with no args for help.
 
 ## Credentials
 
-Miru needs a **Takara bearer token** for embeddings (`TAKARA_API_KEY`).
-
-**CLI / terminal (recommended for local dev):**
+Miru needs `TAKARA_API_KEY` — a Takara bearer token for code embeddings.
 
 ```bash
-miru setup              # interactive; validates key and stores locally
+miru setup              # interactive; validates and stores locally
 miru setup --key TOKEN  # non-interactive
 miru setup --clear      # remove stored key
 ```
 
-Stored at `~/Library/Application Support/miru/credentials.json` (macOS), `~/.config/miru/` (Linux), or `%APPDATA%\miru\` (Windows). Override directory with `MIRU_CREDENTIALS_DIR`.
+Stored credentials live at:
 
-**MCP in an IDE:** Put `TAKARA_API_KEY` in the MCP server `env` block. MCP does not reliably inherit your shell or `.env.local` — set it explicitly.
+- macOS: `~/Library/Application Support/miru/credentials.json`
+- Linux: `~/.config/miru/credentials.json`
+- Windows: `%APPDATA%\miru\credentials.json`
 
-**This repo:** `bun install` then add `TAKARA_API_KEY` to `.env.local` (Bun loads it when you run from the project root).
+Override with `MIRU_CREDENTIALS_DIR`.
+
+**For MCP in an IDE:** also set `TAKARA_API_KEY` in the MCP server `env` block. MCP subprocesses do not reliably inherit your shell or `.env.local`. `miru install` writes `"TAKARA_API_KEY": "${TAKARA_API_KEY}"` where your IDE supports variable expansion — export the var or paste your token.
 
 ## IDE integration
 
 ### Recommended: `miru install`
 
-Interactive setup (like Semble’s `semble install`). Detects installed agents and configures any combination of:
+Configures up to three integrations per agent:
 
 | Integration | What it does |
 |-------------|----------------|
-| **MCP server** | Adds `miru` to your agent’s MCP config (`search`, `find_related`) |
-| **Instructions** | Appends a marked block to `CLAUDE.md`, `GEMINI.md`, `AGENTS.md`, etc. |
-| **Sub-agent** | Installs `miru-code` under your **user** config (global, all projects) |
+| **MCP server** | Native `search` and `find_related` tools |
+| **Instructions** | Marked usage block in `CLAUDE.md`, `GEMINI.md`, `AGENTS.md`, etc. |
+| **Sub-agent** | Global `miru-code` agent file (Bash-backed search for sub-agents without MCP) |
 
 ```bash
-bun add -g @takara-ai/miru-code
-miru setup          # store API key (or set TAKARA_API_KEY for ${TAKARA_API_KEY} in MCP)
-miru install
+miru install      # pick agents + integrations
+miru uninstall    # remove miru entries
 ```
 
-Undo with `miru uninstall`. Restart your IDE/agent session after install.
+Restart your IDE or agent session after install.
 
-**Supported agents:** Claude Code, Cursor, Gemini CLI, Kiro, OpenCode, GitHub Copilot, Codex, VS Code.
-
-### Global paths (after `miru install`)
+### Where files go (global user config)
 
 | Agent | MCP config | Sub-agent |
 |-------|------------|-----------|
@@ -133,207 +103,131 @@ Undo with `miru uninstall`. Restart your IDE/agent session after install.
 | Kiro | `~/.kiro/settings/mcp.json` | `~/.kiro/agents/miru-code.md` |
 | OpenCode | `~/.config/opencode/opencode.json(c)` | `~/.config/opencode/agents/miru-code.md` |
 | GitHub Copilot | `~/.copilot/mcp-config.json` | `~/.copilot/agents/miru-code.agent.md` |
-| Codex | `~/.codex/config.toml` | (MCP only) |
-| VS Code | user profile `mcp.json` | (MCP only) |
-
-MCP entries use `"env": { "TAKARA_API_KEY": "${TAKARA_API_KEY}" }` where the IDE supports expansion. Export the variable or edit the config with your token.
+| Codex | `~/.codex/config.toml` | — |
+| VS Code | user profile `Code/User/mcp.json` | — |
 
 ### Per-project sub-agent (`miru init`)
 
-To commit a sub-agent into a repo (team-shared) instead of global user config:
+To commit a sub-agent into a repo for your team (project-local, not global):
 
 ```bash
-miru init --agent claude --force   # → .claude/agents/miru-code.md in cwd
+miru init --agent claude --force   # → .claude/agents/miru-code.md
 ```
 
 Agents: `cursor`, `claude`, `copilot`, `gemini`, `kiro`, `opencode`.
 
-### MCP server
+### Manual MCP setup
 
-No subcommand starts stdio MCP:
+Skip `miru install` and add this to your IDE’s MCP config (`mcpServers`, `servers`, or `mcp` depending on the tool):
 
-```bash
-bunx @takara-ai/miru-code
-# or: miru
+```json
+{
+  "miru": {
+    "command": "bunx",
+    "args": ["@takara-ai/miru-code"],
+    "env": {
+      "TAKARA_API_KEY": "your-takara-bearer-token"
+    }
+  }
+}
 ```
 
-Optional startup flags: `--ref BRANCH` (default git ref for remote repos), `--content code docs …` (same types as CLI).
+After `bun add -g @takara-ai/miru-code`, you can use `"command": "miru"` instead of `bunx`.
 
-**Tools**
+**MCP tools**
 
 | Tool | Purpose |
 |------|---------|
-| `search` | Natural-language or code query; requires `repo`; optional `top_k` (default 5) |
-| `find_related` | Similar chunks to `file_path` + `line` (from a search hit); requires `repo`; optional `top_k` |
+| `search` | Natural-language or code query; requires `repo` (project root or `https://` git URL); optional `top_k` (default 5) |
+| `find_related` | Similar chunks to `file_path` + `line` from a prior hit; requires `repo` |
 
-Indexing runs on the first tool call for each `repo`. Later calls in the same MCP session reuse memory and refresh local files via watch (see [Caching](#caching-what-fresh-means)).
+Indexing runs on the first tool call per `repo`. Pass the **project root** for local workspaces. Remote repos need an explicit `https://` or `http://` URL (not `git@` SSH).
 
-Use `bunx` in MCP config (`command`: `bunx`, `args`: `["@takara-ai/miru-code"]`). After `bun add -g`, you may use `"command": "miru"` instead.
+**IDE-specific notes**
 
-#### Shared env block
+- **Claude Code:** supports `${TAKARA_API_KEY}` in config; verify with `/mcp`. Or: `claude mcp add miru -s user -- bunx @takara-ai/miru-code`
+- **VS Code:** uses `"servers"` not `mcpServers`; restart via **MCP: List Servers**
+- **OpenCode:** uses `mcp`, `"type": "local"`, and `environment` instead of `env`
+- **Kiro:** include `PATH` in `env` if Bun is not on the default path
 
-Use in every MCP config (some IDEs use `environment` instead of `env`):
+Optional MCP startup flags: `--ref BRANCH`, `--content code docs …`
 
-```json
-{
-  "TAKARA_API_KEY": "your-takara-bearer-token",
-  "MIRU_OPENAI_BASE_URL": "https://infer.dev.takara.ai/v1",
-  "MIRU_OPENAI_EMBEDDING_MODEL": "ds1-potion-code-16m",
-  "MIRU_EMBEDDING_DIMENSIONS": "256"
-}
-```
+## How Miru works
 
-### Cursor
+### Hybrid search
 
-`~/.cursor/mcp.json` or project `.cursor/mcp.json`:
+1. **Dense (semantic)** — Takara code embeddings (`ds1-potion-code-16m`) over structurally chunked files
+2. **Sparse (BM25)** — keyword index; parallelized in Bun workers when the index has 256+ chunks
+3. **RRF fusion** — merges semantic and keyword rankings
+4. **Reranking** — code-tuned boosts and penalties
 
-```json
-{
-  "mcpServers": {
-    "miru": {
-      "command": "bunx",
-      "args": ["@takara-ai/miru-code"],
-      "env": {
-        "TAKARA_API_KEY": "your-takara-bearer-token"
-      }
-    }
-  }
-}
-```
+Index **code**, **docs**, **config**, or **all** via `--content` (CLI/MCP) or when building a library index.
 
-Sub-agent: `miru install` (global) or `miru init --agent cursor` (project-local).
+### Agent workflow
 
-### Claude Code
+1. `search` with a natural-language or code query
+2. Read returned chunks
+3. `find_related` on a promising `file_path` + line (optional)
+4. Open full files only when the chunk is not enough
+5. Use grep for exhaustive literal matches
 
-Project `.mcp.json` or `~/.claude.json`:
+### Caching
 
-```json
-{
-  "mcpServers": {
-    "miru": {
-      "type": "stdio",
-      "command": "bunx",
-      "args": ["@takara-ai/miru-code"],
-      "env": {
-        "TAKARA_API_KEY": "${TAKARA_API_KEY}"
-      }
-    }
-  }
-}
-```
+| Layer | Behavior |
+|-------|----------|
+| **First search** | Builds index, writes disk cache |
+| **MCP (local repo, same session)** | Watches files and incrementally re-indexes; disable with `MIRU_MCP_WATCH=0` |
+| **CLI / new MCP session** | Reuses disk cache; run `miru clear <path>` after large refactors |
+| **Remote repos** | Cloned per session; use `--ref` for branch/tag |
 
-`${VAR}` expansion is supported. Restart and run `/mcp`, or: `claude mcp add miru -s project -- bunx @takara-ai/miru-code`.
-
-Sub-agent: `miru install` (global) or `miru init --agent claude` (project-local).
-
-### VS Code / GitHub Copilot
-
-`.vscode/mcp.json` or user profile (**MCP: Open User Configuration**). Note `"servers"` not `mcpServers`:
-
-```json
-{
-  "servers": {
-    "miru": {
-      "type": "stdio",
-      "command": "bunx",
-      "args": ["@takara-ai/miru-code"],
-      "env": {
-        "TAKARA_API_KEY": "your-takara-bearer-token"
-      }
-    }
-  }
-}
-```
-
-Use **MCP: List Servers** to restart after edits. Sub-agent: `miru install`.
-
-### Gemini CLI
-
-`~/.gemini/settings.json` — same `mcpServers` shape as Cursor. `gemini mcp add` or `/mcp` to verify. Prefer `miru install`.
-
-### Kiro
-
-`~/.kiro/settings/mcp.json` — include `PATH` if Bun is not on the default path:
-
-```json
-"env": {
-  "TAKARA_API_KEY": "your-takara-bearer-token",
-  "PATH": "/usr/local/bin:/usr/bin:/bin"
-}
-```
-
-Sub-agent: `miru install`.
-
-### OpenCode
-
-`opencode.json` uses `mcp`, `"type": "local"`, and `environment`:
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "miru": {
-      "type": "local",
-      "command": ["bunx", "@takara-ai/miru-code"],
-      "enabled": true,
-      "environment": {
-        "TAKARA_API_KEY": "your-takara-bearer-token"
-      }
-    }
-  }
-}
-```
-
-Verify with `opencode mcp list`. Sub-agent: `miru install`.
+Cache: `~/Library/Caches/miru` (macOS), `~/.cache/miru` (Linux), `%LOCALAPPDATA%\miru\Cache` (Windows).
 
 ## CLI
 
-Installed globally or via `bunx`:
-
 ```bash
 miru setup
-miru install        # interactive MCP + instructions + sub-agent (recommended)
+miru install
 miru search "where are embeddings created" ./src -k 10 --content code
 miru find-related src/embeddings/openai.ts 120 ./src
-miru uninstall      # remove miru config from agents
 miru clear ./src
-miru help search    # per-command help
-miru -h             # environment variables
+miru uninstall
+miru help search
 ```
-
-From **this repo** (development), prefix with `bun run miru` instead of `miru`.
 
 | Command | Summary |
 |---------|---------|
-| `search <query> [path]` | Hybrid search; `path` defaults to cwd; accepts local path or `https://` git URL |
-| `find-related <file> <line> [path]` | Semantic neighbors of the chunk containing that line |
-| `setup` | Store and validate `TAKARA_API_KEY` locally |
-| `install` | Interactive global agent setup (MCP, instructions, sub-agent) |
-| `uninstall` | Remove miru configuration from agents |
-| `init --agent <id>` | Write project-local sub-agent markdown |
-| `clear [path]` | Delete disk cache for that source |
-| *(no command)* | Start MCP server |
+| `search <query> [path]` | Hybrid search; path defaults to cwd; local path or `https://` git URL |
+| `find-related <file> <line> [path]` | Semantic neighbors at that line |
+| `setup` | Store and validate `TAKARA_API_KEY` |
+| `install` | Interactive global agent setup |
+| `uninstall` | Remove miru agent configuration |
+| `init --agent <id>` | Project-local sub-agent markdown |
+| `clear [path]` | Delete disk cache |
+| *(no command)* | Start stdio MCP server |
 
-**Options:** `-k` / `--top-k N` (default 5), `--content code|docs|config|all` (default `code`). Multiple types: `--content code docs`.
+**Options:** `-k` / `--top-k N` (default 5), `--content code|docs|config|all`, `--json` (force JSON output).
 
-Output is JSON (`query` + `results` with `chunk`, `score`, `location`).
+**Output:** In a terminal, search results are formatted for reading (path, score, snippet preview). Piped output and `--json` emit JSON (`query` + `results` with `chunk`, `score`, `location`). Progress spinners go to stderr.
+
+From **this repo**, prefix commands with `bun run miru`.
 
 ## Library
 
 ```ts
 import { MiruIndex } from "@takara-ai/miru-code";
 
-// Local directory
 const index = await MiruIndex.fromPath("./src", ["code"]);
-
-// Local path or https:// git URL
-const fromUrl = await MiruIndex.fromSource("https://github.com/org/repo", ["code"], undefined, "main");
+const fromUrl = await MiruIndex.fromSource(
+  "https://github.com/org/repo",
+  ["code"],
+  undefined,
+  "main",
+);
 
 const results = await index.search({
   query: "BM25 tokenize",
-  topK: 10, // default 10 in the library API
+  topK: 10,
   filterPaths: ["src/index/bm25.ts"],
-  rerank: true,
 });
 
 const related = await index.findRelated(results[0], 5);
@@ -350,26 +244,28 @@ Exports: `MiruIndex`, `clearCache`, `findIndexCachePath`, `resolveCacheFolder`, 
 | `MIRU_OPENAI_BASE_URL` | `https://infer.dev.takara.ai/v1` |
 | `MIRU_OPENAI_EMBEDDING_MODEL` | `ds1-potion-code-16m` |
 | `MIRU_EMBEDDING_DIMENSIONS` | `256` for potion (auto when unset) |
-| `MIRU_FLOAT_VECTORS` | unset = **int8** vectors; `1` = float32 |
+| `MIRU_FLOAT_VECTORS` | unset = int8; `1` = float32 |
 | `MIRU_EMBEDDING_BATCH_SIZE` | `32` |
-| `MIRU_CONCURRENCY` | logical CPUs **minus 2** (min 1); file IO, embedding batches, BM25 workers |
-| `MIRU_MCP_WATCH` | on; set `0` or `false` to disable MCP filesystem watch |
-| `MIRU_CREDENTIALS_DIR` | override stored-credentials directory |
-| `MIRU_PIPELINE_EMBED_BATCH` | optional pipeline tuning (see `.env.example`) |
-| `MIRU_PIPELINE_EMBED_INFLIGHT` | optional pipeline tuning |
+| `MIRU_CONCURRENCY` | logical CPUs minus 2 (min 1) |
+| `MIRU_MCP_WATCH` | on; `0` or `false` disables MCP file watch |
+| `MIRU_CREDENTIALS_DIR` | Override credentials directory |
+| `NO_COLOR` | Disable CLI colors |
 
-Parallelism covers chunking, concurrent embedding requests, overlapping query embed with BM25, and BM25 worker sharding on large indexes.
+See `.env.example` for optional pipeline tuning (`MIRU_PIPELINE_*`).
 
 ## Developing Miru
 
 ```bash
+git clone https://github.com/takara-ai/miru-code.git
+cd miru-code
 bun install
 cp .env.example .env.local   # add TAKARA_API_KEY
 bun test
 bun run typecheck
+bun run lint
 ```
 
-**Local MCP** — point at your `miru-code` clone:
+**Local MCP** — point at your clone:
 
 ```json
 {
@@ -381,29 +277,15 @@ bun run typecheck
 }
 ```
 
-Merge into the IDE’s wrapper (`mcpServers`, `servers`, or `mcp`).
-
 ## Publishing
 
 Releases use **Bun** for install, test, and `bun pm pack`. Registry upload uses **`npm publish`** on that tarball because [Bun does not yet support npm OIDC trusted publishing](https://github.com/oven-sh/bun/issues/22423).
 
-**Local** (logged in to npm):
-
 ```bash
-bun publish
+bun publish   # local, logged in to npm
 ```
 
-Runs `prepublishOnly` (typecheck + tests). Do not add a `publish` script that calls `npm publish` — that would upload twice.
-
-**CI** (Trusted Publisher on npm):
-
-```bash
-npm version patch
-git push && git push --tags
-gh release create v$(node -p "require('./package.json').version") --generate-notes
-```
-
-`release.yml` publishes when the GitHub Release is published.
+**CI:** tag a GitHub Release; `release.yml` publishes to npm via Trusted Publisher.
 
 ## License
 
