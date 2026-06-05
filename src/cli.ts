@@ -133,7 +133,7 @@ async function runSearch(
   content: ContentType[],
   jsonFlag: boolean,
 ): Promise<void> {
-  await ensureCredentials();
+  await ensureCredentials({ interactive: true });
 
   const index = await withSpinner("Indexing and searching", async () => {
     const built = await MiruIndex.fromSource(path, content);
@@ -153,7 +153,7 @@ async function runFindRelated(
   content: ContentType[],
   jsonFlag: boolean,
 ): Promise<void> {
-  await ensureCredentials();
+  await ensureCredentials({ interactive: true });
 
   const { results, label } = await withSpinner("Finding related chunks", async () => {
     const built = await MiruIndex.fromSource(path, content);

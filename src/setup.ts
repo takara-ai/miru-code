@@ -87,30 +87,45 @@ export async function runClearCredentials(): Promise<void> {
   info(`No stored API key at ${path}`);
 }
 
+export function canPromptForCredentials(): boolean {
+  return Boolean(process.stdin.isTTY);
+}
+
+export function hasCredentials(): boolean {
+  try {
+    resolveEmbeddingApiKey();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function refreshCredentialsFromStore(): Promise<void> {
+  await loadStoredCredentials();
+}
+
 export async function ensureCredentials(options?: { interactive?: boolean }): Promise<void> {
-  try {
-    resolveEmbeddingApiKey();
+  if (hasCredentials()) {
     return;
-  } catch {
-    await loadStoredCredentials();
   }
 
-  try {
-    resolveEmbeddingApiKey();
+  await refreshCredentialsFromStore();
+  if (hasCredentials()) {
     return;
-  } catch {
-    // still missing
   }
 
-  const interactive = options?.interactive ?? process.stdin.isTTY;
-  if (interactive) {
+  const wantsPrompt = options?.interactive ?? true;
+  if (wantsPrompt && canPromptForCredentials()) {
+    writeStderr("");
+    info("No Takara API key found.");
+    hint("Miru needs one for embeddings — enter it below (same as `miru setup`).");
     await runSetup();
     resolveEmbeddingApiKey();
     return;
   }
 
   throw new Error(
-    "Embedding API key required. Run `miru setup` in a terminal, or set TAKARA_API_KEY " +
+    "Takara API key required. Run `miru setup` in a terminal, or set TAKARA_API_KEY " +
       "in your MCP server env (Cursor mcp.json) or .env.local.",
   );
 }

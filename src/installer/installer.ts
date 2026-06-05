@@ -2,6 +2,7 @@ import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { loadAgentTemplate } from "../agents.ts";
 import { brandTitle, dim, divider, green, hint, success, writeStdout } from "../cli-ui.ts";
+import { ensureCredentials } from "../setup.ts";
 import {
   AGENT_TARGETS,
   type AgentTarget,
@@ -182,6 +183,10 @@ async function apply(
 export async function runInstaller(mode: InstallMode): Promise<void> {
   const install = mode === "install";
   requireInteractiveTerminal(`miru ${mode}`);
+
+  if (install) {
+    await ensureCredentials({ interactive: true });
+  }
 
   writeStdout("");
   writeStdout(`${brandTitle()}${install ? " installer" : " uninstaller"}`);
