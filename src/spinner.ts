@@ -1,3 +1,5 @@
+import { dim, green, red } from "./cli-ui.ts";
+
 const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 export class Spinner {
@@ -13,7 +15,7 @@ export class Spinner {
     }
     this.timer = setInterval(() => {
       const glyph = FRAMES[this.frame++ % FRAMES.length];
-      process.stderr.write(`\r${glyph} ${this.message}`);
+      process.stderr.write(`\r${dim(glyph)} ${this.message}`);
     }, 80);
   }
 
@@ -31,11 +33,15 @@ export class Spinner {
   }
 
   succeed(message?: string): void {
-    this.stop(message ?? `${this.message} — ok`);
+    if (message === "") {
+      this.stop();
+      return;
+    }
+    this.stop(green("✓ ") + (message ?? this.message));
   }
 
   fail(message?: string): void {
-    this.stop(message ?? `${this.message} — failed`);
+    this.stop(red("✗ ") + (message ?? this.message));
   }
 }
 
@@ -48,7 +54,7 @@ export async function withSpinner<T>(
   spinner.start();
   try {
     const result = await fn();
-    spinner.succeed(options?.successMessage);
+    spinner.succeed(options?.successMessage ?? "");
     return result;
   } catch (err) {
     spinner.fail(options?.failMessage);

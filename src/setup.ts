@@ -1,4 +1,4 @@
-import { stdout as output } from "node:process";
+import { brandTitle, divider, fail, hint, info, success, writeStderr } from "./cli-ui.ts";
 import {
   clearStoredCredentials,
   loadStoredCredentials,
@@ -16,7 +16,7 @@ async function promptApiKey(): Promise<string> {
   while (!key) {
     key = await promptHidden("Takara API key (input hidden): ");
     if (!key) {
-      output.write("API key cannot be empty.\n");
+      fail("API key cannot be empty.");
     }
   }
   return key;
@@ -33,33 +33,28 @@ export async function runSetup(options: RunSetupOptions = {}): Promise<string> {
     const path = resolveCredentialsPath();
     const stored = await readStoredCredentials();
     if (stored) {
-      process.stderr.write(
-        `API key already configured (env var and ${path}). Use --force to replace the stored key.\n`,
-      );
+      info(`API key already configured (env + ${path}). Use --force to replace stored key.`);
       return path;
     }
-    process.stderr.write(
-      "API key already set via environment variable. Stored credentials were not changed.\n",
-    );
+    info("API key already set via environment variable. Stored credentials unchanged.");
     return resolveCredentialsPath();
   }
 
   if (!options.force) {
     const stored = await readStoredCredentials();
     if (stored && !options.apiKey) {
-      process.stderr.write(
-        `API key already stored at ${resolveCredentialsPath()}. Use --force to replace it.\n`,
-      );
+      info(`API key already stored at ${resolveCredentialsPath()}. Use --force to replace.`);
       process.env.TAKARA_API_KEY = stored.takara_api_key;
       return resolveCredentialsPath();
     }
   }
 
-  process.stderr.write("\nMiru (見る) — first-time setup\n\n");
-  process.stderr.write(
-    "Miru needs a Takara API key for code embeddings.\n" +
-      "Get a bearer token from Takara, then enter it below.\n\n",
-  );
+  writeStderr("");
+  writeStderr(`${brandTitle()} setup`);
+  divider("─", 48, process.stderr);
+  writeStderr("Miru needs a Takara API key for code embeddings.");
+  hint("Get a bearer token from Takara, then enter it below.");
+  writeStderr("");
 
   const apiKey = options.apiKey ?? (await promptApiKey());
 
@@ -76,18 +71,20 @@ export async function runSetup(options: RunSetupOptions = {}): Promise<string> {
 
   const path = await saveStoredCredentials(apiKey);
   process.env.TAKARA_API_KEY = apiKey;
-  process.stderr.write(`\nSaved credentials to ${path} (readable only by your user account).\n`);
-  process.stderr.write("You can also set TAKARA_API_KEY in MCP config for IDE integrations.\n\n");
+  writeStderr("");
+  success(`Saved credentials to ${path}`);
+  hint("Set TAKARA_API_KEY in MCP config for IDE integrations.");
+  writeStderr("");
   return path;
 }
 
 export async function runClearCredentials(): Promise<void> {
   const { cleared, path } = await clearStoredCredentials();
   if (cleared) {
-    process.stderr.write(`Removed stored API key from ${path}.\n`);
+    success(`Removed stored API key from ${path}`);
     return;
   }
-  process.stderr.write(`No stored API key at ${path}.\n`);
+  info(`No stored API key at ${path}`);
 }
 
 export async function ensureCredentials(options?: { interactive?: boolean }): Promise<void> {

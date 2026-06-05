@@ -2,6 +2,15 @@
 import { resolve } from "node:path";
 import { type AgentId, writeAgentFile } from "./agents.ts";
 import { clearCache } from "./cache.ts";
+import {
+  fail,
+  formatRelatedHeader,
+  formatSearchErrorPretty,
+  formatSearchResultsPretty,
+  hint,
+  prefersJsonOutput,
+  success,
+} from "./cli-ui.ts";
 import { loadStoredCredentials } from "./credentials.ts";
 import { loadEnvFiles } from "./env-files.ts";
 import {
@@ -11,10 +20,12 @@ import {
   printFullHelp,
   printMainHelp,
 } from "./help.ts";
+import { runInstaller } from "./installer/installer.ts";
 import { serveMcp } from "./mcp/serve.ts";
 import { MiruIndex } from "./miru-index.ts";
 import { ensureCredentials, runClearCredentials, runSetup } from "./setup.ts";
-import type { ContentType } from "./types.ts";
+import { withSpinner } from "./spinner.ts";
+import type { ContentType, SearchResult } from "./types.ts";
 import { formatResults, resolveChunk, resolveContent } from "./utils.ts";
 
 loadEnvFiles();
@@ -24,6 +35,8 @@ const CLI_COMMANDS = new Set([
   "search",
   "find-related",
   "init",
+  "install",
+  "uninstall",
   "setup",
   "clear",
   "help",
@@ -32,6 +45,19 @@ const CLI_COMMANDS = new Set([
 ]);
 
 const AGENTS = new Set<AgentId>(AGENT_IDS);
+
+function parseFlagArgv(argv: string[], flag: string): { present: boolean; rest: string[] } {
+  const rest: string[] = [];
+  let present = false;
+  for (const arg of argv) {
+    if (arg === flag) {
+      present = true;
+      continue;
+    }
+    rest.push(arg);
+  }
+  return { present, rest };
+}
 
 function parseContentArgv(argv: string[]): { content: ContentType[]; rest: string[] } {
   const rest: string[] = [];
@@ -77,19 +103,46 @@ function parseTopK(argv: string[]): { topK: number; rest: string[] } {
   return { topK: Number.isFinite(topK) && topK >= 1 ? Math.floor(topK) : 5, rest };
 }
 
+function emitSearchOutput(
+  query: string,
+  results: SearchResult[],
+  jsonFlag: boolean,
+  emptyMessage = "No results found.",
+): void {
+  if (results.length === 0) {
+    if (prefersJsonOutput(jsonFlag)) {
+      console.log(JSON.stringify({ error: emptyMessage }));
+      return;
+    }
+    process.stdout.write(formatSearchErrorPretty(emptyMessage));
+    return;
+  }
+
+  if (prefersJsonOutput(jsonFlag)) {
+    console.log(JSON.stringify(formatResults(query, results)));
+    return;
+  }
+
+  process.stdout.write(formatSearchResultsPretty(query, results));
+}
+
 async function runSearch(
   path: string,
   query: string,
   topK: number,
   content: ContentType[],
+  jsonFlag: boolean,
 ): Promise<void> {
   await ensureCredentials();
-  const index = await MiruIndex.fromSource(path, content);
-  await index.saveToDefaultCache(path);
-  const results = await index.search({ query, topK });
-  const out =
-    results.length > 0 ? formatResults(query, results) : { error: "No results found." as const };
-  console.log(JSON.stringify(out));
+
+  const index = await withSpinner("Indexing and searching", async () => {
+    const built = await MiruIndex.fromSource(path, content);
+    await built.saveToDefaultCache(path);
+    const results = await built.search({ query, topK });
+    return { index: built, results };
+  });
+
+  emitSearchOutput(query, index.results, jsonFlag);
 }
 
 async function runFindRelated(
@@ -98,39 +151,49 @@ async function runFindRelated(
   line: number,
   topK: number,
   content: ContentType[],
+  jsonFlag: boolean,
 ): Promise<void> {
   await ensureCredentials();
-  const index = await MiruIndex.fromSource(path, content);
-  const chunk = resolveChunk(index.chunks, filePath, line);
-  if (!chunk) {
-    console.error(`No chunk found at ${filePath}:${line}.`);
-    process.exit(1);
+
+  const { results, label } = await withSpinner("Finding related chunks", async () => {
+    const built = await MiruIndex.fromSource(path, content);
+    const chunk = resolveChunk(built.chunks, filePath, line);
+    if (!chunk) {
+      throw new RelatedChunkNotFoundError(filePath, line);
+    }
+    const hits = await built.findRelated(chunk, topK);
+    await built.saveToDefaultCache(path);
+    return {
+      results: hits,
+      label: formatRelatedHeader(filePath, line),
+    };
+  });
+
+  emitSearchOutput(label, results, jsonFlag, `No related chunks found for ${filePath}:${line}.`);
+}
+
+class RelatedChunkNotFoundError extends Error {
+  constructor(filePath: string, line: number) {
+    super(`No chunk found at ${filePath}:${line}.`);
+    this.name = "RelatedChunkNotFoundError";
   }
-  const results = await index.findRelated(chunk, topK);
-  const label = `Chunks related to ${filePath}:${line}`;
-  const out =
-    results.length > 0
-      ? formatResults(label, results)
-      : { error: `No related chunks found for ${filePath}:${line}.` };
-  console.log(JSON.stringify(out));
-  await index.saveToDefaultCache(path);
 }
 
 async function runInit(agent: AgentId, force: boolean): Promise<void> {
   try {
     const dest = await writeAgentFile(agent, { force });
-    process.stdout.write(`Wrote sub-agent: ${dest}\n`);
+    success(`Wrote sub-agent: ${dest}`);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`${message}\n`);
-    process.stderr.write("Use --force to overwrite an existing file.\n");
+    fail(message);
+    hint("Use --force to overwrite an existing file.");
     process.exit(1);
   }
 }
 
 async function runClear(path: string): Promise<void> {
   await clearCache(path);
-  console.log(`Cleared cached index for: ${path}`);
+  success(`Cleared cached index for ${path}`);
 }
 
 async function runCli(argv: string[]): Promise<void> {
@@ -156,6 +219,11 @@ async function runCli(argv: string[]): Promise<void> {
     return;
   }
 
+  if (command === "install" || command === "uninstall") {
+    await runInstaller(command);
+    return;
+  }
+
   if (command === "init") {
     let agent: AgentId | undefined;
     let force = false;
@@ -166,19 +234,19 @@ async function runCli(argv: string[]): Promise<void> {
       } else if (arg === "--agent" || arg === "-a") {
         const value = rest[++i];
         if (!value) {
-          process.stderr.write("Missing value for --agent.\n");
+          fail("Missing value for --agent.");
           printCommandHelp("init");
           process.exit(1);
         }
         if (!AGENTS.has(value as AgentId)) {
-          process.stderr.write(`${formatUnknownAgent(value)}\n`);
+          fail(formatUnknownAgent(value));
           process.exit(1);
         }
         agent = value as AgentId;
       }
     }
     if (!agent) {
-      process.stderr.write("miru init requires --agent.\n");
+      fail("miru init requires --agent.");
       printCommandHelp("init");
       process.exit(1);
     }
@@ -202,7 +270,7 @@ async function runCli(argv: string[]): Promise<void> {
     }
     if (clear) {
       if (apiKey) {
-        console.error("Usage: miru setup --clear cannot be combined with --key.");
+        fail("miru setup --clear cannot be combined with --key.");
         process.exit(1);
       }
       await runClearCredentials();
@@ -218,7 +286,8 @@ async function runCli(argv: string[]): Promise<void> {
     return;
   }
 
-  const { content, rest: contentRest } = parseContentArgv(rest);
+  const { present: jsonFlag, rest: jsonRest } = parseFlagArgv(rest, "--json");
+  const { content, rest: contentRest } = parseContentArgv(jsonRest);
   const { topK, rest: sizedRest } = parseTopK(contentRest);
 
   if (command === "search") {
@@ -228,7 +297,7 @@ async function runCli(argv: string[]): Promise<void> {
       process.exit(1);
     }
     const path = resolve(sizedRest[1] ?? process.cwd());
-    await runSearch(path, query, topK, content);
+    await runSearch(path, query, topK, content, jsonFlag);
     return;
   }
 
@@ -241,11 +310,19 @@ async function runCli(argv: string[]): Promise<void> {
     }
     const line = Number(lineRaw);
     const path = resolve(sizedRest[2] ?? process.cwd());
-    await runFindRelated(path, filePath, line, topK, content);
+    try {
+      await runFindRelated(path, filePath, line, topK, content, jsonFlag);
+    } catch (err) {
+      if (err instanceof RelatedChunkNotFoundError) {
+        fail(err.message);
+        process.exit(1);
+      }
+      throw err;
+    }
     return;
   }
 
-  process.stderr.write(`Unknown command: ${command}\n`);
+  fail(`Unknown command: ${command}`);
   printMainHelp();
   process.exit(1);
 }
@@ -296,6 +373,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error(err instanceof Error ? err.message : err);
+  fail(err instanceof Error ? err.message : String(err));
   process.exit(1);
 });

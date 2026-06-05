@@ -14,7 +14,7 @@ miru search "save_pretrained" ./my-project
 miru search "save model to disk" ./my-project --top-k 10
 ```
 
-Results are cached automatically on first run and invalidated when files change.
+First run builds a disk cache. The MCP server incrementally updates local indexes while it runs; after CLI-only use or large refactors, run `miru clear <path>` to rebuild.
 
 Use `--content docs` to search documentation and prose, `--content config` for config files (yaml, toml, etc.), or `--content all` to search code, docs, and config:
 
