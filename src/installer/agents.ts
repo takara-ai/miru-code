@@ -54,7 +54,7 @@ A \`miru\` MCP server is available with two tools:
 
 Always call \`search\` before using Grep, Glob, or Read to explore the codebase. Use Grep/Glob/Read only for exact path lookup, exhaustive literal matches, or when the returned chunk lacks enough context.
 
-Set \`TAKARA_API_KEY\` in your MCP config (or run \`miru setup\` for CLI use). MCP does not inherit shell env reliably.
+Run \`miru setup\` once to store your API key — the MCP server loads it from \`credentials.json\`. Optionally set \`TAKARA_API_KEY\` in MCP config to override.
 
 Pass \`--content docs\` to search documentation, \`--content config\` for config files, or \`--content all\` for everything.
 

@@ -62,3 +62,8 @@ export function computeSourceCacheKey(source: string, ref?: string | null): stri
   }
   return resolve(source);
 }
+
+/** Resolve a local search path; leave git URLs unchanged for remote indexing. */
+export function resolveSearchPath(path: string): string {
+  return isGitUrl(path) ? path : resolve(path);
+}

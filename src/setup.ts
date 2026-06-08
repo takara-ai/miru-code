@@ -73,7 +73,7 @@ export async function runSetup(options: RunSetupOptions = {}): Promise<string> {
   process.env.TAKARA_API_KEY = apiKey;
   writeStderr("");
   success(`Saved credentials to ${path}`);
-  hint("Set TAKARA_API_KEY in MCP config for IDE integrations.");
+  hint("MCP loads this key from credentials.json automatically.");
   writeStderr("");
   return path;
 }

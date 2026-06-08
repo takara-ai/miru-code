@@ -77,6 +77,18 @@ describe("credentials", () => {
     expect(process.env.TAKARA_API_KEY ?? "").toBe("stored-token");
   });
 
+  test("loadStoredCredentials loads when MCP placeholder env is set", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-cred-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    clearTakaraApiKey();
+    process.env.TAKARA_API_KEY = "${TAKARA_API_KEY}";
+
+    await saveStoredCredentials("stored-token");
+    const loaded = await loadStoredCredentials();
+    expect(loaded).toBe(true);
+    expect(process.env.TAKARA_API_KEY).toBe("stored-token");
+  });
+
   test("loadStoredCredentials does not load when TAKARA_API_KEY is set", async () => {
     credDir = await mkdtemp(join(tmpdir(), "miru-cred-"));
     process.env.MIRU_CREDENTIALS_DIR = credDir;

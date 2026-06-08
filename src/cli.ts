@@ -1,5 +1,4 @@
 #!/usr/bin/env bun
-import { resolve } from "node:path";
 import { type AgentId, writeAgentFile } from "./agents.ts";
 import { clearCache } from "./cache.ts";
 import {
@@ -13,6 +12,7 @@ import {
 } from "./cli-ui.ts";
 import { loadStoredCredentials } from "./credentials.ts";
 import { loadEnvFiles } from "./env-files.ts";
+import { normalizeTakaraApiKeyEnv } from "./env.ts";
 import {
   AGENT_IDS,
   formatUnknownAgent,
@@ -26,9 +26,10 @@ import { MiruIndex } from "./miru-index.ts";
 import { ensureCredentials, runClearCredentials, runSetup } from "./setup.ts";
 import { withSpinner } from "./spinner.ts";
 import type { ContentType, SearchResult } from "./types.ts";
-import { formatResults, resolveChunk, resolveContent } from "./utils.ts";
+import { formatResults, resolveChunk, resolveContent, resolveSearchPath } from "./utils.ts";
 
 loadEnvFiles();
+normalizeTakaraApiKeyEnv();
 await loadStoredCredentials();
 
 const CLI_COMMANDS = new Set([
@@ -281,7 +282,7 @@ async function runCli(argv: string[]): Promise<void> {
   }
 
   if (command === "clear") {
-    const path = resolve(rest[0] ?? process.cwd());
+    const path = resolveSearchPath(rest[0] ?? process.cwd());
     await runClear(path);
     return;
   }
@@ -296,7 +297,7 @@ async function runCli(argv: string[]): Promise<void> {
       printCommandHelp("search");
       process.exit(1);
     }
-    const path = resolve(sizedRest[1] ?? process.cwd());
+    const path = resolveSearchPath(sizedRest[1] ?? process.cwd());
     await runSearch(path, query, topK, content, jsonFlag);
     return;
   }
@@ -309,7 +310,7 @@ async function runCli(argv: string[]): Promise<void> {
       process.exit(1);
     }
     const line = Number(lineRaw);
-    const path = resolve(sizedRest[2] ?? process.cwd());
+    const path = resolveSearchPath(sizedRest[2] ?? process.cwd());
     try {
       await runFindRelated(path, filePath, line, topK, content, jsonFlag);
     } catch (err) {

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { rm } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
+import { computeSourceCacheKey } from "./utils.ts";
 import { resolveEmbeddingDimensions, resolveEmbeddingModel } from "./embeddings/openai.ts";
 import {
   loadBm25,
@@ -30,8 +31,8 @@ export function resolveCacheFolder(): string {
   return base;
 }
 
-export function findIndexCachePath(path: string): string {
-  const normalized = resolve(path);
+export function findIndexCachePath(path: string, ref?: string | null): string {
+  const normalized = computeSourceCacheKey(path, ref);
   const subdir = createHash("sha256").update(normalized, "utf-8").digest("hex");
   return join(resolveCacheFolder(), subdir, "index");
 }

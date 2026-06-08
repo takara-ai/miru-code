@@ -5,7 +5,16 @@ import {
   splitLinesKeepEnds,
 } from "./lines.ts";
 
-const SUPPORTED_STRUCTURAL_LANGUAGES = new Set(["python", "go", "typescript", "javascript"]);
+const SUPPORTED_STRUCTURAL_LANGUAGES = new Set([
+  "python",
+  "go",
+  "typescript",
+  "javascript",
+  "cpp",
+  "c",
+]);
+
+const BRACE_FAMILY_LANGUAGES = new Set(["cpp", "c"]);
 
 export function chunkStructural(
   source: string,
@@ -164,7 +173,25 @@ function declPattern(language: string): RegExp {
   if (language === "go") {
     return /^\s*(func\b|type\b.*\b(struct|interface)\b)/;
   }
+  if (language === "cpp") {
+    return /^\s*(?:(?:template\s*<[^>]*>\s*)?(?:class|struct|namespace|enum(?:\s+class)?)\b|(?!(?:if|for|while|switch|catch|return|sizeof|static_assert|else|do)\b)(?:[\w:~<>,*&]+\s+)+\w+\s*\([^;{}]*\)\s*(?:const)?\s*(?:override)?(?:\s*=\s*0)?)/;
+  }
+  if (language === "c") {
+    return /^\s*(?:struct|enum|union|typedef)\b|(?!(?:if|for|while|switch|return|sizeof|else|do)\b)(?:[\w:*\s]+\s+)+\w+\s*\([^;{}]*\)/;
+  }
   return /^\s*(export\s+)?(async\s+function\b|function\b|class\b|interface\b|type\b|(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)(?:\s*:\s*[^=]+)?\s*=>)/;
+}
+
+function isBraceFamilyTypeDecl(text: string, language: string): boolean {
+  if (language === "cpp") {
+    return /^\s*(?:(?:template\s*<[^>]*>\s*)?(?:class|struct|namespace|enum(?:\s+class)?)\b)/.test(
+      text,
+    );
+  }
+  if (language === "c") {
+    return /^\s*(?:struct|enum|union)\b/.test(text);
+  }
+  return false;
 }
 
 function braceUnits(lines: LineGroup[], language: string): ChunkBoundary[] {
@@ -176,6 +203,13 @@ function braceUnits(lines: LineGroup[], language: string): ChunkBoundary[] {
   for (let i = 0; i < lines.length; i++) {
     const text = stripLine(lines[i]?.text);
     if (!re.test(text)) {
+      continue;
+    }
+    if (
+      BRACE_FAMILY_LANGUAGES.has(language) &&
+      lineIndent(text) > 0 &&
+      !isBraceFamilyTypeDecl(text, language)
+    ) {
       continue;
     }
     if (firstDeclStart === null) {

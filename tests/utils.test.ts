@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import type { Chunk } from "../src/types.ts";
-import { formatResults, isAllowedRepoSource, isGitUrl, resolveChunk } from "../src/utils.ts";
+import {
+  formatResults,
+  isAllowedRepoSource,
+  isGitUrl,
+  resolveChunk,
+  resolveSearchPath,
+} from "../src/utils.ts";
+import { detectLanguage } from "../src/index/files.ts";
+import { findIndexCachePath } from "../src/cache.ts";
 
 function chunk(content: string, filePath: string, start: number, end: number): Chunk {
   return {
@@ -28,6 +36,26 @@ describe("utils", () => {
     expect(isGitUrl("git@github.com:org/repo")).toBe(true);
     expect(isGitUrl("/local/path")).toBe(false);
     expect(isGitUrl("./relative")).toBe(false);
+  });
+
+  test("resolveSearchPath leaves git URLs unchanged", () => {
+    const url = "https://github.com/fmtlib/fmt";
+    expect(resolveSearchPath(url)).toBe(url);
+    expect(resolveSearchPath("/tmp/repo").endsWith("/tmp/repo")).toBe(true);
+  });
+
+  test("findIndexCachePath hashes git URLs without filesystem resolve", () => {
+    const url = "https://github.com/fmtlib/fmt";
+    const path = findIndexCachePath(url);
+    expect(path).toContain("index");
+    expect(path).not.toContain("https:");
+    expect(findIndexCachePath(url)).toBe(path);
+  });
+
+  test("detectLanguage maps C++ headers to cpp", () => {
+    expect(detectLanguage("include/fmt/chrono.h")).toBe("cpp");
+    expect(detectLanguage("src/main.c")).toBe("c");
+    expect(detectLanguage("src/main.cpp")).toBe("cpp");
   });
 
   test("isAllowedRepoSource rejects non-http git transports for MCP", () => {

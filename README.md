@@ -25,7 +25,7 @@ miru setup --key YOUR_TOKEN   # non-interactive
 miru setup --clear            # remove stored key
 ```
 
-For MCP in an IDE, export `TAKARA_API_KEY` or paste your token into the MCP `env` block after install.
+MCP loads your key from `credentials.json` automatically. Set `TAKARA_API_KEY` in MCP config only to override.
 
 ## Add to your IDE
 
@@ -120,7 +120,7 @@ const results = await index.search({ query: "BM25 tokenize", topK: 10 });
 | Variable | Notes |
 |----------|-------|
 | `TAKARA_API_KEY` | Required |
-| `MIRU_OPENAI_BASE_URL` | Default `https://infer.dev.takara.ai/v1` |
+| `MIRU_OPENAI_BASE_URL` | Default `https://infer.takara.ai/v1` |
 | `MIRU_MCP_WATCH` | Set `0` to disable MCP file watch |
 | `NO_COLOR` | Disable CLI colors |
 

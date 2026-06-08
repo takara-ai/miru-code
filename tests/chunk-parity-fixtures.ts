@@ -1,7 +1,7 @@
 import type { ChunkBoundary } from "../src/chunking/lines.ts";
 
 export interface ChunkParityFixture {
-  language: "python" | "go" | "typescript" | "javascript";
+  language: "python" | "go" | "typescript" | "javascript" | "cpp";
   desiredLength: number;
   source: string;
   pythonBoundaries: ChunkBoundary[];
@@ -152,6 +152,51 @@ const render = (lines) => {
     pythonBoundaries: [
       { start: 0, end: 191 },
       { start: 193, end: 365 },
+    ],
+  },
+  {
+    language: "cpp",
+    desiredLength: 240,
+    source: `#include <string>
+#include <vector>
+
+class Service {
+public:
+    explicit Service(std::string id) : id_(std::move(id)) {}
+
+    std::vector<std::string> run(const std::vector<int>& items) {
+        std::vector<std::string> out;
+        for (int item : items) {
+            out.push_back(id_ + ":" + std::to_string(item));
+        }
+        return out;
+    }
+
+private:
+    std::string id_;
+};
+
+int helper(int v) {
+    int total = 0;
+    for (int i = 0; i < 100; i++) {
+        total += i + v;
+    }
+    return total;
+}
+
+std::string render(const std::vector<std::string>& lines) {
+    std::string s;
+    for (const auto& line : lines) {
+        s += line + "\\n";
+    }
+    return s;
+}
+`,
+    pythonBoundaries: [
+      { start: 0, end: 37 },
+      { start: 37, end: 391 },
+      { start: 392, end: 517 },
+      { start: 518, end: 682 },
     ],
   },
 ];

@@ -246,7 +246,7 @@ export async function runInstaller(mode: InstallMode): Promise<void> {
     install ? "Done! Restart your agents to pick up changes." : "Done! Configuration removed.",
   );
   if (install) {
-    hint("Run miru setup or export TAKARA_API_KEY for MCP env expansion.");
+    hint("Run miru setup — MCP loads the key from credentials.json automatically.");
   }
   writeStdout("");
 }

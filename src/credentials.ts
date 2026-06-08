@@ -1,6 +1,6 @@
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { hasTakaraApiKeyInEnv } from "./env.ts";
+import { hasTakaraApiKeyInEnv, normalizeTakaraApiKeyEnv } from "./env.ts";
 
 const CREDENTIALS_FILENAME = "credentials.json";
 const CREDENTIALS_VERSION = 1;
@@ -49,6 +49,7 @@ export async function readStoredCredentials(): Promise<StoredCredentials | null>
 
 /** Set TAKARA_API_KEY from the user credentials file when env is unset. */
 export async function loadStoredCredentials(): Promise<boolean> {
+  normalizeTakaraApiKeyEnv();
   if (hasTakaraApiKeyInEnv()) {
     return false;
   }

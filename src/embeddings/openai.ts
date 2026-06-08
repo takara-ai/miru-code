@@ -2,7 +2,7 @@ import { mapPool, resolveWorkerConcurrency } from "../concurrency.ts";
 import { envFirstString, envOptionalInt, resolveEmbeddingApiKey } from "../env.ts";
 
 const DEFAULT_MODEL = "ds1-potion-code-16m";
-const DEFAULT_BASE_URL = "https://infer.dev.takara.ai/v1";
+const DEFAULT_BASE_URL = "https://infer.takara.ai/v1";
 const DEFAULT_BATCH_SIZE = 32;
 const DEFAULT_MAX_EMBED_CHARS = 1300;
 const WINDOW_OVERLAP_CHARS = 120;
