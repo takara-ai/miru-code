@@ -2,6 +2,12 @@ import { basename, dirname } from "node:path";
 import { splitIdentifier } from "../tokens.ts";
 import type { Chunk } from "../types.ts";
 import { chunkKey } from "../types.ts";
+import { searchImprovementsEnabled } from "./features.ts";
+import {
+  boostExactStemMatches,
+  boostLocationSignals,
+  penalizeInstallerForLocation,
+} from "./location.ts";
 
 const SYMBOL_QUERY_RE =
   /^(?:(?:[A-Za-z_][A-Za-z0-9_]*(?:(?:::|\\|->|\.)[A-Za-z_][A-Za-z0-9_]*)+)|_(?:[A-Za-z0-9_]*)|(?:[A-Za-z][A-Za-z0-9]*[A-Z_][A-Za-z0-9_]*)|(?:[A-Z][A-Za-z0-9]*))$/;
@@ -165,6 +171,11 @@ export function applyQueryBoost(
   } else {
     boostStemMatches(combinedScores, query, maxScore, chunksByKey);
     boostEmbeddedSymbols(combinedScores, query, maxScore, allChunks, chunksByKey);
+    if (searchImprovementsEnabled()) {
+      boostExactStemMatches(combinedScores, query, maxScore, chunksByKey);
+      boostLocationSignals(combinedScores, query, maxScore, allChunks, chunksByKey);
+      penalizeInstallerForLocation(combinedScores, query, chunksByKey);
+    }
   }
   return combinedScores;
 }

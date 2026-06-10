@@ -63,7 +63,7 @@ export async function runSetup(options: RunSetupOptions = {}): Promise<string> {
     spinner.start();
     const result = await validateEmbeddingApiKey({ apiKey });
     if (!result.valid) {
-      spinner.fail(result.message);
+      spinner.stop();
       throw new Error(result.message);
     }
     spinner.succeed("API key validated");

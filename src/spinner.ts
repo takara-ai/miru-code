@@ -57,7 +57,7 @@ export async function withSpinner<T>(
     spinner.succeed(options?.successMessage ?? "");
     return result;
   } catch (err) {
-    spinner.fail(options?.failMessage);
+    spinner.stop();
     throw err;
   }
 }

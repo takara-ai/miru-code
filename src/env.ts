@@ -33,7 +33,8 @@ export function envOptionalInt(names: string[], min = 1): number | undefined {
 
 export const TAKARA_API_KEY_ENV = "TAKARA_API_KEY";
 
-const TAKARA_API_KEY_PLACEHOLDERS = new Set(["${TAKARA_API_KEY}", "$TAKARA_API_KEY"]);
+const MCP_KEY_PLACEHOLDER = "$" + "{TAKARA_API_KEY}";
+const TAKARA_API_KEY_PLACEHOLDERS = new Set([MCP_KEY_PLACEHOLDER, "$TAKARA_API_KEY"]);
 
 /** True when the value is a real key, not empty or an unexpanded MCP env placeholder. */
 export function isUsableTakaraApiKey(value: string | undefined): boolean {

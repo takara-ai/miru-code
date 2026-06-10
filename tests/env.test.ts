@@ -42,7 +42,7 @@ describe("resolveEmbeddingApiKey", () => {
   test("treats MCP placeholder env as unset", () => {
     const prev = process.env.TAKARA_API_KEY;
     try {
-      process.env.TAKARA_API_KEY = "${TAKARA_API_KEY}";
+      process.env.TAKARA_API_KEY = "$" + "{TAKARA_API_KEY}";
       expect(isUsableTakaraApiKey(process.env.TAKARA_API_KEY)).toBe(false);
       expect(hasTakaraApiKeyInEnv()).toBe(false);
       expect(() => resolveEmbeddingApiKey()).toThrow(/Takara API key required/);

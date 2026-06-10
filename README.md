@@ -25,7 +25,7 @@ miru setup --key YOUR_TOKEN   # non-interactive
 miru setup --clear            # remove stored key
 ```
 
-MCP loads your key from `credentials.json` automatically. Set `TAKARA_API_KEY` in MCP config only to override.
+MCP loads your key from `credentials.json` automatically — no env block needed in MCP config.
 
 ## Add to your IDE
 
@@ -33,23 +33,44 @@ MCP loads your key from `credentials.json` automatically. Set `TAKARA_API_KEY` i
 miru install
 ```
 
-Interactive — pick your agent and what to enable (MCP, instructions, sub-agent). Restart the IDE when done.
+Interactive TUI — **↑↓** move, **space** toggle, **a** all, **enter** confirm. Pick agents and integrations:
+
+| Integration | What it does |
+|-------------|----------------|
+| MCP server | `search` and `find_related` tools in the agent |
+| Instructions | Search policy in `CLAUDE.md` / `AGENTS.md` / `GEMINI.md` |
+| Sub-agent | Dedicated `miru-code` agent file |
+| Cursor rules | Always-on `.cursor/rules/miru-code.mdc` (Cursor only) |
+| Search hooks | Block built-in Grep/Glob and redirect to Miru MCP |
+
+Restart the IDE when done.
 
 ```bash
 miru uninstall   # remove miru config
 ```
 
-**Supported:** Cursor · Claude Code · Gemini CLI · Kiro · OpenCode · GitHub Copilot · Codex · VS Code
+**Supported:** Cursor · Claude Code · Gemini CLI · Kiro · OpenCode · GitHub Copilot · Codex · VS Code · Visual Studio (Windows) · Windsurf / Devin Desktop
 
-| IDE | Config written by `miru install` |
-|-----|----------------------------------|
-| Cursor | `~/.cursor/mcp.json` + `~/.cursor/agents/miru-code.md` |
-| Claude Code | `~/.claude.json` + `~/.claude/agents/miru-code.md` |
-| Gemini CLI | `~/.gemini/settings.json` + `~/.gemini/agents/miru-code.md` |
-| Kiro | `~/.kiro/settings/mcp.json` + `~/.kiro/agents/miru-code.md` |
-| OpenCode | `~/.config/opencode/opencode.json(c)` + agents dir |
-| GitHub Copilot | `~/.copilot/mcp-config.json` + `~/.copilot/agents/miru-code.agent.md` |
-| Codex / VS Code | MCP config only |
+| IDE | MCP | Instructions / rules | Hooks |
+|-----|-----|------------------------|-------|
+| Cursor | `~/.cursor/mcp.json` | `~/.cursor/rules/miru-code.mdc` | `~/.cursor/hooks.json` |
+| Claude Code | `~/.claude.json` | `~/.claude/CLAUDE.md` | `~/.claude/settings.json` |
+| Gemini CLI | `~/.gemini/settings.json` | `~/.gemini/GEMINI.md` | `~/.gemini/settings.json` (`BeforeTool`) |
+| Kiro | `~/.kiro/settings/mcp.json` | `~/.kiro/steering/miru.md` | `~/.kiro/settings/hooks.json` |
+| OpenCode | `~/.config/opencode/opencode.json(c)` | `~/.config/opencode/AGENTS.md` | `~/.config/opencode/plugins/miru-search-guard.ts` |
+| GitHub Copilot | `~/.copilot/mcp-config.json` | — | `~/.copilot/hooks/miru-search.json` |
+| Codex | `~/.codex/config.toml` | `~/.codex/AGENTS.md` | `~/.codex/hooks.json` |
+| VS Code | `…/Code/User/mcp.json` | — | `~/.copilot/hooks/miru-search.json` |
+| Visual Studio | `%USERPROFILE%\.mcp.json` | — | `~/.copilot/hooks/miru-search.json` |
+| Windsurf | — | — | `~/.codeium/windsurf/hooks.json` |
+
+Sub-agent files are also written where supported (see `miru install` plan). Windsurf hooks only — no MCP entry yet.
+
+### Search hooks
+
+Hooks run `miru hook-guard` before built-in search tools execute. They **block** conceptual Grep/Glob/SemanticSearch and shell `rg`/`grep`/`find`, and tell the agent to use Miru MCP `search` instead. Exact literal lookups (e.g. `REDIS_HOST`, a symbol name) still pass through.
+
+Hooks are optional at install time but **on by default**. Disable them in the installer if you only want MCP + instructions.
 
 **Team sub-agent in a repo** (optional):
 
@@ -81,7 +102,7 @@ When wired via `miru install`, your agent gets:
 | `search` | Query by meaning; pass `repo` (project root or `https://` git URL) |
 | `find_related` | Similar code at a `file_path` + line from a search hit |
 
-Pass the **project root** as `repo` for local projects.
+Pass the **project root** as `repo` for local projects. Prefer these over Grep, Glob, or SemanticSearch when Miru MCP is connected — hooks and instructions enforce that when enabled.
 
 ## How it works
 
@@ -100,6 +121,7 @@ Disk cache: `~/Library/Caches/miru` (macOS), `~/.cache/miru` (Linux). MCP watche
 | `miru find-related <file> <line> [path]` | Related chunks |
 | `miru init --agent <id>` | Project-local sub-agent |
 | `miru clear [path]` | Drop index cache |
+| `miru hook-guard` | PreToolUse hook entrypoint (used by installers; reads JSON stdin) |
 | `miru` | Start MCP server |
 
 ## Library
@@ -132,11 +154,12 @@ See `.env.example` for more.
 {
   "miru": {
     "command": "miru",
-    "args": [],
-    "env": { "TAKARA_API_KEY": "your-token" }
+    "args": []
   }
 }
 ```
+
+Run `miru setup` once so the server can load your key from `credentials.json`.
 
 Use `bunx` + `@takara-ai/miru-code` if `miru` is not global. Wrapper key varies by IDE (`mcpServers`, `servers`, or `mcp`).
 

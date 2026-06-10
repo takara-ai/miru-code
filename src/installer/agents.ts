@@ -1,7 +1,27 @@
 import { existsSync } from "node:fs";
+import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { AgentId } from "../agents.ts";
+import { INSTRUCTIONS_MARKDOWN } from "./search-policy.ts";
+
+function copilotHooksPath(home: string): string {
+  return join(home, ".copilot", "hooks", "miru-search.json");
+}
+
+function kiroHooksPath(home: string): string {
+  return join(home, ".kiro", "settings", "hooks.json");
+}
+
+function windsurfHooksPath(home: string): string {
+  return join(home, ".codeium", "windsurf", "hooks.json");
+}
+
+function opencodePluginPath(home: string): string {
+  const xdg = process.env.XDG_CONFIG_HOME;
+  const base = xdg ? join(xdg, "opencode") : join(home, ".config", "opencode");
+  return join(base, "plugins", "miru-search-guard.ts");
+}
 
 export type InstallAction =
   | "created"
@@ -19,65 +39,25 @@ export const MIRU_END = "<!-- miru:end -->";
 
 const HOME = homedir();
 
-const TAKARA_KEY_PLACEHOLDER = "$" + "{TAKARA_API_KEY}";
-
-const MCP_ENV: Record<string, string> = {
-  TAKARA_API_KEY: TAKARA_KEY_PLACEHOLDER,
-};
-
 const STDIO_SERVER_CONFIG: Record<string, unknown> = {
   command: "bunx",
   args: ["@takara-ai/miru-code"],
   type: "stdio",
-  env: MCP_ENV,
 };
 
 const BARE_STDIO_SERVER_CONFIG: Record<string, unknown> = {
   command: "bunx",
   args: ["@takara-ai/miru-code"],
-  env: MCP_ENV,
 };
 
 const OPENCODE_SERVER_CONFIG: Record<string, unknown> = {
   command: ["bunx", "@takara-ai/miru-code"],
   type: "local",
   enabled: true,
-  environment: MCP_ENV,
 };
 
 export const INSTRUCTIONS = `${MIRU_START}
-## Miru Code Search
-
-A \`miru\` MCP server is available with two tools:
-- \`search\` — search the codebase with a natural-language or code query.
-- \`find_related\` — find code similar to a specific file and line.
-
-Always call \`search\` before using Grep, Glob, or Read to explore the codebase. Use Grep/Glob/Read only for exact path lookup, exhaustive literal matches, or when the returned chunk lacks enough context.
-
-Run \`miru setup\` once to store your API key — the MCP server loads it from \`credentials.json\`. Optionally set \`TAKARA_API_KEY\` in MCP config to override.
-
-Pass \`--content docs\` to search documentation, \`--content config\` for config files, or \`--content all\` for everything.
-
-For CLI fallback or sub-agents without MCP access:
-
-\`\`\`bash
-miru search "authentication flow" ./my-project
-miru search "deployment guide" ./my-project --content docs
-miru find-related src/auth.ts 42 ./my-project
-miru search "save model to disk" ./my-project --top-k 10
-\`\`\`
-
-First run builds a disk cache. The MCP server updates local indexes while it runs; after CLI-only use or large refactors, run \`miru clear <path>\`.
-
-If \`miru\` is not on \`$PATH\`, use \`bunx @takara-ai/miru-code\` in its place.
-
-### Workflow
-
-1. Start with \`search\` (MCP) or \`miru search\` (CLI) to find relevant chunks.
-2. Use \`--content docs\` / \`--content config\` / \`--content all\` when appropriate.
-3. Inspect full files only when the chunk is not enough.
-4. Optionally use \`find_related\` with a hit's \`file_path\` and \`line\`.
-5. Use Grep only for exhaustive literal matches.
+${INSTRUCTIONS_MARKDOWN}
 ${MIRU_END}
 `;
 
@@ -91,13 +71,25 @@ export interface McpConfig {
   format: McpConfigFormat;
 }
 
+export type HooksFormat =
+  | "claude"
+  | "cursor"
+  | "gemini"
+  | "vscode"
+  | "kiro"
+  | "windsurf"
+  | "opencode";
+
 export interface AgentTarget {
-  id: AgentId | "codex" | "vscode";
+  id: AgentId | "codex" | "vscode" | "visualstudio" | "windsurf";
   displayName: string;
   binary: string | null;
   configDir: string | null;
   mcp: McpConfig | null;
   instructionsPath: string | null;
+  cursorRulesPath: string | null;
+  hooksPath: string | null;
+  hooksFormat: HooksFormat | null;
   subagentPath: string | null;
   subagentId: AgentId | null;
 }
@@ -128,6 +120,45 @@ export function vscodeMcpPath(): string {
   return join(xdg, "Code", "User", "mcp.json");
 }
 
+/** Global MCP config for Visual Studio (GitHub Copilot Agent Mode). */
+export function visualStudioMcpPath(): string {
+  const profile = process.env.USERPROFILE ?? HOME;
+  return join(profile, ".mcp.json");
+}
+
+export function visualStudioInstallDir(): string | null {
+  if (process.platform !== "win32") {
+    return null;
+  }
+  const programFiles = process.env.ProgramFiles ?? join("C:", "Program Files");
+  return join(programFiles, "Microsoft Visual Studio");
+}
+
+async function detectVisualStudio(): Promise<boolean> {
+  if (process.platform !== "win32") {
+    return false;
+  }
+
+  const installDir = visualStudioInstallDir();
+  if (installDir && existsSync(installDir)) {
+    try {
+      const entries = await readdir(installDir);
+      if (entries.length > 0) {
+        return true;
+      }
+    } catch {
+      // ignore unreadable install directory
+    }
+  }
+
+  try {
+    const proc = Bun.spawn(["where", "devenv"], { stdout: "pipe", stderr: "ignore" });
+    return (await proc.exited) === 0;
+  } catch {
+    return false;
+  }
+}
+
 function jsonMcp(path: string, key: string, entry: Record<string, unknown>): McpConfig {
   return { path, key, memberKey: "miru", entry, format: "json" };
 }
@@ -140,6 +171,9 @@ export const AGENT_TARGETS: AgentTarget[] = [
     configDir: join(HOME, ".claude"),
     mcp: jsonMcp(join(HOME, ".claude.json"), "mcpServers", STDIO_SERVER_CONFIG),
     instructionsPath: join(HOME, ".claude", "CLAUDE.md"),
+    cursorRulesPath: null,
+    hooksPath: join(HOME, ".claude", "settings.json"),
+    hooksFormat: "claude",
     subagentPath: join(HOME, ".claude", "agents", "miru-code.md"),
     subagentId: "claude",
   },
@@ -150,6 +184,9 @@ export const AGENT_TARGETS: AgentTarget[] = [
     configDir: join(HOME, ".cursor"),
     mcp: jsonMcp(join(HOME, ".cursor", "mcp.json"), "mcpServers", STDIO_SERVER_CONFIG),
     instructionsPath: null,
+    cursorRulesPath: join(HOME, ".cursor", "rules", "miru-code.mdc"),
+    hooksPath: join(HOME, ".cursor", "hooks.json"),
+    hooksFormat: "cursor",
     subagentPath: join(HOME, ".cursor", "agents", "miru-code.md"),
     subagentId: "cursor",
   },
@@ -160,6 +197,9 @@ export const AGENT_TARGETS: AgentTarget[] = [
     configDir: join(HOME, ".gemini"),
     mcp: jsonMcp(join(HOME, ".gemini", "settings.json"), "mcpServers", STDIO_SERVER_CONFIG),
     instructionsPath: join(HOME, ".gemini", "GEMINI.md"),
+    cursorRulesPath: null,
+    hooksPath: join(HOME, ".gemini", "settings.json"),
+    hooksFormat: "gemini",
     subagentPath: join(HOME, ".gemini", "agents", "miru-code.md"),
     subagentId: "gemini",
   },
@@ -171,11 +211,13 @@ export const AGENT_TARGETS: AgentTarget[] = [
     mcp: jsonMcp(join(HOME, ".kiro", "settings", "mcp.json"), "mcpServers", {
       ...STDIO_SERVER_CONFIG,
       env: {
-        ...MCP_ENV,
         PATH: "/usr/local/bin:/usr/bin:/bin",
       },
     }),
     instructionsPath: join(HOME, ".kiro", "steering", "miru.md"),
+    cursorRulesPath: null,
+    hooksPath: kiroHooksPath(HOME),
+    hooksFormat: "kiro",
     subagentPath: join(HOME, ".kiro", "agents", "miru-code.md"),
     subagentId: "kiro",
   },
@@ -186,6 +228,9 @@ export const AGENT_TARGETS: AgentTarget[] = [
     configDir: join(HOME, ".config", "opencode"),
     mcp: jsonMcp(opencodeMcpPath(), "mcp", OPENCODE_SERVER_CONFIG),
     instructionsPath: join(HOME, ".config", "opencode", "AGENTS.md"),
+    cursorRulesPath: null,
+    hooksPath: opencodePluginPath(HOME),
+    hooksFormat: "opencode",
     subagentPath: join(HOME, ".config", "opencode", "agents", "miru-code.md"),
     subagentId: "opencode",
   },
@@ -196,6 +241,9 @@ export const AGENT_TARGETS: AgentTarget[] = [
     configDir: join(HOME, ".config", "github-copilot"),
     mcp: jsonMcp(join(HOME, ".copilot", "mcp-config.json"), "mcpServers", BARE_STDIO_SERVER_CONFIG),
     instructionsPath: null,
+    cursorRulesPath: null,
+    hooksPath: copilotHooksPath(HOME),
+    hooksFormat: "vscode",
     subagentPath: join(HOME, ".copilot", "agents", "miru-code.agent.md"),
     subagentId: "copilot",
   },
@@ -212,6 +260,9 @@ export const AGENT_TARGETS: AgentTarget[] = [
       format: "toml",
     },
     instructionsPath: join(HOME, ".codex", "AGENTS.md"),
+    cursorRulesPath: null,
+    hooksPath: join(HOME, ".codex", "hooks.json"),
+    hooksFormat: "claude",
     subagentPath: null,
     subagentId: null,
   },
@@ -222,22 +273,65 @@ export const AGENT_TARGETS: AgentTarget[] = [
     configDir: null,
     mcp: jsonMcp(vscodeMcpPath(), "servers", STDIO_SERVER_CONFIG),
     instructionsPath: null,
+    cursorRulesPath: null,
+    hooksPath: copilotHooksPath(HOME),
+    hooksFormat: "vscode",
+    subagentPath: null,
+    subagentId: null,
+  },
+  {
+    id: "windsurf",
+    displayName: "Windsurf / Devin Desktop",
+    binary: "windsurf",
+    configDir: join(HOME, ".codeium", "windsurf"),
+    mcp: null,
+    instructionsPath: null,
+    cursorRulesPath: null,
+    hooksPath: windsurfHooksPath(HOME),
+    hooksFormat: "windsurf",
+    subagentPath: null,
+    subagentId: null,
+  },
+  {
+    id: "visualstudio",
+    displayName: process.platform === "win32" ? "Visual Studio" : "Visual Studio (Windows)",
+    binary: null,
+    configDir: visualStudioInstallDir(),
+    mcp: jsonMcp(visualStudioMcpPath(), "servers", STDIO_SERVER_CONFIG),
+    instructionsPath: null,
+    cursorRulesPath: null,
+    hooksPath: copilotHooksPath(HOME),
+    hooksFormat: "vscode",
     subagentPath: null,
     subagentId: null,
   },
 ];
 
+async function commandOnPath(command: string): Promise<boolean> {
+  const lookup = process.platform === "win32" ? ["where", command] : ["which", command];
+  try {
+    const proc = Bun.spawn(lookup, { stdout: "pipe", stderr: "ignore" });
+    return (await proc.exited) === 0;
+  } catch {
+    return false;
+  }
+}
+
 export async function isAgentDetected(agent: AgentTarget): Promise<boolean> {
-  if (agent.binary) {
-    try {
-      const proc = Bun.spawn(["which", agent.binary], { stdout: "pipe", stderr: "ignore" });
-      const code = await proc.exited;
-      if (code === 0) {
-        return true;
-      }
-    } catch {
-      // which unavailable
+  if (agent.id === "visualstudio") {
+    return detectVisualStudio();
+  }
+  if (agent.id === "windsurf") {
+    if (agent.configDir && existsSync(agent.configDir)) {
+      return true;
     }
+    if (agent.binary && (await commandOnPath(agent.binary))) {
+      return true;
+    }
+    return false;
+  }
+  if (agent.binary && (await commandOnPath(agent.binary))) {
+    return true;
   }
   if (agent.configDir) {
     return Bun.file(agent.configDir).exists();

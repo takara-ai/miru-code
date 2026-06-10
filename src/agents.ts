@@ -1,9 +1,43 @@
 import { mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { buildSubagentBody, type NativeToolNames } from "./installer/search-policy.ts";
 
 export type AgentId = "claude" | "copilot" | "cursor" | "gemini" | "kiro" | "opencode";
 
 const AGENTS_DIR = join(import.meta.dir, "agents");
+
+const AGENT_NATIVE_TOOLS: Record<AgentId, NativeToolNames> = {
+  claude: {
+    explorationDenied: "Grep, Glob, SemanticSearch, or Read",
+    grep: "Grep",
+    read: "Read",
+  },
+  cursor: {
+    explorationDenied: "Grep, Glob, SemanticSearch, or Read",
+    grep: "Grep",
+    read: "Read",
+  },
+  copilot: {
+    explorationDenied: "grep_search, codebase_search, glob, or read_file",
+    grep: "grep_search",
+    read: "read_file",
+  },
+  gemini: {
+    explorationDenied: "grep_search, glob, or read_file",
+    grep: "grep_search",
+    read: "read_file",
+  },
+  kiro: {
+    explorationDenied: "built-in grep, file search, or broad file reads",
+    grep: "Grep",
+    read: "Read",
+  },
+  opencode: {
+    explorationDenied: "grep, glob, or read-for-exploration",
+    grep: "grep",
+    read: "read",
+  },
+};
 
 export function agentDestination(agent: AgentId): string {
   const baseDir = agent === "copilot" ? ".github" : `.${agent}`;
@@ -11,7 +45,9 @@ export function agentDestination(agent: AgentId): string {
 }
 
 export async function loadAgentTemplate(agent: AgentId): Promise<string> {
-  return readFile(join(AGENTS_DIR, `${agent}.md`), "utf-8");
+  const frontmatter = (await readFile(join(AGENTS_DIR, `${agent}.md`), "utf-8")).trim();
+  const body = buildSubagentBody(AGENT_NATIVE_TOOLS[agent]);
+  return `${frontmatter}\n\n${body}\n`;
 }
 
 export async function writeAgentFile(

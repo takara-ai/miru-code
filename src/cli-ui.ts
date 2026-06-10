@@ -1,4 +1,5 @@
 import type { SearchResult } from "./types.ts";
+import { formatRelevanceScore } from "./utils.ts";
 
 const ANSI = {
   reset: "\x1b[0m",
@@ -145,6 +146,8 @@ export function formatSearchResultsPretty(query: string, results: SearchResult[]
   lines.push(bold(label) + dim(` for `) + cyan(`"${query}"`));
   lines.push("");
 
+  const maxScore = results.reduce((max, result) => Math.max(max, result?.score ?? 0), 0);
+
   for (let i = 0; i < results.length; i++) {
     const result = results[i];
     if (!result) {
@@ -154,7 +157,7 @@ export function formatSearchResultsPretty(query: string, results: SearchResult[]
     const location = `${chunk.file_path}:${chunk.start_line}-${chunk.end_line}`;
     const lang = chunk.language ? dim(`  ${chunk.language}`) : "";
     const rank = dim(`[${i + 1}]`);
-    const scoreText = magenta(score.toFixed(3));
+    const scoreText = magenta(formatRelevanceScore(score, maxScore));
 
     lines.push(`${rank} ${scoreText}  ${bold(location)}${lang}`);
     lines.push(dim("─".repeat(Math.min(PREVIEW_WIDTH, 52))));

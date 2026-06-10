@@ -81,7 +81,7 @@ describe("credentials", () => {
     credDir = await mkdtemp(join(tmpdir(), "miru-cred-"));
     process.env.MIRU_CREDENTIALS_DIR = credDir;
     clearTakaraApiKey();
-    process.env.TAKARA_API_KEY = "${TAKARA_API_KEY}";
+    process.env.TAKARA_API_KEY = "$" + "{TAKARA_API_KEY}";
 
     await saveStoredCredentials("stored-token");
     const loaded = await loadStoredCredentials();

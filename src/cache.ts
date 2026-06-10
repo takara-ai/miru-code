@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
-import { computeSourceCacheKey } from "./utils.ts";
 import { resolveEmbeddingDimensions, resolveEmbeddingModel } from "./embeddings/openai.ts";
 import {
   loadBm25,
@@ -13,6 +12,7 @@ import {
 import { resolveSemanticStorage, semanticStorageFromMetadata } from "./index/vector-storage.ts";
 import type { Chunk, ContentType } from "./types.ts";
 import { chunkFromDict } from "./types.ts";
+import { computeSourceCacheKey } from "./utils.ts";
 
 export function resolveCacheFolder(): string {
   const name = "miru";

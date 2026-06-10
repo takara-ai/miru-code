@@ -3,9 +3,11 @@ import { chunkSource } from "../chunking/chunking.ts";
 import { resolveWorkerConcurrency } from "../concurrency.ts";
 import type { EmbeddingBackend } from "../embeddings/openai.ts";
 import { envOptionalInt } from "../env.ts";
+import { searchImprovementsEnabled } from "../ranking/features.ts";
 import { tokenize } from "../tokens.ts";
 import type { Chunk, ContentType } from "../types.ts";
 import { BM25Index } from "./bm25.ts";
+import { loadRootEntryChunks } from "./entry-chunks.ts";
 import { walkFiles } from "./file-walker.ts";
 import { detectLanguage, getExtensions, getFileStatus, readFileText } from "./files.ts";
 import type { SemanticIndex } from "./semantic-index.ts";
@@ -143,6 +145,14 @@ export async function createIndexFromPath(
 
   while (runningFiles.size > 0) {
     await Promise.race(runningFiles);
+  }
+
+  if (searchImprovementsEnabled()) {
+    const entryChunks = await loadRootEntryChunks(resolved, displayRoot ? root : undefined);
+    if (entryChunks.length > 0) {
+      readyBySeq.set(fileSeq++, entryChunks);
+      flushReadySequentialChunks();
+    }
   }
 
   flushReadySequentialChunks();

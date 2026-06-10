@@ -6,7 +6,6 @@ const CODEX_MCP_HEADER = "[mcp_servers.miru]";
 const CODEX_MCP_BLOCK = `[mcp_servers.miru]
 command = "bunx"
 args = ["@takara-ai/miru-code"]
-env = { TAKARA_API_KEY = "\${TAKARA_API_KEY}" }
 `;
 
 /** Strip line and block comments so JSONC configs can be parsed. */

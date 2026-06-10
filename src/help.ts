@@ -31,6 +31,7 @@ export function printMainHelp(): void {
 
   section("Commands");
   commandRow("search", "Hybrid search over a codebase");
+  commandRow("expand", "Adjacent chunks in the same file as a hit");
   commandRow("find-related", "Find chunks related to a file:line");
   commandRow("setup", "Save your Takara API key locally");
   commandRow("install", "Configure miru across coding agents");
@@ -83,6 +84,14 @@ export function printCommandHelp(command: string): void {
       writeStdout("  --json              JSON output (default when piped)");
       section("Example");
       writeStdout('  miru search "where is auth" ./src -k 10 --content code docs');
+      writeStdout("");
+      return;
+    case "expand":
+      printCommandHeader("expand", "More context in the same file as a search hit.");
+      section("Usage");
+      writeStdout("  miru expand <file> <line> [path] [--before N] [--after N]");
+      section("Example");
+      writeStdout("  miru expand src/auth.ts 42 . --before 2 --after 2");
       writeStdout("");
       return;
     case "find-related":
@@ -140,7 +149,7 @@ export function printCommandHelp(command: string): void {
       section("Usage");
       writeStdout("  miru [--ref BRANCH] [--content TYPE ...]");
       writeStdout("");
-      writeStdout("Indexes on the first search/find_related tool call (repo argument).");
+      writeStdout("Indexes on the first search/expand/find_related tool call (repo argument).");
       writeStdout("");
       return;
     default:

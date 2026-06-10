@@ -1,6 +1,6 @@
 {
   "name": "@takara-ai/miru-code",
-  "version": "0.4.5",
+  "version": "0.5.0",
   "description": "Miru (見る) — hybrid code search for agents. Bun, TypeScript, Takara embeddings.",
   "type": "module",
   "license": "MIT",
@@ -50,6 +50,11 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "prepublishOnly": "bun run typecheck && bun test",
+    "benchmark:ab": "bun run scripts/search-ab-local.ts",
+    "benchmark:ab-multi": "bun run scripts/search-ab-multi.ts",
+    "benchmark:recall": "bun run scripts/benchmark-recall-tokens.ts",
+    "benchmark:vs-grep": "bun run scripts/benchmark-miru-vs-grep.ts",
+    "benchmark:workflow": "bun run scripts/benchmark-workflow-tokens.ts",
     "benchmark:quality": "bun run scripts/benchmark-quality.ts",
     "benchmark:quantization": "bun run scripts/benchmark-quantization.ts"
   },

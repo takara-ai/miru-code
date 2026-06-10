@@ -25,7 +25,7 @@ describe("cli-ui", () => {
     const text = formatSearchResultsPretty("auth middleware", results);
     expect(text).toContain("auth middleware");
     expect(text).toContain("src/auth.ts:1-3");
-    expect(text).toContain("0.812");
+    expect(text).toContain("100%");
     expect(text).toContain("export function auth()");
   });
 });

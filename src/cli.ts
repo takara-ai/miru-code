@@ -11,8 +11,8 @@ import {
   success,
 } from "./cli-ui.ts";
 import { loadStoredCredentials } from "./credentials.ts";
-import { loadEnvFiles } from "./env-files.ts";
 import { normalizeTakaraApiKeyEnv } from "./env.ts";
+import { loadEnvFiles } from "./env-files.ts";
 import {
   AGENT_IDS,
   formatUnknownAgent,
@@ -20,13 +20,22 @@ import {
   printFullHelp,
   printMainHelp,
 } from "./help.ts";
+import { runSearchGuardFromStdin } from "./installer/hooks/search-guard.ts";
 import { runInstaller } from "./installer/installer.ts";
 import { serveMcp } from "./mcp/serve.ts";
 import { MiruIndex } from "./miru-index.ts";
 import { ensureCredentials, runClearCredentials, runSetup } from "./setup.ts";
 import { withSpinner } from "./spinner.ts";
 import type { ContentType, SearchResult } from "./types.ts";
-import { formatResults, resolveChunk, resolveContent, resolveSearchPath } from "./utils.ts";
+import {
+  expandChunksAtLine,
+  formatExpandResults,
+  formatResults,
+  localRepoRoot,
+  resolveChunk,
+  resolveContent,
+  resolveSearchPath,
+} from "./utils.ts";
 
 loadEnvFiles();
 normalizeTakaraApiKeyEnv();
@@ -34,12 +43,14 @@ await loadStoredCredentials();
 
 const CLI_COMMANDS = new Set([
   "search",
+  "expand",
   "find-related",
   "init",
   "install",
   "uninstall",
   "setup",
   "clear",
+  "hook-guard",
   "help",
   "-h",
   "--help",
@@ -146,6 +157,54 @@ async function runSearch(
   emitSearchOutput(query, index.results, jsonFlag);
 }
 
+async function runExpand(
+  path: string,
+  filePath: string,
+  line: number,
+  before: number,
+  after: number,
+  content: ContentType[],
+  jsonFlag: boolean,
+): Promise<void> {
+  await ensureCredentials({ interactive: true });
+
+  const payload = await withSpinner("Expanding chunks", async () => {
+    const built = await MiruIndex.fromSource(path, content);
+    const repoRoot = localRepoRoot(path);
+    const { anchor, chunks: expanded } = expandChunksAtLine(
+      built.chunks,
+      filePath,
+      line,
+      repoRoot,
+      before,
+      after,
+    );
+    await built.saveToDefaultCache(path);
+    return formatExpandResults(filePath, line, anchor, expanded, {
+      repoRoot,
+      before,
+      after,
+    });
+  });
+
+  if (!payload.anchor) {
+    fail(`No chunk found at ${filePath}:${line}.`);
+    process.exit(1);
+  }
+
+  if (prefersJsonOutput(jsonFlag)) {
+    console.log(JSON.stringify(payload));
+    return;
+  }
+
+  const chunks = payload.chunks as Array<{ location?: string; content?: string }>;
+  for (const chunk of chunks) {
+    process.stdout.write(`\n${chunk.location ?? ""}\n`);
+    process.stdout.write(`${chunk.content ?? ""}\n`);
+  }
+  process.stdout.write("\n");
+}
+
 async function runFindRelated(
   path: string,
   filePath: string,
@@ -218,6 +277,10 @@ async function runCli(argv: string[]): Promise<void> {
     }
     printCommandHelp(topic);
     return;
+  }
+
+  if (command === "hook-guard") {
+    process.exit(await runSearchGuardFromStdin());
   }
 
   if (command === "install" || command === "uninstall") {
@@ -302,6 +365,29 @@ async function runCli(argv: string[]): Promise<void> {
     return;
   }
 
+  if (command === "expand") {
+    const filePath = sizedRest[0];
+    const lineRaw = sizedRest[1];
+    if (!filePath || !lineRaw) {
+      printCommandHelp("expand");
+      process.exit(1);
+    }
+    const line = Number(lineRaw);
+    const path = resolveSearchPath(sizedRest[2] ?? process.cwd());
+    let before = 1;
+    let after = 1;
+    for (let i = 3; i < sizedRest.length; i++) {
+      const arg = sizedRest[i];
+      if (arg === "--before" && sizedRest[i + 1]) {
+        before = Number(sizedRest[++i]);
+      } else if (arg === "--after" && sizedRest[i + 1]) {
+        after = Number(sizedRest[++i]);
+      }
+    }
+    await runExpand(path, filePath, line, before, after, content, jsonFlag);
+    return;
+  }
+
   if (command === "find-related") {
     const filePath = sizedRest[0];
     const lineRaw = sizedRest[1];
@@ -311,15 +397,7 @@ async function runCli(argv: string[]): Promise<void> {
     }
     const line = Number(lineRaw);
     const path = resolveSearchPath(sizedRest[2] ?? process.cwd());
-    try {
-      await runFindRelated(path, filePath, line, topK, content, jsonFlag);
-    } catch (err) {
-      if (err instanceof RelatedChunkNotFoundError) {
-        fail(err.message);
-        process.exit(1);
-      }
-      throw err;
-    }
+    await runFindRelated(path, filePath, line, topK, content, jsonFlag);
     return;
   }
 
@@ -366,6 +444,9 @@ async function runMcpWithCredentials(argv: string[]): Promise<void> {
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const first = argv[0];
+  if (first === "hook-guard") {
+    process.exit(await runSearchGuardFromStdin());
+  }
   if (first && CLI_COMMANDS.has(first)) {
     await runCli(argv);
     return;

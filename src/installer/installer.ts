@@ -19,14 +19,16 @@ import {
   removeTomlBlock,
   replaceOrAppendMarked,
 } from "./config.ts";
+import { mergeHooks, removeHooks } from "./hooks/install.ts";
 import { promptConfirm, promptMultiSelect, requireInteractiveTerminal } from "./prompt.ts";
+import { CURSOR_RULES_MDC } from "./search-policy.ts";
 
 export interface WriteResult {
   path: string;
   action: InstallAction;
 }
 
-export type IntegrationId = "mcp" | "instructions" | "subagent";
+export type IntegrationId = "mcp" | "instructions" | "subagent" | "hooks" | "rules";
 
 interface Integration {
   id: IntegrationId;
@@ -84,6 +86,42 @@ async function applyInstructions(
   return { path, action };
 }
 
+async function applyHooks(agent: AgentTarget, mode: InstallMode): Promise<WriteResult | null> {
+  const path = agent.hooksPath;
+  const format = agent.hooksFormat;
+  if (!path || !format) {
+    return null;
+  }
+
+  const action =
+    mode === "install" ? await mergeHooks(format, path) : await removeHooks(format, path);
+
+  return { path, action };
+}
+
+async function applyCursorRules(
+  agent: AgentTarget,
+  mode: InstallMode,
+): Promise<WriteResult | null> {
+  const path = agent.cursorRulesPath;
+  if (!path) {
+    return null;
+  }
+
+  if (mode === "uninstall") {
+    if (!(await Bun.file(path).exists())) {
+      return { path, action: "not-found" };
+    }
+    await unlink(path);
+    return { path, action: "removed" };
+  }
+
+  const existed = await Bun.file(path).exists();
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, `${CURSOR_RULES_MDC.trim()}\n`, "utf-8");
+  return { path, action: existed ? "updated" : "created" };
+}
+
 async function applySubagent(agent: AgentTarget, mode: InstallMode): Promise<WriteResult | null> {
   const dest = agent.subagentPath;
   const templateId = agent.subagentId;
@@ -131,6 +169,20 @@ const INTEGRATIONS: Integration[] = [
     description: "installs a dedicated miru-code sub-agent",
     planPath: (agent) => agent.subagentPath,
     apply: applySubagent,
+  },
+  {
+    id: "rules",
+    label: "Cursor rules",
+    description: "always-on .cursor/rules policy for code search",
+    planPath: (agent) => agent.cursorRulesPath,
+    apply: applyCursorRules,
+  },
+  {
+    id: "hooks",
+    label: "Search hooks",
+    description: "blocks Grep/Glob and redirects agents to Miru MCP",
+    planPath: (agent) => agent.hooksPath,
+    apply: applyHooks,
   },
 ];
 
@@ -191,7 +243,7 @@ export async function runInstaller(mode: InstallMode): Promise<void> {
   writeStdout("");
   writeStdout(`${brandTitle()}${install ? " installer" : " uninstaller"}`);
   divider();
-  hint("Select agents and integrations to configure.");
+  hint("↑↓ move  space select  enter confirm");
 
   const detected = await Promise.all(
     AGENT_TARGETS.map(async (agent) => ({
@@ -246,12 +298,13 @@ export async function runInstaller(mode: InstallMode): Promise<void> {
     install ? "Done! Restart your agents to pick up changes." : "Done! Configuration removed.",
   );
   if (install) {
-    hint("Run miru setup — MCP loads the key from credentials.json automatically.");
+    hint("Restart agents after install. Hooks block built-in search in favor of Miru MCP.");
   }
   writeStdout("");
 }
 
 export {
+  applyHooks,
   applyInstructions,
   applyMcp,
   applySubagent,

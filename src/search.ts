@@ -4,6 +4,8 @@ import type { SemanticIndex } from "./index/semantic-index.ts";
 import { selectorToMask } from "./index/sparse.ts";
 import { selectTopKScoreIndices } from "./index/topk.ts";
 import { applyQueryBoost, boostMultiChunkFiles } from "./ranking/boosting.ts";
+import { searchImprovementsEnabled } from "./ranking/features.ts";
+import { isLocationQuery } from "./ranking/location.ts";
 import { rerankTopk } from "./ranking/penalties.ts";
 import { resolveAlpha } from "./ranking/weighting.ts";
 import { tokenize } from "./tokens.ts";
@@ -93,7 +95,8 @@ export async function hybridSearch(options: {
   } = options;
 
   const alphaWeight = resolveAlpha(query, alpha);
-  const candidateCount = topK * 5;
+  const candidateCount =
+    searchImprovementsEnabled() && isLocationQuery(query) ? topK * 10 : topK * 5;
   const chunksByKey = new Map(chunks.map((c) => [chunkKey(c), c]));
 
   const queryVecPromise = embeddings.embedQuery(query);
