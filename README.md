@@ -6,6 +6,12 @@ Find code by meaning, not grep. Miru returns the best **chunks** (path, lines, s
 
 **Requires:** [Bun](https://bun.sh) 1.1+ · [Takara API key](https://takara.ai)
 
+## Privacy and API usage
+
+Miru sends **file contents** to the [Takara inference API](https://takara.ai) when building an index and when embedding search queries. Chunks from your repo are transmitted over HTTPS to generate embeddings. API usage may incur cost depending on your Takara plan.
+
+If you index proprietary code, make sure that sending snippets to Takara's endpoint fits your security and compliance requirements. Use `MIRU_WORKSPACE_ROOT` to restrict MCP indexing to a single workspace directory.
+
 ## Install
 
 ```bash
@@ -143,6 +149,9 @@ const results = await index.search({ query: "BM25 tokenize", topK: 10 });
 |----------|-------|
 | `TAKARA_API_KEY` | Required |
 | `MIRU_OPENAI_BASE_URL` | Default `https://infer.takara.ai/v1` |
+| `MIRU_WORKSPACE_ROOT` | Restrict MCP local `repo` paths to this directory |
+| `MIRU_MAX_INDEX_FILES` | Cap files indexed per operation |
+| `MIRU_ALLOW_HTTP_GIT` | Set `1` to allow plain `http://` git clones |
 | `MIRU_MCP_WATCH` | Set `0` to disable MCP file watch |
 | `NO_COLOR` | Disable CLI colors |
 

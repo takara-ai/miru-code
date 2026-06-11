@@ -360,6 +360,14 @@ function collectSourceFiles(dir: string): string[] {
   return files;
 }
 
+describe("PRD-225: README privacy and cost disclosure", () => {
+  test("README states that file contents are sent to Takara and usage may incur cost", () => {
+    const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+    expect(readme).toMatch(/file contents.*Takara/i);
+    expect(readme).toMatch(/may incur cost/i);
+  });
+});
+
 describe("PRD-220 / PRD-227 / PRD-229: fixed regressions", () => {
   test("PRD-220: default embedding base URL is production infer", () => {
     const prevMiru = process.env.MIRU_OPENAI_BASE_URL;
