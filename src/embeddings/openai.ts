@@ -83,6 +83,18 @@ export function sanitizeEmbeddingInput(text: string): string {
   return out;
 }
 
+const TRANSIENT_EMBED_STATUSES = new Set([429, 500, 502, 503, 504]);
+const MAX_TRANSIENT_EMBED_RETRIES = 4;
+
+function isTransientEmbeddingError(err: unknown): boolean {
+  const status = (err as { status?: number }).status;
+  return status !== undefined && TRANSIENT_EMBED_STATUSES.has(status);
+}
+
+function transientEmbedBackoffMs(attempt: number): number {
+  return Math.min(250 * 2 ** attempt, 4000);
+}
+
 function isPayloadTooLargeError(err: unknown): boolean {
   const status = (err as { status?: number }).status;
   if (status === 413) {
@@ -276,23 +288,42 @@ export class OpenAIEmbeddingBackend implements EmbeddingBackend {
     return out;
   }
 
+  private async requestEmbeddings(texts: string[]): Promise<EmbeddingResponse> {
+    let lastErr: unknown;
+    for (let attempt = 0; attempt <= MAX_TRANSIENT_EMBED_RETRIES; attempt++) {
+      try {
+        const started = performance.now();
+        const response = await this.client.createEmbeddings(
+          texts,
+          this.model,
+          this.requestedDimensions,
+        );
+        const elapsed = performance.now() - started;
+        this.stats.requests += 1;
+        this.stats.inputItems += texts.length;
+        this.stats.inputChars += texts.reduce((acc, text) => acc + text.length, 0);
+        this.stats.totalRttMs += elapsed;
+        this.stats.maxRttMs = Math.max(this.stats.maxRttMs, elapsed);
+        return response;
+      } catch (err: unknown) {
+        lastErr = err;
+        if (isTransientEmbeddingError(err) && attempt < MAX_TRANSIENT_EMBED_RETRIES) {
+          this.stats.retries += 1;
+          await Bun.sleep(transientEmbedBackoffMs(attempt));
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw lastErr;
+  }
+
   private async embedBatchRawWithRetry(texts: string[]): Promise<Float32Array[]> {
     if (texts.length === 0) {
       return [];
     }
     try {
-      const started = performance.now();
-      const response = await this.client.createEmbeddings(
-        texts,
-        this.model,
-        this.requestedDimensions,
-      );
-      const elapsed = performance.now() - started;
-      this.stats.requests += 1;
-      this.stats.inputItems += texts.length;
-      this.stats.inputChars += texts.reduce((acc, text) => acc + text.length, 0);
-      this.stats.totalRttMs += elapsed;
-      this.stats.maxRttMs = Math.max(this.stats.maxRttMs, elapsed);
+      const response = await this.requestEmbeddings(texts);
       const vectors = vectorsFromResponse(response.data, texts.length);
       for (const vec of vectors) {
         if (this.requestedDimensions != null && vec.length !== this.requestedDimensions) {
