@@ -116,6 +116,15 @@ describe("PRD-218: single-input 413 must not misalign embedding vectors", () => 
   });
 
   test("embedDocuments keeps positional alignment when a document window hits HTTP 413", async () => {
+    const embeddingForText = (text: string): number[] => {
+      if (text === "doc-a") {
+        return oneHot(3, 0);
+      }
+      if (text === "doc-c") {
+        return oneHot(3, 2);
+      }
+      return oneHot(3, 1);
+    };
     const backend = new OpenAIEmbeddingBackend({
       model: "test-embed-model",
       dimensions: 3,
@@ -128,9 +137,9 @@ describe("PRD-218: single-input 413 must not misalign embedding vectors", () => 
             throw payloadTooLargeError();
           }
           return {
-            data: texts.map((_, index) => ({
+            data: texts.map((text, index) => ({
               index,
-              embedding: oneHot(3, index),
+              embedding: embeddingForText(text),
             })),
           };
         },

@@ -334,7 +334,12 @@ export class OpenAIEmbeddingBackend implements EmbeddingBackend {
         const rightText = text.slice(mid);
         const left = await this.embedBatchRawWithRetry([leftText]);
         const right = await this.embedBatchRawWithRetry([rightText]);
-        return [...left, ...right];
+        const parts = [left[0], right[0]].filter((vec): vec is Float32Array => vec !== undefined);
+        if (parts.length === 0) {
+          this.stats.errors += 1;
+          throw err;
+        }
+        return [poolWindowVectors(parts)];
       }
       this.stats.errors += 1;
       throw err;
