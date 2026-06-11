@@ -1,6 +1,6 @@
 {
   "name": "@takara-ai/miru-code",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Miru (見る) — hybrid code search for agents. Bun, TypeScript, Takara embeddings.",
   "type": "module",
   "license": "MIT",
