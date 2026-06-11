@@ -48,6 +48,7 @@ export async function createIndexFromPath(
   let fileEnumerated = 0;
   let fileTasks = 0;
   let emptyFileTasks = 0;
+  let fileErrors = 0;
 
   if (profile && "resetStats" in embeddings && typeof embeddings.resetStats === "function") {
     embeddings.resetStats();
@@ -81,7 +82,7 @@ export async function createIndexFromPath(
       const chunkPath = displayRoot ? relative(root, filePath).replace(/\\/g, "/") : filePath;
       return chunkSource(source, chunkPath, language);
     } catch {
-      emptyFileTasks++;
+      fileErrors++;
       return [];
     } finally {
       fileProcessMs += performance.now() - t;
@@ -192,6 +193,7 @@ export async function createIndexFromPath(
         file_enumerated: fileEnumerated,
         file_tasks: fileTasks,
         empty_or_skipped_files: emptyFileTasks,
+        file_errors: fileErrors,
         chunks: chunks.length,
         vectors: vectors.length,
         pipeline: {
