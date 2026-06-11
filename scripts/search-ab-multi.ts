@@ -1,6 +1,6 @@
 /**
  * Cross-repo A/B: MIRU_SEARCH_V2=0 (baseline) vs =1 (treatment).
- * Uses curated queries on ~/.cache/semble-bench checkouts (or --repo paths).
+ * Uses curated queries on ~/.cache/miru-bench checkouts (or --repo paths).
  *
  * Usage:
  *   bun run scripts/search-ab-multi.ts
@@ -149,7 +149,7 @@ for (const bench of benches) {
 }
 
 if (available.length === 0) {
-  console.error("No benchmark repos available. Check ~/.cache/semble-bench");
+  console.error("No benchmark repos available. Check ~/.cache/miru-bench");
   process.exit(1);
 }
 

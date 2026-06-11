@@ -231,7 +231,7 @@ for (const bench of benches) {
 }
 
 if (available.length === 0) {
-  console.error("No benchmark repos found under ~/.cache/semble-bench");
+  console.error("No benchmark repos found under ~/.cache/miru-bench");
   console.error("Clone repos or run search-ab-multi setup first.");
   process.exit(1);
 }

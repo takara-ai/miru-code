@@ -2,9 +2,9 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { SearchResult } from "../src/types.ts";
 
-export const BENCH_ROOT = join(process.env.HOME ?? "", ".cache", "semble-bench");
-export const ANNOTATIONS_DIR = "/tmp/semble-research/benchmarks/annotations";
-export const REPOS_PATH = "/tmp/semble-research/benchmarks/repos.json";
+export const BENCH_ROOT = join(process.env.HOME ?? "", ".cache", "miru-bench");
+export const ANNOTATIONS_DIR = "/tmp/miru-research/benchmarks/annotations";
+export const REPOS_PATH = "/tmp/miru-research/benchmarks/repos.json";
 
 export interface Target {
   path: string;

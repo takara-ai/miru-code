@@ -60,7 +60,7 @@ describe("resolveEmbeddingApiKey", () => {
 
 describe("loadEnvFiles", () => {
   test("does not override env vars already set by MCP config", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "semble-env-"));
+    const dir = await mkdtemp(join(tmpdir(), "miru-env-"));
     try {
       await writeFile(join(dir, ".env.local"), "TAKARA_API_KEY=file-token\n", "utf-8");
       process.env.TAKARA_API_KEY = "mcp-token";

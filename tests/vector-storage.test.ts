@@ -6,7 +6,6 @@ import { buildSemanticIndex, resolveSemanticStorage } from "../src/index/vector-
 describe("vector storage defaults", () => {
   test("buildSemanticIndex uses int8 by default", () => {
     delete process.env.MIRU_FLOAT_VECTORS;
-    delete process.env.SEMBLE_FLOAT_VECTORS;
     expect(resolveSemanticStorage()).toBe("int8");
     const index = buildSemanticIndex([new Float32Array([1, 0, 0])]);
     expect(index).toBeInstanceOf(QuantizedVectorIndex);

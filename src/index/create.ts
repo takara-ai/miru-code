@@ -19,14 +19,14 @@ const DEFAULT_PIPELINE_EMBED_INFLIGHT = 8;
 
 function resolvePipelineEmbedBatch(): number {
   return (
-    envOptionalInt(["MIRU_PIPELINE_EMBED_BATCH", "SEMBLE_PIPELINE_EMBED_BATCH"], 1) ??
+    envOptionalInt(["MIRU_PIPELINE_EMBED_BATCH"], 1) ??
     DEFAULT_PIPELINE_EMBED_BATCH
   );
 }
 
 function resolvePipelineEmbedInflight(): number {
   return (
-    envOptionalInt(["MIRU_PIPELINE_EMBED_INFLIGHT", "SEMBLE_PIPELINE_EMBED_INFLIGHT"], 1) ??
+    envOptionalInt(["MIRU_PIPELINE_EMBED_INFLIGHT"], 1) ??
     DEFAULT_PIPELINE_EMBED_INFLIGHT
   );
 }
@@ -37,7 +37,7 @@ export async function createIndexFromPath(
   content: ContentType[] = ["code"],
   displayRoot?: string,
 ): Promise<{ bm25: BM25Index; semantic: SemanticIndex; chunks: Chunk[] }> {
-  const profile = process.env.MIRU_PROFILE === "1" || process.env.SEMBLE_PROFILE === "1";
+  const profile = process.env.MIRU_PROFILE === "1";
   const started = performance.now();
   let fileProcessMs = 0;
   let embedBackpressureWaitMs = 0;

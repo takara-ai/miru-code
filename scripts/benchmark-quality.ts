@@ -1,5 +1,5 @@
 /**
- * NDCG@5/@10 retrieval benchmark aligned with semble-research/benchmarks/run_benchmark.py
+ * NDCG@5/@10 retrieval benchmark aligned with miru-research/benchmarks/run_benchmark.py
  */
 import { clearCache } from "../src/cache.ts";
 import { resolveEmbeddingDimensions, resolveEmbeddingModel } from "../src/embeddings/openai.ts";

@@ -37,7 +37,7 @@ type CacheEntry = {
 };
 
 export function mcpWatchEnabled(): boolean {
-  const raw = process.env.MIRU_MCP_WATCH ?? process.env.SEMBLE_MCP_WATCH;
+  const raw = process.env.MIRU_MCP_WATCH;
   return raw !== "0" && raw !== "false";
 }
 

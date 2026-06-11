@@ -11,11 +11,7 @@ export function resolveCpuCount(): number {
 
 /** Worker pool size: logical CPUs minus 2, minimum 1. Override with MIRU_CONCURRENCY. */
 export function resolveWorkerConcurrency(): number {
-  const raw =
-    process.env.MIRU_CONCURRENCY ??
-    process.env.SEMBLE_CONCURRENCY ??
-    process.env.MIRU_WORKERS ??
-    process.env.SEMBLE_WORKERS;
+  const raw = process.env.MIRU_CONCURRENCY ?? process.env.MIRU_WORKERS;
   if (raw) {
     const n = Number(raw);
     if (Number.isFinite(n) && n >= 1) {

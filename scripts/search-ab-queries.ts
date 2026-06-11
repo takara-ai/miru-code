@@ -2,7 +2,7 @@ import { stat } from "node:fs/promises";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const BENCH_ROOT = `${process.env.HOME ?? ""}/.cache/semble-bench`;
+export const BENCH_ROOT = `${process.env.HOME ?? ""}/.cache/miru-bench`;
 export const MIRU_ROOT = dirname(fileURLToPath(new URL("..", import.meta.url)));
 export const TOP_K = 5;
 

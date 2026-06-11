@@ -32,14 +32,14 @@ export interface EmbeddingBackend {
 
 export function resolveEmbeddingModel(): string {
   return envFirstString(
-    ["MIRU_OPENAI_EMBEDDING_MODEL", "SEMBLE_OPENAI_EMBEDDING_MODEL", "OPENAI_EMBEDDING_MODEL"],
+    ["MIRU_OPENAI_EMBEDDING_MODEL", "OPENAI_EMBEDDING_MODEL"],
     DEFAULT_MODEL,
   );
 }
 
 export function resolveMaxEmbedChars(): number {
   return (
-    envOptionalInt(["MIRU_MAX_EMBED_CHARS", "SEMBLE_MAX_EMBED_CHARS"], 256) ??
+    envOptionalInt(["MIRU_MAX_EMBED_CHARS"], 256) ??
     DEFAULT_MAX_EMBED_CHARS
   );
 }
@@ -75,7 +75,7 @@ export function sanitizeEmbeddingInput(text: string): string {
   const out = stripLoneSurrogates(text);
   // Some OpenAI-compatible gateways mis-handle backslash escapes in JSON text
   // payloads. Keep a benchmark fallback mode to forcefully neutralize them.
-  const mode = process.env.MIRU_EMBED_ESCAPE_MODE ?? process.env.SEMBLE_EMBED_ESCAPE_MODE ?? "quad";
+  const mode = process.env.MIRU_EMBED_ESCAPE_MODE ?? "quad";
   if (mode === "strip") {
     return out.replaceAll("\\", "/");
   }
@@ -95,11 +95,7 @@ function isPayloadTooLargeError(err: unknown): boolean {
 }
 
 export function resolveEmbeddingDimensions(model?: string): number | undefined {
-  const fromEnv = envOptionalInt([
-    "MIRU_EMBEDDING_DIMENSIONS",
-    "SEMBLE_EMBEDDING_DIMENSIONS",
-    "OPENAI_EMBEDDING_DIMENSIONS",
-  ]);
+  const fromEnv = envOptionalInt(["MIRU_EMBEDDING_DIMENSIONS", "OPENAI_EMBEDDING_DIMENSIONS"]);
   if (fromEnv != null) {
     return fromEnv;
   }
@@ -108,17 +104,14 @@ export function resolveEmbeddingDimensions(model?: string): number | undefined {
 
 export function resolveEmbeddingBatchSize(): number {
   return (
-    envOptionalInt([
-      "MIRU_EMBEDDING_BATCH_SIZE",
-      "SEMBLE_EMBEDDING_BATCH_SIZE",
-      "OPENAI_EMBEDDING_BATCH_SIZE",
-    ]) ?? DEFAULT_BATCH_SIZE
+    envOptionalInt(["MIRU_EMBEDDING_BATCH_SIZE", "OPENAI_EMBEDDING_BATCH_SIZE"]) ??
+    DEFAULT_BATCH_SIZE
   );
 }
 
 export function resolveEmbeddingBaseUrl(): string {
   return envFirstString(
-    ["MIRU_OPENAI_BASE_URL", "SEMBLE_OPENAI_BASE_URL", "OPENAI_BASE_URL"],
+    ["MIRU_OPENAI_BASE_URL", "OPENAI_BASE_URL"],
     DEFAULT_BASE_URL,
   ).replace(/\/$/, "");
 }

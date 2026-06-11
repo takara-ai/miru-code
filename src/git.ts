@@ -7,7 +7,7 @@ const DEFAULT_CLONE_TIMEOUT_SEC = 60;
 
 export async function cloneGitRepository(url: string, ref?: string | null): Promise<string> {
   const timeoutSec =
-    envOptionalInt(["MIRU_CLONE_TIMEOUT", "SEMBLE_CLONE_TIMEOUT"], 1) ?? DEFAULT_CLONE_TIMEOUT_SEC;
+    envOptionalInt(["MIRU_CLONE_TIMEOUT"], 1) ?? DEFAULT_CLONE_TIMEOUT_SEC;
   const dir = await mkdtemp(join(tmpdir(), "miru-git-"));
   const args = ["clone", "--depth", "1"];
   if (ref) {
