@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { normalizeRelativePath, relativePathFromRoot } from "../index/incremental.ts";
 import { MiruIndex } from "../miru-index.ts";
 import type { ContentType } from "../types.ts";
-import { computeSourceCacheKey, isGitUrl } from "../utils.ts";
+import { computeSourceCacheKey, isAllowedRepoSource, isGitUrl } from "../utils.ts";
 
 const CACHE_MAX_SIZE = 10;
 
@@ -284,9 +284,14 @@ export async function getIndexForRepo(
     );
   }
 
-  if (isGitUrl(repo) && !repo.startsWith("https://") && !repo.startsWith("http://")) {
+  if (isGitUrl(repo) && !isAllowedRepoSource(repo)) {
+    if (repo.startsWith("http://")) {
+      throw new Error(
+        "Plain http:// git URLs are disabled by default. Set MIRU_ALLOW_HTTP_GIT=1 to opt in.",
+      );
+    }
     throw new Error(
-      `Only https://, http://, or local directory paths are accepted as \`repo\`. Got: ${repo}`,
+      `Only https:// git URLs or local directory paths are accepted as \`repo\`. Got: ${repo}`,
     );
   }
 

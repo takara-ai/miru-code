@@ -17,11 +17,22 @@ export function isGitUrl(path: string): boolean {
   return GIT_URL_SCHEMES.some((scheme) => path.startsWith(scheme)) || SCP_GIT_URL_RE.test(path);
 }
 
+export function httpGitCloneAllowed(): boolean {
+  const raw = process.env.MIRU_ALLOW_HTTP_GIT;
+  return raw === "1" || raw === "true";
+}
+
 export function isAllowedRepoSource(repo: string): boolean {
   if (!isGitUrl(repo)) {
     return true;
   }
-  return repo.startsWith("https://") || repo.startsWith("http://");
+  if (repo.startsWith("https://")) {
+    return true;
+  }
+  if (repo.startsWith("http://")) {
+    return httpGitCloneAllowed();
+  }
+  return false;
 }
 
 /** Resolved local repo root for MCP output; null for remote git URLs. */
