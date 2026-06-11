@@ -1,8 +1,7 @@
 /**
  * Regression tests for DS1-Miru Linear issues (PRD-218–PRD-229).
  *
- * Open bugs: tests assert desired fixed behavior and are expected to FAIL until resolved.
- * Fixed bugs (PRD-220, PRD-227): passing regression guards.
+ * Regression guards for DS1-Miru Linear issues PRD-218 through PRD-229.
  *
  * Run in isolation: `bun test tests/prd-bugs.test.ts`
  */
