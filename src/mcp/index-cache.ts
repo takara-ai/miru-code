@@ -33,7 +33,10 @@ const WATCH_IGNORED_DIR_NAMES = new Set([
   ".eggs",
 ]);
 
+type WatcherHandle = ReturnType<typeof watch>;
+
 type CacheEntry = {
+  source: string;
   index: MiruIndex | null;
   task: Promise<MiruIndex> | null;
   pendingPaths: Set<string>;
@@ -64,15 +67,14 @@ export class IndexCache {
   private readonly content: ContentType[];
   private readonly defaultRef: string | null;
   private readonly entries = new Map<string, CacheEntry>();
-  private watcher: ReturnType<typeof watch> | null = null;
-  private watchedSource: string | null = null;
+  readonly watchers = new Map<string, WatcherHandle>();
 
   constructor(content: ContentType[] = ["code"], defaultRef: string | null = null) {
     this.content = content;
     this.defaultRef = defaultRef;
   }
 
-  private ensureEntry(cacheKey: string): CacheEntry {
+  private ensureEntry(cacheKey: string, source: string): CacheEntry {
     let entry = this.entries.get(cacheKey);
     if (!entry) {
       if (this.entries.size >= CACHE_MAX_SIZE) {
@@ -82,6 +84,7 @@ export class IndexCache {
         }
       }
       entry = {
+        source,
         index: null,
         task: null,
         pendingPaths: new Set(),
@@ -94,7 +97,17 @@ export class IndexCache {
   }
 
   private clearEntry(cacheKey: string): void {
+    const entry = this.entries.get(cacheKey);
+    if (entry && !isGitUrl(entry.source)) {
+      this.stopWatcher(resolve(entry.source));
+    }
     this.entries.delete(cacheKey);
+  }
+
+  private stopWatcher(resolvedPath: string): void {
+    const watcher = this.watchers.get(resolvedPath);
+    watcher?.close();
+    this.watchers.delete(resolvedPath);
   }
 
   private startBuild(
@@ -110,7 +123,7 @@ export class IndexCache {
       return index;
     })();
 
-    const entry = this.ensureEntry(cacheKey);
+    const entry = this.ensureEntry(cacheKey, source);
     entry.task = task;
     void task
       .then((index) => {
@@ -131,7 +144,7 @@ export class IndexCache {
   async get(source: string, ref?: string | null): Promise<MiruIndex> {
     const resolvedRef = ref ?? this.defaultRef;
     const cacheKey = computeSourceCacheKey(source, resolvedRef);
-    const entry = this.ensureEntry(cacheKey);
+    const entry = this.ensureEntry(cacheKey, source);
 
     if (!entry.task) {
       this.startBuild(source, resolvedRef, cacheKey);
@@ -156,7 +169,7 @@ export class IndexCache {
 
   private queueIndexedPaths(source: string, index: MiruIndex): void {
     const cacheKey = computeSourceCacheKey(source);
-    const entry = this.ensureEntry(cacheKey);
+    const entry = this.ensureEntry(cacheKey, source);
     for (const chunk of index.chunks) {
       entry.pendingPaths.add(normalizeRelativePath(chunk.file_path));
     }
@@ -166,7 +179,10 @@ export class IndexCache {
   /** macOS recursive fs.watch often omits filename; refresh all indexed paths incrementally. */
   private noteAmbiguousDirectoryChange(source: string): void {
     const cacheKey = computeSourceCacheKey(source);
-    const entry = this.ensureEntry(cacheKey);
+    const entry = this.entries.get(cacheKey);
+    if (!entry) {
+      return;
+    }
 
     if (entry.index) {
       this.queueIndexedPaths(source, entry.index);
@@ -191,7 +207,10 @@ export class IndexCache {
     }
 
     const cacheKey = computeSourceCacheKey(source);
-    const entry = this.ensureEntry(cacheKey);
+    const entry = this.entries.get(cacheKey);
+    if (!entry) {
+      return;
+    }
     const rel = relativePathFromRoot(source, filename);
     if (!rel) {
       return;
@@ -251,29 +270,31 @@ export class IndexCache {
     if (!mcpWatchEnabled() || isGitUrl(source)) {
       return;
     }
-    const resolved = resolve(source);
-    if (this.watchedSource === resolved) {
-      return;
-    }
-    this.watchedSource = resolved;
-    this.startWatcher(resolved);
+    this.startWatcher(source);
   }
 
   startWatcher(path: string): void {
     const resolved = resolve(path);
-    if (this.watcher) {
-      this.watcher.close();
+    if (this.watchers.has(resolved)) {
+      return;
     }
 
-    this.watcher = watch(resolved, { recursive: true }, (_event, filename) => {
+    const watcher = watch(resolved, { recursive: true }, (_event, filename) => {
       this.noteFileChange(resolved, filename);
     });
+    this.watchers.set(resolved, watcher);
+  }
+
+  get watcher(): WatcherHandle | null {
+    const handles = [...this.watchers.values()];
+    return handles[handles.length - 1] ?? null;
   }
 
   close(): void {
-    this.watcher?.close();
-    this.watcher = null;
-    this.watchedSource = null;
+    for (const watcher of this.watchers.values()) {
+      watcher.close();
+    }
+    this.watchers.clear();
     this.entries.clear();
   }
 }
