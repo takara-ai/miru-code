@@ -285,7 +285,8 @@ describe("PRD-222: indexing guardrails", () => {
 describe("PRD-223: MCP server version must match package.json", () => {
   test("createMcpServer reports package version in handshake", () => {
     const server = createMcpServer(new IndexCache());
-    const info = (server as { server: { _serverInfo: { version: string } } }).server._serverInfo;
+    const info = (server as unknown as { server: { _serverInfo: { version: string } } }).server
+      ._serverInfo;
     expect(info.version).toBe(packageJson.version);
   });
 });

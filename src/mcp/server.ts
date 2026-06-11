@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod";
+import packageJson from "../../package.json";
 import {
   MCP_EXPAND_TOOL_DESCRIPTION,
   MCP_FIND_RELATED_TOOL_DESCRIPTION,
@@ -29,7 +30,7 @@ export function createMcpServer(cache: IndexCache): McpServer {
   const server = new McpServer(
     {
       name: "miru",
-      version: "0.1.0",
+      version: packageJson.version,
     },
     {
       instructions: MCP_SERVER_INSTRUCTIONS,
