@@ -73,13 +73,14 @@ function stripLoneSurrogates(text: string): string {
 
 export function sanitizeEmbeddingInput(text: string): string {
   const out = stripLoneSurrogates(text);
-  // Some OpenAI-compatible gateways mis-handle backslash escapes in JSON text
-  // payloads. Keep a benchmark fallback mode to forcefully neutralize them.
-  const mode = process.env.MIRU_EMBED_ESCAPE_MODE ?? "quad";
+  const mode = process.env.MIRU_EMBED_ESCAPE_MODE ?? "preserve";
+  if (mode === "quad") {
+    return out.replaceAll("\\", "\\\\\\\\");
+  }
   if (mode === "strip") {
     return out.replaceAll("\\", "/");
   }
-  return out.replaceAll("\\", "\\\\\\\\");
+  return out;
 }
 
 function isPayloadTooLargeError(err: unknown): boolean {
