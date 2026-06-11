@@ -40,6 +40,20 @@ export function localRepoRoot(repo: string): string | null {
   return isGitUrl(repo) ? null : resolve(repo);
 }
 
+/** When MIRU_WORKSPACE_ROOT is set, local repo paths must stay inside it. */
+export function validateLocalRepoPath(repo: string): void {
+  const workspaceRoot = process.env.MIRU_WORKSPACE_ROOT?.trim();
+  if (!workspaceRoot || isGitUrl(repo)) {
+    return;
+  }
+  const resolvedRepo = resolve(repo);
+  const resolvedWorkspace = resolve(workspaceRoot);
+  const prefix = resolvedWorkspace.endsWith(sep) ? resolvedWorkspace : `${resolvedWorkspace}${sep}`;
+  if (resolvedRepo !== resolvedWorkspace && !resolvedRepo.startsWith(prefix)) {
+    throw new Error(`Local repo path is outside workspace: ${repo}`);
+  }
+}
+
 /** Map an absolute or repo-relative path to the index-relative form. */
 export function toIndexedFilePath(filePath: string, repoRoot?: string | null): string {
   if (!repoRoot) {

@@ -21,7 +21,12 @@ import {
 import { createIndexFromPath } from "../src/index/create.ts";
 import { IndexCache, mcpWatchEnabled } from "../src/mcp/index-cache.ts";
 import { createMcpServer } from "../src/mcp/server.ts";
-import { clampMcpTopK, isAllowedRepoSource, MAX_MCP_TOP_K } from "../src/utils.ts";
+import {
+  clampMcpTopK,
+  isAllowedRepoSource,
+  MAX_MCP_TOP_K,
+  validateLocalRepoPath,
+} from "../src/utils.ts";
 
 function oneHot(dim: number, index: number): number[] {
   const vec = Array.from({ length: dim }, () => 0);
@@ -236,9 +241,23 @@ describe("PRD-222: indexing guardrails", () => {
     expect(isAllowedRepoSource("http://github.com/org/repo")).toBe(false);
   });
 
-  test("getIndexForRepo enforces MIRU_WORKSPACE_ROOT for local paths", () => {
-    const src = readFileSync(new URL("../src/mcp/index-cache.ts", import.meta.url), "utf8");
-    expect(src).toContain("MIRU_WORKSPACE_ROOT");
+  test("validateLocalRepoPath enforces MIRU_WORKSPACE_ROOT for local paths", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "miru-workspace-"));
+    const outside = await mkdtemp(join(tmpdir(), "miru-outside-"));
+    const prevRoot = process.env.MIRU_WORKSPACE_ROOT;
+    process.env.MIRU_WORKSPACE_ROOT = workspace;
+    try {
+      expect(() => validateLocalRepoPath(outside)).toThrow(/outside workspace/i);
+      expect(() => validateLocalRepoPath(join(workspace, "src"))).not.toThrow();
+    } finally {
+      if (prevRoot === undefined) {
+        delete process.env.MIRU_WORKSPACE_ROOT;
+      } else {
+        process.env.MIRU_WORKSPACE_ROOT = prevRoot;
+      }
+      await rm(workspace, { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
+    }
   });
 
   test("honours MIRU_MAX_INDEX_FILES aggregate budget", async () => {

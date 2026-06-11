@@ -31,6 +31,10 @@ function resolvePipelineEmbedInflight(): number {
   );
 }
 
+function resolveMaxIndexFiles(): number | undefined {
+  return envOptionalInt(["MIRU_MAX_INDEX_FILES"], 1);
+}
+
 export async function createIndexFromPath(
   path: string,
   embeddings: EmbeddingBackend,
@@ -55,6 +59,7 @@ export async function createIndexFromPath(
   const fileConcurrency = resolveWorkerConcurrency();
   const embedBatchSize = resolvePipelineEmbedBatch();
   const maxEmbedInflight = resolvePipelineEmbedInflight();
+  const maxIndexFiles = resolveMaxIndexFiles();
   const readyBySeq = new Map<number, Chunk[]>();
   const pendingEmbedChunks: Chunk[] = [];
   const emittedChunkBatches: Chunk[][] = [];
@@ -136,6 +141,9 @@ export async function createIndexFromPath(
 
   for await (const filePath of walkFiles(resolved, extensions)) {
     fileEnumerated++;
+    if (maxIndexFiles != null && fileEnumerated > maxIndexFiles) {
+      throw new Error(`Index file budget exceeded: max ${maxIndexFiles} files per operation`);
+    }
     while (runningFiles.size >= fileConcurrency) {
       await Promise.race(runningFiles);
     }

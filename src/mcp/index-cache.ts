@@ -3,7 +3,12 @@ import { resolve } from "node:path";
 import { normalizeRelativePath, relativePathFromRoot } from "../index/incremental.ts";
 import { MiruIndex } from "../miru-index.ts";
 import type { ContentType } from "../types.ts";
-import { computeSourceCacheKey, isAllowedRepoSource, isGitUrl } from "../utils.ts";
+import {
+  computeSourceCacheKey,
+  isAllowedRepoSource,
+  isGitUrl,
+  validateLocalRepoPath,
+} from "../utils.ts";
 
 const CACHE_MAX_SIZE = 10;
 
@@ -294,6 +299,8 @@ export async function getIndexForRepo(
       `Only https:// git URLs or local directory paths are accepted as \`repo\`. Got: ${repo}`,
     );
   }
+
+  validateLocalRepoPath(repo);
 
   try {
     return await cache.get(repo, ref);
