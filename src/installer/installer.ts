@@ -34,6 +34,8 @@ interface Integration {
   id: IntegrationId;
   label: string;
   description: string;
+  experimental?: boolean;
+  defaultChecked?: boolean;
   planPath: (agent: AgentTarget) => string | null;
   apply: (agent: AgentTarget, mode: InstallMode) => Promise<WriteResult | null>;
 }
@@ -152,35 +154,37 @@ const INTEGRATIONS: Integration[] = [
   {
     id: "mcp",
     label: "MCP server",
-    description: "lets the agent call miru directly as a tool",
+    description: "Miru search tools via MCP",
     planPath: (agent) => agent.mcp?.path ?? null,
     apply: applyMcp,
   },
   {
     id: "instructions",
     label: "Instructions",
-    description: "adds CLI usage guidance to CLAUDE.md / AGENTS.md",
+    description: "search policy in agent docs",
     planPath: (agent) => agent.instructionsPath,
     apply: applyInstructions,
   },
   {
     id: "subagent",
     label: "Sub-agent",
-    description: "installs a dedicated miru-code sub-agent",
+    description: "miru-code sub-agent file",
     planPath: (agent) => agent.subagentPath,
     apply: applySubagent,
   },
   {
     id: "rules",
     label: "Cursor rules",
-    description: "always-on .cursor/rules policy for code search",
+    description: "search policy in .cursor/rules",
     planPath: (agent) => agent.cursorRulesPath,
     apply: applyCursorRules,
   },
   {
     id: "hooks",
     label: "Search hooks",
-    description: "blocks Grep/Glob and redirects agents to Miru MCP",
+    description: "blocks built-in search; routes to Miru MCP",
+    experimental: true,
+    defaultChecked: false,
     planPath: (agent) => agent.hooksPath,
     apply: applyHooks,
   },
@@ -269,9 +273,9 @@ export async function runInstaller(mode: InstallMode): Promise<void> {
   }
 
   const integrationItems = INTEGRATIONS.map((integration) => ({
-    label: `${integration.label} — ${integration.description}`,
+    label: `${integration.label}${integration.experimental ? dim(" (experimental)") : ""} — ${integration.description}`,
     value: integration,
-    checked: true,
+    checked: install ? (integration.defaultChecked ?? true) : true,
   }));
 
   const chosenIntegrations = await promptMultiSelect(
@@ -294,12 +298,7 @@ export async function runInstaller(mode: InstallMode): Promise<void> {
 
   await apply(mode, chosenAgents, chosenIntegrations);
 
-  success(
-    install ? "Done! Restart your agents to pick up changes." : "Done! Configuration removed.",
-  );
-  if (install) {
-    hint("Restart agents after install. Hooks block built-in search in favor of Miru MCP.");
-  }
+  success(install ? "Done. Restart agents to apply changes." : "Done. Configuration removed.");
   writeStdout("");
 }
 
