@@ -24,7 +24,7 @@ async function chunksForFile(root: string, relativePath: string): Promise<Chunk[
     }
     const source = await readFileText(absolute);
     const language = detectLanguage(absolute);
-    return chunkSource(source, rel, language);
+    return await chunkSource(source, rel, language);
   } catch {
     return [];
   }

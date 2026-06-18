@@ -1,5 +1,6 @@
 import { relative, resolve } from "node:path";
 import { chunkSource } from "../chunking/chunking.ts";
+import { ensureParserInit } from "../chunking/grammars.ts";
 import { resolveWorkerConcurrency } from "../concurrency.ts";
 import type { EmbeddingBackend } from "../embeddings/openai.ts";
 import { envOptionalInt } from "../env.ts";
@@ -18,17 +19,11 @@ const DEFAULT_PIPELINE_EMBED_BATCH = 64;
 const DEFAULT_PIPELINE_EMBED_INFLIGHT = 8;
 
 function resolvePipelineEmbedBatch(): number {
-  return (
-    envOptionalInt(["MIRU_PIPELINE_EMBED_BATCH"], 1) ??
-    DEFAULT_PIPELINE_EMBED_BATCH
-  );
+  return envOptionalInt(["MIRU_PIPELINE_EMBED_BATCH"], 1) ?? DEFAULT_PIPELINE_EMBED_BATCH;
 }
 
 function resolvePipelineEmbedInflight(): number {
-  return (
-    envOptionalInt(["MIRU_PIPELINE_EMBED_INFLIGHT"], 1) ??
-    DEFAULT_PIPELINE_EMBED_INFLIGHT
-  );
+  return envOptionalInt(["MIRU_PIPELINE_EMBED_INFLIGHT"], 1) ?? DEFAULT_PIPELINE_EMBED_INFLIGHT;
 }
 
 function resolveMaxIndexFiles(): number | undefined {
@@ -53,6 +48,8 @@ export async function createIndexFromPath(
   if (profile && "resetStats" in embeddings && typeof embeddings.resetStats === "function") {
     embeddings.resetStats();
   }
+
+  await ensureParserInit();
 
   const resolved = resolve(path);
   const root = displayRoot ? resolve(displayRoot) : resolved;
@@ -80,7 +77,7 @@ export async function createIndexFromPath(
       }
       const source = await readFileText(filePath);
       const chunkPath = displayRoot ? relative(root, filePath).replace(/\\/g, "/") : filePath;
-      return chunkSource(source, chunkPath, language);
+      return await chunkSource(source, chunkPath, language);
     } catch {
       fileErrors++;
       return [];

@@ -17,12 +17,12 @@ describe("chunkStructural", () => {
 });
 
 describe("chunkSource", () => {
-  test("preserves valid line numbers and non-empty content", () => {
+  test("preserves valid line numbers and non-empty content", async () => {
     const fixture = CHUNK_PARITY_FIXTURES[0];
     if (!fixture) {
       throw new Error("Missing python parity fixture");
     }
-    const chunks = chunkSource(fixture.source, "service.py", fixture.language);
+    const chunks = await chunkSource(fixture.source, "service.py", fixture.language);
 
     expect(chunks.length).toBeGreaterThan(0);
     for (const chunk of chunks) {
@@ -34,13 +34,13 @@ describe("chunkSource", () => {
     }
   });
 
-  test("splits very large sources into multiple chunks", () => {
+  test("splits very large sources into multiple chunks", async () => {
     const fixture = CHUNK_PARITY_FIXTURES[0];
     if (!fixture) {
       throw new Error("Missing python parity fixture");
     }
     const largeSource = Array.from({ length: 4 }, () => fixture.source).join("\n\n");
-    const chunks = chunkSource(largeSource, "large.py", fixture.language);
+    const chunks = await chunkSource(largeSource, "large.py", fixture.language);
     expect(chunks.length).toBeGreaterThan(1);
   });
 });

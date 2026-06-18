@@ -1,16 +1,22 @@
 import type { Chunk } from "../types.ts";
+import { chunkAst } from "./ast.ts";
 import { chunkLines } from "./lines.ts";
 import { chunkStructural } from "./structural.ts";
 
 /** Match upstream hybrid-search chunking target length. */
 const DESIRED_CHUNK_LENGTH_CHARS = 1500;
 
-export function chunkSource(source: string, filePath: string, language: string | null): Chunk[] {
+export async function chunkSource(
+  source: string,
+  filePath: string,
+  language: string | null,
+): Promise<Chunk[]> {
   if (!source.trim()) {
     return [];
   }
 
   const boundaries =
+    (await chunkAst(source, filePath, language, DESIRED_CHUNK_LENGTH_CHARS)) ??
     chunkStructural(source, language, DESIRED_CHUNK_LENGTH_CHARS) ??
     chunkLines(source, DESIRED_CHUNK_LENGTH_CHARS);
   const chunks: Chunk[] = [];

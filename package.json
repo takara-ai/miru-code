@@ -36,6 +36,7 @@
   },
   "files": [
     "src",
+    "grammars",
     "README.md",
     "LICENSE"
   ],
@@ -49,7 +50,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "prepublishOnly": "bun run typecheck && bun test",
+    "vendor-grammars": "bun run scripts/vendor-grammars.ts",
+    "prepublishOnly": "bun run vendor-grammars && bun run typecheck && bun test",
     "benchmark:ab": "bun run scripts/search-ab-local.ts",
     "benchmark:ab-multi": "bun run scripts/search-ab-multi.ts",
     "benchmark:recall": "bun run scripts/benchmark-recall-tokens.ts",
@@ -61,11 +63,34 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "ignore": "^7.0.5",
+    "web-tree-sitter": "^0.26.9",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.16",
     "@types/bun": "latest",
+    "tree-sitter-bash": "^0.25.1",
+    "tree-sitter-c": "^0.24.1",
+    "tree-sitter-c-sharp": "^0.23.1",
+    "tree-sitter-cpp": "^0.23.4",
+    "tree-sitter-css": "^0.25.0",
+    "tree-sitter-dart": "^1.0.0",
+    "tree-sitter-elixir": "^0.3.4",
+    "tree-sitter-embedded-template": "^0.25.0",
+    "tree-sitter-go": "^0.25.0",
+    "tree-sitter-haskell": "^0.23.1",
+    "tree-sitter-html": "^0.23.2",
+    "tree-sitter-java": "^0.23.5",
+    "tree-sitter-javascript": "^0.25.0",
+    "tree-sitter-json": "^0.24.8",
+    "tree-sitter-ocaml": "^0.24.2",
+    "tree-sitter-php": "^0.23.12",
+    "tree-sitter-python": "^0.25.0",
+    "tree-sitter-ruby": "^0.23.1",
+    "tree-sitter-rust": "^0.24.0",
+    "tree-sitter-scala": "^0.24.0",
+    "tree-sitter-solidity": "^1.2.13",
+    "tree-sitter-typescript": "^0.23.2",
     "typescript": "^5.9.3"
   }
 }

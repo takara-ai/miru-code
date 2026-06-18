@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { chunkAst } from "../src/chunking/ast.ts";
 import type { ChunkBoundary } from "../src/chunking/lines.ts";
 import { chunkStructural } from "../src/chunking/structural.ts";
 import { CHUNK_PARITY_FIXTURES } from "./chunk-parity-fixtures.ts";
@@ -32,6 +33,28 @@ describe("chunking parity fixtures", () => {
 
       // Guardrail: retain high overlap with Python reference boundaries.
       expect(score).toBeGreaterThan(0.8);
+    });
+
+    test(`${fixture.language} AST chunk overlap stays high`, async () => {
+      const ext =
+        fixture.language === "typescript"
+          ? "ts"
+          : fixture.language === "javascript"
+            ? "js"
+            : fixture.language === "cpp"
+              ? "cpp"
+              : fixture.language;
+      const actual =
+        (await chunkAst(
+          fixture.source,
+          `fixture.${ext}`,
+          fixture.language,
+          fixture.desiredLength,
+        )) ?? [];
+      const score = bestMatchScore(fixture.pythonBoundaries, actual);
+      const minScore = fixture.language === "cpp" ? 0.7 : 0.8;
+
+      expect(score).toBeGreaterThan(minScore);
     });
   }
 });
