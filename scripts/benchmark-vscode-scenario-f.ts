@@ -21,7 +21,8 @@ loadEnvFiles();
 normalizeTakaraApiKeyEnv();
 await loadStoredCredentials();
 
-const VSCODE_ROOT = process.env.VSCODE_BENCH_ROOT ?? join(process.env.HOME ?? "", ".cache/miru-bench/vscode");
+const VSCODE_ROOT =
+  process.env.VSCODE_BENCH_ROOT ?? join(process.env.HOME ?? "", ".cache/miru-bench/vscode");
 const CALLSITE_DIRS = ["src/vs/editor", "src/vs/workbench", "src/vs/platform"] as const;
 const DEFINITION_DIR = "src/vs/editor";
 const TOP_K = 50;
@@ -111,7 +112,11 @@ async function grepWordCount(symbol: string): Promise<number> {
   return total;
 }
 
-function classifyHit(symbol: string, result: SearchResult, definitionFiles: Set<string>): "true_usage" | "noise" {
+function classifyHit(
+  symbol: string,
+  result: SearchResult,
+  definitionFiles: Set<string>,
+): "true_usage" | "noise" {
   const content = result.chunk.content;
   const file = result.chunk.file_path;
 
@@ -166,8 +171,10 @@ async function miruSearchArm(
   const indexMs = performance.now() - started;
 
   const defFiles = new Set(symbols.map((s) => s.file));
-  const bySymbol: Record<string, { hits: number; trueUsage: number; noise: number; topFiles: string[] }> =
-    {};
+  const bySymbol: Record<
+    string,
+    { hits: number; trueUsage: number; noise: number; topFiles: string[] }
+  > = {};
 
   for (const sym of NOISY_SYMBOLS) {
     const def = symbols.find((s) => s.name === sym);
@@ -233,7 +240,9 @@ console.error(
 const ast = await miruSearchArm(indexRoot, true, deprecated);
 console.error(`AST:        ${ast.chunks} chunks, indexed in ${(ast.indexMs / 1000).toFixed(1)}s`);
 
-console.error("\n=== Miru search top_k=" + TOP_K + " (semantic retrieval, not exhaustive scan) ===");
+console.error(
+  "\n=== Miru search top_k=" + TOP_K + " (semantic retrieval, not exhaustive scan) ===",
+);
 console.error("symbol          grep    struct(true/noise)  ast(true/noise)");
 for (const sym of NOISY_SYMBOLS) {
   const s = structural.bySymbol[sym];
@@ -247,7 +256,10 @@ for (const sym of NOISY_SYMBOLS) {
 
 const structNoise = NOISY_SYMBOLS.reduce((n, sym) => n + (structural.bySymbol[sym]?.noise ?? 0), 0);
 const astNoise = NOISY_SYMBOLS.reduce((n, sym) => n + (ast.bySymbol[sym]?.noise ?? 0), 0);
-const structTrue = NOISY_SYMBOLS.reduce((n, sym) => n + (structural.bySymbol[sym]?.trueUsage ?? 0), 0);
+const structTrue = NOISY_SYMBOLS.reduce(
+  (n, sym) => n + (structural.bySymbol[sym]?.trueUsage ?? 0),
+  0,
+);
 const astTrue = NOISY_SYMBOLS.reduce((n, sym) => n + (ast.bySymbol[sym]?.trueUsage ?? 0), 0);
 
 console.error("\n=== Interpretation ===");
@@ -273,7 +285,11 @@ console.log(
     grep_word_counts: grepCounts,
     grep_total_noisy_four: grepTotal,
     pdf_reference: { miru_scanner_hits: 2475, grep_precise_hits: 70 },
-    structural: { chunks: structural.chunks, index_ms: structural.indexMs, by_symbol: structural.bySymbol },
+    structural: {
+      chunks: structural.chunks,
+      index_ms: structural.indexMs,
+      by_symbol: structural.bySymbol,
+    },
     ast: { chunks: ast.chunks, index_ms: ast.indexMs, by_symbol: ast.bySymbol },
     miru_noise_top_k: { structural: structNoise, ast: astNoise },
     miru_true_usage_top_k: { structural: structTrue, ast: astTrue },

@@ -19,6 +19,21 @@ export function miruVersion(): string {
   return packageJson.version;
 }
 
+/**
+ * Index cache epoch — zero-copy from package.json semver.
+ * - 0.x releases: `0.{minor}` (chunking may break on minor bumps pre-1.0).
+ * - 1.x+: major version only.
+ */
+export function indexCacheEpoch(): string {
+  const parts = packageJson.version.split(".");
+  const major = parts[0] ?? "0";
+  const minor = parts[1] ?? "0";
+  if (major === "0") {
+    return `0.${minor}`;
+  }
+  return major;
+}
+
 export function isVersionNewer(latest: string, current: string): boolean {
   const parse = (v: string): [number, number, number] | null => {
     const match = v.trim().match(/^(\d+)\.(\d+)\.(\d+)/);

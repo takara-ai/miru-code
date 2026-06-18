@@ -114,7 +114,46 @@ Pass the **project root** as `repo` for local projects. Prefer these over Grep, 
 
 Hybrid search: Takara embeddings + BM25 + fusion + reranking. Indexes **code**, **docs**, **config**, or **all** via `--content`.
 
-Disk cache: `~/Library/Caches/miru` (macOS), `~/.cache/miru` (Linux). MCP watches local files and updates incrementally; run `miru clear .` after big refactors when using CLI only.
+Disk cache: `~/Library/Caches/miru` (macOS), `~/.cache/miru` (Linux). MCP watches local files and updates incrementally; run `miru clear .` after big refactors when using CLI only. Upgrading Miru invalidates stale indexes automatically when the package version epoch changes.
+
+### Chunking & languages
+
+Miru chunks source in tiers: **AST** (tree-sitter, default) → **structural** heuristics → **line** splits.
+
+**AST chunking** — 22 languages (syntax-aware boundaries via vendored `web-tree-sitter` grammars):
+
+| Language | Typical extensions |
+|----------|-------------------|
+| bash | `.sh`, `.bash`, `.zsh` |
+| c | `.c` |
+| cpp | `.cpp`, `.h`, `.hpp`, etc. |
+| csharp | `.cs` |
+| css | `.css` |
+| dart | `.dart` |
+| elixir | `.ex`, `.exs` |
+| embeddedtemplate | ERB-style templates |
+| go | `.go` |
+| haskell | `.hs` |
+| html | `.html` |
+| java | `.java` |
+| javascript | `.js`, `.jsx`, `.mjs`, `.cjs` |
+| json | `.json` |
+| ocaml | `.ml`, etc. |
+| php | `.php` |
+| python | `.py`, `.pyi` |
+| ruby | `.rb` |
+| rust | `.rs` |
+| scala | `.scala` |
+| solidity | `.sol` |
+| typescript | `.ts`, `.mts`, `.cts` |
+
+**Also shipped:** `.tsx` uses a dedicated TSX grammar; extra OCaml and PHP-only grammars are vendored alongside the main set.
+
+**Structural fallback** (brace/indent heuristics when AST is unavailable): python, go, typescript, javascript, cpp, c.
+
+**Line fallback:** everything else that gets indexed (kotlin, swift, vue, sql, etc.) — still searchable, coarser chunks.
+
+Set `MIRU_AST_CHUNKING=0` to disable AST and use structural → lines only.
 
 ## CLI reference
 
@@ -153,6 +192,7 @@ const results = await index.search({ query: "BM25 tokenize", topK: 10 });
 | `MIRU_MAX_INDEX_FILES` | Cap files indexed per operation |
 | `MIRU_ALLOW_HTTP_GIT` | Set `1` to allow plain `http://` git clones |
 | `MIRU_MCP_WATCH` | Set `0` to disable MCP file watch |
+| `MIRU_AST_CHUNKING` | Set `0` to disable tree-sitter AST chunking |
 | `NO_COLOR` | Disable CLI colors |
 
 See `.env.example` for more.

@@ -13,8 +13,13 @@ import { resolveSemanticStorage, semanticStorageFromMetadata } from "./index/vec
 import type { Chunk, ContentType } from "./types.ts";
 import { chunkFromDict } from "./types.ts";
 import { computeSourceCacheKey } from "./utils.ts";
+import { indexCacheEpoch } from "./version.ts";
 
 export function resolveCacheFolder(): string {
+  const override = process.env.MIRU_CACHE_HOME?.trim();
+  if (override) {
+    return override;
+  }
   const name = "miru";
   const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
   let base: string;
@@ -43,6 +48,9 @@ function metadataMatches(
   content: ContentType[],
 ): boolean {
   try {
+    if (metadata.index_epoch !== indexCacheEpoch()) {
+      return false;
+    }
     const stored = metadata.content_type as ContentType[];
     const model = metadata.embedding_model as string;
     if (model !== embeddingModel) {
@@ -87,6 +95,9 @@ export async function getValidatedCache(
   const model = embeddingModel ?? resolveEmbeddingModel();
   const metadata = JSON.parse(await Bun.file(paths.metadata).text()) as Record<string, unknown>;
   if (!metadataMatches(metadata, model, content)) {
+    if (metadata.index_epoch !== indexCacheEpoch()) {
+      await rm(indexPath, { recursive: true, force: true });
+    }
     return null;
   }
 

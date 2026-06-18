@@ -31,17 +31,11 @@ export interface EmbeddingBackend {
 }
 
 export function resolveEmbeddingModel(): string {
-  return envFirstString(
-    ["MIRU_OPENAI_EMBEDDING_MODEL", "OPENAI_EMBEDDING_MODEL"],
-    DEFAULT_MODEL,
-  );
+  return envFirstString(["MIRU_OPENAI_EMBEDDING_MODEL", "OPENAI_EMBEDDING_MODEL"], DEFAULT_MODEL);
 }
 
 export function resolveMaxEmbedChars(): number {
-  return (
-    envOptionalInt(["MIRU_MAX_EMBED_CHARS"], 256) ??
-    DEFAULT_MAX_EMBED_CHARS
-  );
+  return envOptionalInt(["MIRU_MAX_EMBED_CHARS"], 256) ?? DEFAULT_MAX_EMBED_CHARS;
 }
 
 function splitIntoWindows(text: string, maxChars: number): string[] {
@@ -123,10 +117,10 @@ export function resolveEmbeddingBatchSize(): number {
 }
 
 export function resolveEmbeddingBaseUrl(): string {
-  return envFirstString(
-    ["MIRU_OPENAI_BASE_URL", "OPENAI_BASE_URL"],
-    DEFAULT_BASE_URL,
-  ).replace(/\/$/, "");
+  return envFirstString(["MIRU_OPENAI_BASE_URL", "OPENAI_BASE_URL"], DEFAULT_BASE_URL).replace(
+    /\/$/,
+    "",
+  );
 }
 
 interface EmbeddingResponseItem {

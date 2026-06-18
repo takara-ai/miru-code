@@ -6,9 +6,7 @@ export type SemanticStorage = "int8" | "float32";
 
 /** Default: int8 quantized vectors (~4x less RAM). Set MIRU_FLOAT_VECTORS=1 for float32. */
 export function resolveSemanticStorage(): SemanticStorage {
-  return process.env.MIRU_FLOAT_VECTORS === "1"
-    ? "float32"
-    : "int8";
+  return process.env.MIRU_FLOAT_VECTORS === "1" ? "float32" : "int8";
 }
 
 export function semanticStorageFromMetadata(metadata: Record<string, unknown>): SemanticStorage {

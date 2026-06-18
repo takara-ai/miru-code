@@ -17,6 +17,7 @@ import { hybridSearch, searchSemanticOnly } from "./search.ts";
 import type { Chunk, ContentType, SearchResult } from "./types.ts";
 import { chunkKey, chunkToDict } from "./types.ts";
 import { computeSourceCacheKey, isGitUrl } from "./utils.ts";
+import { indexCacheEpoch } from "./version.ts";
 
 export class MiruIndex {
   readonly embeddings: EmbeddingBackend;
@@ -204,6 +205,7 @@ export class MiruIndex {
       semantic: this.semanticIndex,
       chunks: this.chunks.map(chunkToDict),
       metadata: {
+        index_epoch: indexCacheEpoch(),
         root_path: this.root,
         time: Date.now() / 1000,
         embedding_model: this.embeddingModel,

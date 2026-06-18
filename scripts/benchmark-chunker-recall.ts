@@ -49,10 +49,7 @@ interface ArmResult {
   meanRelevantFound: number;
 }
 
-async function evaluateArm(
-  bench: (typeof REPO_BENCHES)[number],
-  ast: boolean,
-): Promise<ArmResult> {
+async function evaluateArm(bench: (typeof REPO_BENCHES)[number], ast: boolean): Promise<ArmResult> {
   process.env.MIRU_AST_CHUNKING = ast ? "1" : "0";
   await clearCache(bench.path);
 
@@ -105,9 +102,7 @@ if (available.length === 0) {
   process.exit(1);
 }
 
-console.error(
-  `Chunker recall@${TOP_K}: structural (MIRU_AST_CHUNKING=0) vs AST (default)\n`,
-);
+console.error(`Chunker recall@${TOP_K}: structural (MIRU_AST_CHUNKING=0) vs AST (default)\n`);
 
 type RepoComparison = {
   name: string;
@@ -163,8 +158,10 @@ const structuralRecall =
 const astRecall =
   comparisons.reduce((s, c) => s + c.ast.recallAtK * c.ast.queries.length, 0) / (nQueries || 1);
 const structuralRel =
-  comparisons.reduce((s, c) => s + c.structural.meanRelevantFound * c.structural.queries.length, 0) /
-  (nQueries || 1);
+  comparisons.reduce(
+    (s, c) => s + c.structural.meanRelevantFound * c.structural.queries.length,
+    0,
+  ) / (nQueries || 1);
 const astRel =
   comparisons.reduce((s, c) => s + c.ast.meanRelevantFound * c.ast.queries.length, 0) /
   (nQueries || 1);
@@ -176,9 +173,15 @@ const pass = allRegressions.length === 0 && astRecall >= structuralRecall - 0.00
 
 console.error("=== AGGREGATE ===");
 console.error(`  queries:     ${nQueries} across ${comparisons.length} repos`);
-console.error(`  structural  recall@${TOP_K}=${(structuralRecall * 100).toFixed(1)}%  mean_rel=${structuralRel.toFixed(2)}`);
-console.error(`  ast         recall@${TOP_K}=${(astRecall * 100).toFixed(1)}%  mean_rel=${astRel.toFixed(2)}`);
-console.error(`  delta       recall=${((astRecall - structuralRecall) * 100).toFixed(1)}pp  rel=${(astRel - structuralRel).toFixed(2)}`);
+console.error(
+  `  structural  recall@${TOP_K}=${(structuralRecall * 100).toFixed(1)}%  mean_rel=${structuralRel.toFixed(2)}`,
+);
+console.error(
+  `  ast         recall@${TOP_K}=${(astRecall * 100).toFixed(1)}%  mean_rel=${astRel.toFixed(2)}`,
+);
+console.error(
+  `  delta       recall=${((astRecall - structuralRecall) * 100).toFixed(1)}pp  rel=${(astRel - structuralRel).toFixed(2)}`,
+);
 console.error(`\n${pass ? "PASS" : "FAIL"}: ${allRegressions.length} per-query regressions`);
 
 console.log(
