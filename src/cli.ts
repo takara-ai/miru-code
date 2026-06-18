@@ -36,6 +36,7 @@ import {
   resolveContent,
   resolveSearchPath,
 } from "./utils.ts";
+import { maybeNotifyUpdate, miruVersion } from "./version.ts";
 
 loadEnvFiles();
 normalizeTakaraApiKeyEnv();
@@ -54,6 +55,8 @@ const CLI_COMMANDS = new Set([
   "help",
   "-h",
   "--help",
+  "-v",
+  "--version",
 ]);
 
 const AGENTS = new Set<AgentId>(AGENT_IDS);
@@ -269,6 +272,11 @@ async function runCli(argv: string[]): Promise<void> {
     return;
   }
 
+  if (command === "-v" || command === "--version") {
+    console.log(miruVersion());
+    return;
+  }
+
   if (command === "help") {
     const topic = rest[0];
     if (!topic) {
@@ -444,13 +452,24 @@ async function runMcpWithCredentials(argv: string[]): Promise<void> {
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const first = argv[0];
+
+  if (first === "-v" || first === "--version") {
+    console.log(miruVersion());
+    return;
+  }
+
   if (first === "hook-guard") {
     process.exit(await runSearchGuardFromStdin());
   }
+
+  const updateNotice = maybeNotifyUpdate();
+
   if (first && CLI_COMMANDS.has(first)) {
-    await runCli(argv);
+    await Promise.all([runCli(argv), updateNotice]);
     return;
   }
+
+  await updateNotice;
   await runMcpWithCredentials(argv);
 }
 

@@ -45,7 +45,7 @@ export function printMainHelp(): void {
   writeStdout("  miru setup && miru install");
   writeStdout('  miru search "auth middleware" ./src');
   writeStdout("");
-  hint("miru help <command>  ·  miru -h for environment variables");
+  hint("miru help <command>  ·  miru -h for environment variables  ·  miru -v for version");
   writeStdout("");
 }
 
