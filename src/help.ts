@@ -55,6 +55,8 @@ export function printEnvHelp(): void {
   writeStdout("      Takara bearer token for embeddings");
   writeStdout("  MIRU_OPENAI_BASE_URL");
   writeStdout("      Default: https://infer.takara.ai/v1");
+  writeStdout("  MIRU_OPENAI_EMBEDDING_MODEL");
+  writeStdout("      Default: ds1-miru-int8");
   writeStdout("  MIRU_CONCURRENCY");
   writeStdout("      Parallel workers (default: CPUs − 2)");
   writeStdout("");

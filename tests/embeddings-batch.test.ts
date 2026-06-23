@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { OpenAIEmbeddingBackend, sanitizeEmbeddingInput } from "../src/embeddings/openai.ts";
+import {
+  OpenAIEmbeddingBackend,
+  dequantizeEmbedding,
+  sanitizeEmbeddingInput,
+} from "../src/embeddings/openai.ts";
 
 function oneHot(dim: number, index: number): number[] {
   const vec = Array.from({ length: dim }, () => 0);
@@ -19,6 +23,58 @@ describe("sanitizeEmbeddingInput", () => {
 
     const body = JSON.stringify({ input: [sanitizeEmbeddingInput(loneHigh)] });
     expect(() => JSON.parse(body)).not.toThrow();
+  });
+});
+
+describe("dequantizeEmbedding", () => {
+  test("dequantizes native int8 payloads", () => {
+    const vec = dequantizeEmbedding({
+      dtype: "i8",
+      values: [127, -127, 0],
+      scale: 0.01,
+      zero_point: 0,
+    });
+    expect(vec[0]).toBeCloseTo(1.27, 5);
+    expect(vec[1]).toBeCloseTo(-1.27, 5);
+    expect(vec[2]).toBeCloseTo(0, 5);
+  });
+
+  test("passes float arrays through unchanged", () => {
+    const vec = dequantizeEmbedding([0.5, -0.25]);
+    expect(vec[0]).toBeCloseTo(0.5, 5);
+    expect(vec[1]).toBeCloseTo(-0.25, 5);
+  });
+});
+
+describe("OpenAIEmbeddingBackend int8 responses", () => {
+  test("embedDocuments accepts native int8 embedding objects", async () => {
+    const backend = new OpenAIEmbeddingBackend({
+      model: "ds1-miru-int8",
+      dimensions: 3,
+      batchSize: 32,
+      maxEmbedChars: 1300,
+      client: {
+        async createEmbeddings(input) {
+          const texts = Array.isArray(input) ? input : [input];
+          return {
+            data: texts.map((_, index) => ({
+              index,
+              embedding: {
+                dtype: "i8" as const,
+                values: index === 0 ? [127, 0, 0] : [0, 127, 0],
+                scale: 1 / 127,
+                zero_point: 0,
+              },
+            })),
+          };
+        },
+      },
+    });
+
+    const vectors = await backend.embedDocuments(["a", "b"]);
+    expect(vectors).toHaveLength(2);
+    expect(vectors[0]?.[0]).toBeCloseTo(1, 3);
+    expect(vectors[1]?.[1]).toBeCloseTo(1, 3);
   });
 });
 

@@ -1,15 +1,17 @@
 name: Release
 
-# Bun for install, test, and pack. npm publish only for the registry upload —
-# bun publish does not support npm Trusted Publishing (OIDC) yet:
-# https://github.com/oven-sh/bun/issues/22423
+# Publishes with `bun publish` (pack + lifecycle scripts + registry upload).
 #
-# One-time npm setup (https://www.npmjs.com/package/@takara-ai/miru-code/access):
-#   1. First publish: bun publish (logged in locally)
-#   2. Trusted Publisher → GitHub Actions
-#      - Organization: takara-ai
-#      - Repository: miru-code
-#      - Workflow filename: release.yml
+# Auth: bun publish does not support npm Trusted Publishing (OIDC) yet:
+#   https://github.com/oven-sh/bun/issues/22423
+#   https://github.com/oven-sh/bun/pull/29374
+#
+# Add an npm automation token as the NPM_TOKEN repository secret:
+#   https://www.npmjs.com/settings/~tokens → Generate New Token → Granular Access Token
+#   Packages: read/write for @takara-ai/miru-code
+#
+# bun publish reads NPM_CONFIG_TOKEN (mapped from NPM_TOKEN below).
+# prepublishOnly in package.json runs vendor-grammars, typecheck, and test.
 
 on:
   release:
@@ -17,7 +19,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   publish:
@@ -32,23 +33,10 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Verify package
-        run: |
-          bun run typecheck
-          bun test
-
-      - name: Pack tarball
-        id: pack
-        run: |
-          bun pm pack
-          echo "tarball=$(ls -1 takara-ai-miru-code-*.tgz | head -1)" >> "$GITHUB_OUTPUT"
-
-      # npm CLI 11.x required for OIDC; do not set registry-url on setup-node.
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
+      - name: Lint
+        run: bun run lint
 
       - name: Publish to npm
-        run: npm publish "${{ steps.pack.outputs.tarball }}" --access public
+        run: bun publish --access public --tolerate-republish
         env:
-          NPM_CONFIG_PROVENANCE: false
+          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -188,6 +188,7 @@ const results = await index.search({ query: "BM25 tokenize", topK: 10 });
 |----------|-------|
 | `TAKARA_API_KEY` | Required |
 | `MIRU_OPENAI_BASE_URL` | Default `https://infer.takara.ai/v1` |
+| `MIRU_OPENAI_EMBEDDING_MODEL` | Default `ds1-miru-int8` |
 | `MIRU_WORKSPACE_ROOT` | Restrict MCP local `repo` paths to this directory |
 | `MIRU_MAX_INDEX_FILES` | Cap files indexed per operation |
 | `MIRU_ALLOW_HTTP_GIT` | Set `1` to allow plain `http://` git clones |

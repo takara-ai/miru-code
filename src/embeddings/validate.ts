@@ -1,4 +1,5 @@
 import {
+  embeddingDimensions,
   resolveEmbeddingBaseUrl,
   resolveEmbeddingDimensions,
   resolveEmbeddingModel,
@@ -65,21 +66,29 @@ export async function validateEmbeddingApiKey(options: {
 
   try {
     const payload = (await response.json()) as {
-      data?: Array<{ embedding?: number[] }>;
+      data?: Array<{ embedding?: Parameters<typeof embeddingDimensions>[0] }>;
     };
     const embedding = payload.data?.[0]?.embedding;
-    if (!embedding || embedding.length === 0) {
+    if (!embedding) {
       return {
         valid: false,
         status: response.status,
         message: "Embedding API returned an empty response.",
       };
     }
-    if (dimensions != null && embedding.length !== dimensions) {
+    const dim = embeddingDimensions(embedding);
+    if (dim === 0) {
       return {
         valid: false,
         status: response.status,
-        message: `Expected ${dimensions} embedding dimensions, got ${embedding.length}.`,
+        message: "Embedding API returned an empty response.",
+      };
+    }
+    if (dimensions != null && dim !== dimensions) {
+      return {
+        valid: false,
+        status: response.status,
+        message: `Expected ${dimensions} embedding dimensions, got ${dim}.`,
       };
     }
   } catch {

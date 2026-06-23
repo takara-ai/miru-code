@@ -1,0 +1,18 @@
+# .github/workflows/release-please.yml
+name: Release Please (central template)
+
+# doesn't need workflow call, only use : for nested data
+on:
+  push:
+    branches:
+    # could be exapnded for coverage of other branches
+      - main
+
+jobs:
+  release:
+    # calls your central workflow
+    uses: takara-ai/.github/.github/workflows/release-please.yml@main
+    with:
+      release-type: node
+    # inherit the caller's GITHUB_TOKEN so Release Please can read PRs/commits
+    secrets: inherit

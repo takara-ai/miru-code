@@ -7,7 +7,7 @@ import { persistencePaths } from "../src/index/persistence.ts";
 import { indexCacheEpoch } from "../src/version.ts";
 import packageJson from "../package.json";
 
-const EMBEDDING_MODEL = "ds1-potion-code-16m";
+const EMBEDDING_MODEL = "ds1-miru-int8";
 
 describe("index cache epoch", () => {
   let cacheRoot = "";

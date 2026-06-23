@@ -1,15 +1,16 @@
 import { mapPool, resolveWorkerConcurrency } from "../concurrency.ts";
 import { envFirstString, envOptionalInt, resolveEmbeddingApiKey } from "../env.ts";
 
-const DEFAULT_MODEL = "ds1-potion-code-16m";
+const DEFAULT_MODEL = "ds1-miru-int8";
 const DEFAULT_BASE_URL = "https://infer.takara.ai/v1";
 const DEFAULT_BATCH_SIZE = 32;
 const DEFAULT_MAX_EMBED_CHARS = 1300;
 const WINDOW_OVERLAP_CHARS = 120;
 
-/** Native output size for Takara ds1-potion-code-16m (override with MIRU_EMBEDDING_DIMENSIONS). */
+/** Native output size per model (override with MIRU_EMBEDDING_DIMENSIONS). */
 const MODEL_DEFAULT_DIMENSIONS: Record<string, number> = {
   "ds1-potion-code-16m": 256,
+  "ds1-miru-int8": 256,
 };
 
 export interface EmbeddingTransportStats {
@@ -123,9 +124,47 @@ export function resolveEmbeddingBaseUrl(): string {
   );
 }
 
+interface Int8Embedding {
+  dtype: "i8";
+  values: number[];
+  scale: number;
+  zero_point: number;
+}
+
+type EmbeddingPayload = number[] | Int8Embedding;
+
 interface EmbeddingResponseItem {
   index: number;
-  embedding: number[];
+  embedding: EmbeddingPayload;
+}
+
+function isInt8Embedding(embedding: EmbeddingPayload): embedding is Int8Embedding {
+  return (
+    typeof embedding === "object" &&
+    embedding !== null &&
+    !Array.isArray(embedding) &&
+    embedding.dtype === "i8" &&
+    Array.isArray(embedding.values)
+  );
+}
+
+export function embeddingDimensions(embedding: EmbeddingPayload): number {
+  return isInt8Embedding(embedding) ? embedding.values.length : embedding.length;
+}
+
+export function dequantizeEmbedding(embedding: EmbeddingPayload): Float32Array {
+  if (Array.isArray(embedding)) {
+    return new Float32Array(embedding);
+  }
+  if (isInt8Embedding(embedding)) {
+    const { values, scale, zero_point } = embedding;
+    const out = new Float32Array(values.length);
+    for (let i = 0; i < values.length; i++) {
+      out[i] = ((values[i] ?? 0) - zero_point) * scale;
+    }
+    return out;
+  }
+  throw new Error("Embedding API returned unsupported embedding format");
 }
 
 interface EmbeddingResponse {
@@ -402,7 +441,7 @@ function vectorsFromResponse(data: EmbeddingResponseItem[], expected: number): F
   const byIndex = new Map<number, Float32Array>();
   for (const item of data) {
     if (item.index >= 0 && item.index < expected) {
-      byIndex.set(item.index, new Float32Array(item.embedding));
+      byIndex.set(item.index, dequantizeEmbedding(item.embedding));
     }
   }
   if (byIndex.size !== expected) {

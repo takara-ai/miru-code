@@ -18,7 +18,7 @@ describe("validateEmbeddingApiKey", () => {
     const result = await validateEmbeddingApiKey({
       apiKey: "good-key",
       baseUrl: "https://example.test/v1",
-      model: "ds1-potion-code-16m",
+      model: "ds1-miru-int8",
       dimensions: 256,
     });
     expect(result.valid).toBe(true);
@@ -32,7 +32,7 @@ describe("validateEmbeddingApiKey", () => {
     const result = await validateEmbeddingApiKey({
       apiKey: "bad-key",
       baseUrl: "https://example.test/v1",
-      model: "ds1-potion-code-16m",
+      model: "ds1-miru-int8",
       dimensions: 256,
     });
     expect(result.valid).toBe(false);
@@ -49,7 +49,7 @@ describe("validateEmbeddingApiKey", () => {
     const result = await validateEmbeddingApiKey({
       apiKey: "good-key",
       baseUrl: "https://example.test/v1",
-      model: "ds1-potion-code-16m",
+      model: "ds1-miru-int8",
       dimensions: 256,
     });
     expect(result.valid).toBe(false);
