@@ -1,5 +1,9 @@
 #!/usr/bin/env bun
-import { MCP_SCHEMA_PATH, MCP_SCHEMA_URL, loadOfficialMcpSchema } from "../tests/helpers/mcp-schema.ts";
+import {
+  loadOfficialMcpSchema,
+  MCP_SCHEMA_PATH,
+  MCP_SCHEMA_URL,
+} from "../tests/helpers/mcp-schema.ts";
 
 await loadOfficialMcpSchema();
 const size = (await Bun.file(MCP_SCHEMA_PATH).arrayBuffer()).byteLength;
