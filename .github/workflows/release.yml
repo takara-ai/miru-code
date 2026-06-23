@@ -1,30 +1,31 @@
-name: Release
+name: Publish Package
 
-# Publishes with `bun pm pack` + `bunx npm publish --provenance` (tarball upload).
+# Publishes with `bun pm pack` + `npm publish` (tarball upload).
 #
 # Auth: npm Trusted Publishing (OIDC) — no NPM_TOKEN or NPM_CONFIG_TOKEN.
 # Configure on npmjs.com: Package → Settings → Trusted Publisher → GitHub Actions
 #   Repository: takara-ai/miru-code, Workflow: release.yml, Environment: (none)
 #
 # `id-token: write` lets GitHub mint an OIDC token for npm provenance attestation.
-# npm CLI 11.5.1+ is required; `bunx npm` pulls a current npm without setup-node.
+# `actions/setup-node@v6` with `registry-url` wires npm to OIDC trusted publishing.
 #
 # `bun pm pack` skips lifecycle scripts, so prepublishOnly steps (vendor-grammars,
 # typecheck, test) run explicitly before pack.
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - 'v*'
 
 permissions:
-  contents: read
   id-token: write
+  contents: read
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v6
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -39,8 +40,14 @@ jobs:
       - name: Prepublish checks
         run: bun run vendor-grammars && bun run typecheck && bun test
 
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+
       - name: Pack tarball
         run: bun pm pack
 
       - name: Publish to npm
-        run: bunx npm publish --access public ./takara-ai-miru-code-*.tgz
+        run: npm publish --access public ./takara-ai-miru-code-*.tgz
