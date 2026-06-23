@@ -1,4 +1,3 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod";
 import packageJson from "../../package.json";
 import {
@@ -20,14 +19,15 @@ import {
   resolveChunk,
 } from "../utils.ts";
 import { getIndexForRepo, type IndexCache, toolText } from "./index-cache.ts";
+import { MiruMcpServer } from "./runtime.ts";
 
 const REPO_DESCRIPTION =
   "https:// or http:// git URL (e.g. https://github.com/org/repo) or local directory path to index and search. " +
   "Pass the project root for local workspaces. " +
   "The index is built on the first tool call and cached for the session.";
 
-export function createMcpServer(cache: IndexCache): McpServer {
-  const server = new McpServer(
+export function createMcpServer(cache: IndexCache): MiruMcpServer {
+  const server = new MiruMcpServer(
     {
       name: "miru",
       version: packageJson.version,
