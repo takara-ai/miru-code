@@ -33,7 +33,9 @@ for (const bench of benches) {
 
     console.log(`Q: ${spec.query}`);
     console.log(`Expected (${spec.relevant.length}): ${spec.relevant.join(", ")}`);
-    console.log(`Recall@${TOP_K}: ${relevantFound > 0 ? "PASS" : "FAIL"} (${relevantFound}/${spec.relevant.length} files)`);
+    console.log(
+      `Recall@${TOP_K}: ${relevantFound > 0 ? "PASS" : "FAIL"} (${relevantFound}/${spec.relevant.length} files)`,
+    );
     for (let i = 0; i < results.length; i++) {
       const r = results[i]!;
       const hits = spec.relevant.filter((want) => pathMatches(r.chunk.file_path, want));

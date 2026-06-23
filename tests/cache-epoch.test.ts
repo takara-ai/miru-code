@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, rm, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import packageJson from "../package.json";
 import { findIndexCachePath, getValidatedCache } from "../src/cache.ts";
 import { persistencePaths } from "../src/index/persistence.ts";
 import { indexCacheEpoch } from "../src/version.ts";
-import packageJson from "../package.json";
 
 const EMBEDDING_MODEL = "ds1-miru-int8";
 

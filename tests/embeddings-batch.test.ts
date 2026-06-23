@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
-  OpenAIEmbeddingBackend,
   dequantizeEmbedding,
+  OpenAIEmbeddingBackend,
   sanitizeEmbeddingInput,
 } from "../src/embeddings/openai.ts";
 
