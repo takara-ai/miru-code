@@ -1,17 +1,16 @@
 name: Release
 
-# Publishes with `bun publish` (pack + lifecycle scripts + registry upload).
+# Publishes with `bun pm pack` + `bunx npm publish --provenance` (tarball upload).
 #
-# Auth: bun publish does not support npm Trusted Publishing (OIDC) yet:
-#   https://github.com/oven-sh/bun/issues/22423
-#   https://github.com/oven-sh/bun/pull/29374
+# Auth: npm Trusted Publishing (OIDC) — no NPM_TOKEN or NPM_CONFIG_TOKEN.
+# Configure on npmjs.com: Package → Settings → Trusted Publisher → GitHub Actions
+#   Repository: takara-ai/miru-code, Workflow: release.yml, Environment: (none)
 #
-# Add an npm automation token as the NPM_TOKEN repository secret:
-#   https://www.npmjs.com/settings/~tokens → Generate New Token → Granular Access Token
-#   Packages: read/write for @takara-ai/miru-code
+# `id-token: write` lets GitHub mint an OIDC token for npm provenance attestation.
+# npm CLI 11.5.1+ is required; `bunx npm` pulls a current npm without setup-node.
 #
-# bun publish reads NPM_CONFIG_TOKEN (mapped from NPM_TOKEN below).
-# prepublishOnly in package.json runs vendor-grammars, typecheck, and test.
+# `bun pm pack` skips lifecycle scripts, so prepublishOnly steps (vendor-grammars,
+# typecheck, test) run explicitly before pack.
 
 on:
   release:
@@ -19,6 +18,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   publish:
@@ -36,7 +36,11 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      - name: Prepublish checks
+        run: bun run vendor-grammars && bun run typecheck && bun test
+
+      - name: Pack tarball
+        run: bun pm pack
+
       - name: Publish to npm
-        run: bun publish --access public --tolerate-republish
-        env:
-          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: bunx npm publish --provenance --access public ./takara-ai-miru-code-*.tgz
