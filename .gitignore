@@ -36,3 +36,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # Finder (MacOS) folder config
 .DS_Store
+
+# MCP conformance tests download the official schema locally (see scripts/vendor-mcp-schema.ts)
+tests/fixtures/mcp/*.json

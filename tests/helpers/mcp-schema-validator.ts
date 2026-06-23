@@ -1,14 +1,9 @@
 import type { ErrorObject, ValidateFunction } from "ajv";
 import Ajv2020 from "ajv/dist/2020";
 import addFormats from "ajv-formats";
-import officialSchema from "../fixtures/mcp/schema-2025-11-25.json";
+import { loadOfficialMcpSchema, type McpSchemaDocument } from "./mcp-schema.ts";
 
-type McpSchemaDocument = {
-  $schema: string;
-  $defs: Record<string, Record<string, unknown>>;
-};
-
-const schemaDoc = officialSchema as McpSchemaDocument;
+const schemaDoc = (await loadOfficialMcpSchema()) as McpSchemaDocument;
 const ajv = new Ajv2020({ allErrors: true, strict: false });
 addFormats(ajv);
 
