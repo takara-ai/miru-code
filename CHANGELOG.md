@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.4](https://github.com/takara-ai/miru-code/compare/v1.0.3...v1.0.4) (2026-06-23)
+
+
+### Bug Fixes
+
+* **mcp:** replace SDK with Bun-native stdio server ([8ad3380](https://github.com/takara-ai/miru-code/commit/8ad33807f3b0f76a47c8451dae5ca5cccfc06e24))
+
 ## 1.0.0 (2026-06-23)
 
 
