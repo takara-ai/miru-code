@@ -22,9 +22,15 @@ import {
 } from "./help.ts";
 import { runSearchGuardFromStdin } from "./installer/hooks/search-guard.ts";
 import { runInstaller } from "./installer/installer.ts";
+import { promptConfirm } from "./installer/prompt.ts";
 import { serveMcp } from "./mcp/serve.ts";
 import { MiruIndex } from "./miru-index.ts";
-import { ensureCredentials, runClearCredentials, runSetup } from "./setup.ts";
+import {
+  canPromptForCredentials,
+  ensureCredentials,
+  runClearCredentials,
+  runSetup,
+} from "./setup.ts";
 import { withSpinner } from "./spinner.ts";
 import type { ContentType, SearchResult } from "./types.ts";
 import {
@@ -348,7 +354,18 @@ async function runCli(argv: string[]): Promise<void> {
       await runClearCredentials();
       return;
     }
-    await runSetup({ apiKey, force });
+    const { newlySaved } = await runSetup({ apiKey, force });
+    if (newlySaved) {
+      const offerInstall = canPromptForCredentials() && !apiKey && !force;
+      if (offerInstall) {
+        const install = await promptConfirm("Configure Miru in your coding agent now?");
+        if (install) {
+          await runInstaller("install");
+          return;
+        }
+      }
+      hint("Run `miru install` to add Miru to your IDE.");
+    }
     return;
   }
 

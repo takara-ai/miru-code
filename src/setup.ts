@@ -28,16 +28,21 @@ export interface RunSetupOptions {
   skipValidation?: boolean;
 }
 
-export async function runSetup(options: RunSetupOptions = {}): Promise<string> {
+export interface RunSetupResult {
+  path: string;
+  newlySaved: boolean;
+}
+
+export async function runSetup(options: RunSetupOptions = {}): Promise<RunSetupResult> {
   if (!options.force && hasTakaraApiKeyInEnv()) {
     const path = resolveCredentialsPath();
     const stored = await readStoredCredentials();
     if (stored) {
       info(`API key already configured (env + ${path}). Use --force to replace stored key.`);
-      return path;
+      return { path, newlySaved: false };
     }
     info("API key already set via environment variable. Stored credentials unchanged.");
-    return resolveCredentialsPath();
+    return { path: resolveCredentialsPath(), newlySaved: false };
   }
 
   if (!options.force) {
@@ -45,7 +50,7 @@ export async function runSetup(options: RunSetupOptions = {}): Promise<string> {
     if (stored && !options.apiKey) {
       info(`API key already stored at ${resolveCredentialsPath()}. Use --force to replace.`);
       process.env.TAKARA_API_KEY = stored.takara_api_key;
-      return resolveCredentialsPath();
+      return { path: resolveCredentialsPath(), newlySaved: false };
     }
   }
 
@@ -75,7 +80,7 @@ export async function runSetup(options: RunSetupOptions = {}): Promise<string> {
   success(`Saved credentials to ${path}`);
   hint("MCP loads this key from credentials.json automatically.");
   writeStderr("");
-  return path;
+  return { path, newlySaved: true };
 }
 
 export async function runClearCredentials(): Promise<void> {

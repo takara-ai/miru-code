@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { saveStoredCredentials } from "../src/credentials.ts";
 import { TAKARA_API_KEY_ENV } from "../src/env.ts";
-import { canPromptForCredentials, ensureCredentials, hasCredentials } from "../src/setup.ts";
+import { canPromptForCredentials, ensureCredentials, hasCredentials, runSetup } from "../src/setup.ts";
 
 function snapshotKey(): string | undefined {
   return process.env[TAKARA_API_KEY_ENV];
@@ -78,5 +78,15 @@ describe("setup credentials", () => {
 
   test("canPromptForCredentials reflects stdin TTY", () => {
     expect(typeof canPromptForCredentials()).toBe("boolean");
+  });
+
+  test("runSetup returns newlySaved false when credentials already stored", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-setup-existing-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    await saveStoredCredentials("stored-token");
+
+    const result = await runSetup({ skipValidation: true });
+    expect(result.newlySaved).toBe(false);
+    expect(result.path).toContain("credentials.json");
   });
 });
