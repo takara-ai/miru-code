@@ -16,6 +16,13 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git branch or tag to publish
+        required: true
+        default: main
+        type: string
 
 permissions:
   id-token: write
@@ -26,6 +33,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
 
       - uses: oven-sh/setup-bun@v2
         with:
