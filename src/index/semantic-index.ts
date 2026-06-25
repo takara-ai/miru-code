@@ -6,6 +6,6 @@ export interface SemanticIndex {
   query(
     queryVector: Float32Array,
     k: number,
-    selector?: number[],
+    selector?: readonly number[],
   ): { indices: number[]; distances: number[] };
 }

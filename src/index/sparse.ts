@@ -1,7 +1,7 @@
 import type { Chunk } from "../types.ts";
 
 export function selectorToMask(
-  selector: number[] | null | undefined,
+  selector: readonly number[] | null | undefined,
   size: number,
 ): boolean[] | undefined {
   if (!selector || selector.length === 0) {

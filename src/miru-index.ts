@@ -9,6 +9,7 @@ import {
 } from "./embeddings/openai.ts";
 import { cloneGitRepository } from "./git.ts";
 import type { BM25Index } from "./index/bm25.ts";
+import { buildChunkSelector } from "./index/chunk-selector.ts";
 import { createIndexFromPath } from "./index/create.ts";
 import { applyIncrementalFileChanges } from "./index/incremental.ts";
 import { persistencePaths, saveIndexBundle } from "./index/persistence.ts";
@@ -335,24 +336,18 @@ export class MiruIndex {
     this.rebuildMappings();
   }
 
-  /**
-   * Union of chunk indices matching language and/or path filters.
-   *
-   * Returns `undefined` when no filters are given so search scans all chunks.
-   * Deduplicates when both filters match the same chunk.
-   */
-  private getSelector(filterLanguages?: string[], filterPaths?: string[]): number[] | undefined {
-    const selector: number[] = [];
-    for (const lang of filterLanguages ?? []) {
-      selector.push(...(this.languageMapping.get(lang) ?? []));
-    }
-    for (const fp of filterPaths ?? []) {
-      selector.push(...(this.fileMapping.get(fp) ?? []));
-    }
-    if (selector.length === 0) {
-      return undefined;
-    }
-    return [...new Set(selector)];
+  private getSelector(
+    filterLanguages?: string[],
+    filterPaths?: string[],
+  ): readonly number[] | undefined {
+    return buildChunkSelector(
+      {
+        fileMapping: this.fileMapping,
+        languageMapping: this.languageMapping,
+      },
+      filterLanguages,
+      filterPaths,
+    );
   }
 
   /**
