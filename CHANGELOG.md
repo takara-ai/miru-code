@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.5](https://github.com/takara-ai/miru-code/compare/v1.0.4...v1.0.5) (2026-06-25)
+
+
+### Bug Fixes
+
+* **cli:** prompt install after first-time setup ([e8c650b](https://github.com/takara-ai/miru-code/commit/e8c650b9db7fcf904f3dc98246c852fe624ec266))
+* **mcp:** position search as default for all code queries ([a74d221](https://github.com/takara-ai/miru-code/commit/a74d221c3e5704ffd5f78a08d942489f6b49ec01))
+
 ## [1.0.4](https://github.com/takara-ai/miru-code/compare/v1.0.3...v1.0.4) (2026-06-23)
 
 
