@@ -60,13 +60,17 @@ describe("concurrency", () => {
       test("never runs more than `concurrency` workers at once", async () => {
         let inFlight = 0;
         let maxInFlight = 0;
-        await run(Array.from({ length: 20 }, (_, i) => i), 3, async (n) => {
-          inFlight++;
-          maxInFlight = Math.max(maxInFlight, inFlight);
-          await Bun.sleep(2);
-          inFlight--;
-          return n;
-        });
+        await run(
+          Array.from({ length: 20 }, (_, i) => i),
+          3,
+          async (n) => {
+            inFlight++;
+            maxInFlight = Math.max(maxInFlight, inFlight);
+            await Bun.sleep(2);
+            inFlight--;
+            return n;
+          },
+        );
         expect(maxInFlight).toBeLessThanOrEqual(3);
       });
 
@@ -91,10 +95,14 @@ describe("concurrency", () => {
 
       test("processes every item exactly once", async () => {
         const seen: number[] = [];
-        const out = await run(Array.from({ length: 50 }, (_, i) => i), 8, async (n) => {
-          seen.push(n);
-          return n;
-        });
+        const out = await run(
+          Array.from({ length: 50 }, (_, i) => i),
+          8,
+          async (n) => {
+            seen.push(n);
+            return n;
+          },
+        );
         expect(out).toEqual(Array.from({ length: 50 }, (_, i) => i));
         expect(seen.sort((a, b) => a - b)).toEqual(Array.from({ length: 50 }, (_, i) => i));
       });
