@@ -42,9 +42,11 @@ export function createMcpServer(cache: IndexCache): MiruMcpServer {
     {
       description: `${MCP_SEARCH_TOOL_DESCRIPTION} Indexes \`repo\` on first call; later calls reuse the session cache.`,
       inputSchema: {
-        query: z.string().describe(
-          "Natural language or code query — your default for all code search in this repo.",
-        ),
+        query: z
+          .string()
+          .describe(
+            "Natural language or code query — your default for all code search in this repo.",
+          ),
         repo: z.string().describe(REPO_DESCRIPTION),
         top_k: z
           .number()

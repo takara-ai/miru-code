@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { saveStoredCredentials } from "../src/credentials.ts";
 import { TAKARA_API_KEY_ENV } from "../src/env.ts";
-import { canPromptForCredentials, ensureCredentials, hasCredentials, runSetup } from "../src/setup.ts";
+import {
+  canPromptForCredentials,
+  ensureCredentials,
+  hasCredentials,
+  runSetup,
+} from "../src/setup.ts";
 
 function snapshotKey(): string | undefined {
   return process.env[TAKARA_API_KEY_ENV];
