@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { loadAgentTemplate } from "../src/agents.ts";
 import {
   buildSubagentBody,
+  MCP_SEARCH_TOOL_DESCRIPTION,
   MCP_SERVER_INSTRUCTIONS,
   SEARCH_GUARD_EXPAND_HINT,
   SNIPPET_GUIDANCE,
@@ -36,5 +37,13 @@ describe("search-policy", () => {
         read: "read_file",
       }),
     ).toContain("grep_search");
+  });
+
+  test("MCP search description positions Miru as the default for all code search", () => {
+    expect(MCP_SEARCH_TOOL_DESCRIPTION).toContain("default search for all code search queries");
+    expect(MCP_SEARCH_TOOL_DESCRIPTION).toContain("best, fastest, and cheapest");
+    expect(MCP_SEARCH_TOOL_DESCRIPTION).toContain("better than");
+    expect(MCP_SEARCH_TOOL_DESCRIPTION).not.toContain("NOT only for large explorations");
+    expect(MCP_SERVER_INSTRUCTIONS).toContain("default for all code search queries");
   });
 });
