@@ -1,3 +1,11 @@
+/**
+ * On-disk index cache: location resolution, cache-key hashing, validation, and load.
+ *
+ * Each indexed source (local directory path or git URL + ref) maps to a SHA-256
+ * subdirectory under the Miru cache folder. `MiruIndex.fromPath` / `fromGit` call
+ * `getValidatedCache` before rebuilding; on hit they hydrate via `loadCachedIndex`.
+ */
+
 import { createHash } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -15,6 +23,7 @@ import { chunkFromDict } from "./types.ts";
 import { computeSourceCacheKey } from "./utils.ts";
 import { indexCacheEpoch } from "./version.ts";
 
+/** Platform cache root; override with `MIRU_CACHE_HOME`. */
 export function resolveCacheFolder(): string {
   const override = process.env.MIRU_CACHE_HOME?.trim();
   if (override) {
@@ -36,12 +45,19 @@ export function resolveCacheFolder(): string {
   return base;
 }
 
+/**
+ * Path to the saved index bundle for a source.
+ *
+ * `path` is a resolved local directory or a git cache key (`url` or `url@ref`).
+ * The on-disk folder name is SHA-256 of that key so paths stay short and safe.
+ */
 export function findIndexCachePath(path: string, ref?: string | null): string {
   const normalized = computeSourceCacheKey(path, ref);
   const subdir = createHash("sha256").update(normalized, "utf-8").digest("hex");
   return join(resolveCacheFolder(), subdir, "index");
 }
 
+/** True when saved metadata still matches the requested index configuration. */
 function metadataMatches(
   metadata: Record<string, unknown>,
   embeddingModel: string,
@@ -80,6 +96,15 @@ function metadataMatches(
   }
 }
 
+/**
+ * Return a cache directory path when a complete, compatible bundle exists; otherwise `null`.
+ *
+ * Checks persisted files, metadata (epoch, model, content types, vector storage),
+ * semantic index shape, and — for local indexes — that `root_path` and listed
+ * `file_paths` still exist (needed for incremental `applyFileChanges`).
+ *
+ * Stale `index_epoch` entries are deleted; other mismatches are left on disk.
+ */
 export async function getValidatedCache(
   path: string,
   embeddingModel: string | undefined,
@@ -132,6 +157,7 @@ export async function getValidatedCache(
   return indexPath;
 }
 
+/** Load BM25, semantic vectors, chunks, and metadata from a validated cache path. */
 export async function loadCachedIndex(indexPath: string): Promise<{
   bm25: Awaited<ReturnType<typeof loadBm25>>;
   semantic: Awaited<ReturnType<typeof loadSemantic>>;
@@ -147,6 +173,7 @@ export async function loadCachedIndex(indexPath: string): Promise<{
   return { bm25, semantic, chunks, metadata };
 }
 
+/** Remove the cached index bundle for a source (same key as `findIndexCachePath`). */
 export async function clearCache(path: string): Promise<void> {
   const indexPath = findIndexCachePath(path);
   await rm(indexPath, { recursive: true, force: true });
