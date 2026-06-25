@@ -1,5 +1,4 @@
 /** Uncompressed float32 semantic index. Debug/precision baseline only; production uses int8. */
-import { mkdir } from "node:fs/promises";
 import type { SemanticIndex } from "./semantic-index.ts";
 import { TopKDistanceCollector } from "./topk.ts";
 
@@ -117,7 +116,6 @@ export class VectorIndex implements SemanticIndex {
   }
 
   async save(dir: string): Promise<void> {
-    await mkdir(dir, { recursive: true });
     await Bun.write(`${dir}/vectors.bin`, this.data);
     await Bun.write(
       `${dir}/meta.json`,

@@ -6,7 +6,6 @@
  * `getValidatedCache` before rebuilding; on hit they hydrate via `loadCachedIndex`.
  */
 
-import { createHash } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveEmbeddingDimensions, resolveEmbeddingModel } from "./embeddings/openai.ts";
@@ -53,7 +52,9 @@ export function resolveCacheFolder(): string {
  */
 export function findIndexCachePath(path: string, ref?: string | null): string {
   const normalized = computeSourceCacheKey(path, ref);
-  const subdir = createHash("sha256").update(normalized, "utf-8").digest("hex");
+  const hasher = new Bun.CryptoHasher("sha256");
+  hasher.update(normalized);
+  const subdir = hasher.digest("hex");
   return join(resolveCacheFolder(), subdir, "index");
 }
 

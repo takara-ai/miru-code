@@ -1,5 +1,4 @@
-import { mkdir, readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { buildSubagentBody, type NativeToolNames } from "./installer/search-policy.ts";
 
 export type AgentId = "claude" | "copilot" | "cursor" | "gemini" | "kiro" | "opencode";
@@ -45,7 +44,7 @@ export function agentDestination(agent: AgentId): string {
 }
 
 export async function loadAgentTemplate(agent: AgentId): Promise<string> {
-  const frontmatter = (await readFile(join(AGENTS_DIR, `${agent}.md`), "utf-8")).trim();
+  const frontmatter = (await Bun.file(join(AGENTS_DIR, `${agent}.md`)).text()).trim();
   const body = buildSubagentBody(AGENT_NATIVE_TOOLS[agent]);
   return `${frontmatter}\n\n${body}\n`;
 }
@@ -59,7 +58,6 @@ export async function writeAgentFile(
   if (existing && !options.force) {
     throw new Error(`${dest} already exists. Run with --force to overwrite.`);
   }
-  await mkdir(dirname(dest), { recursive: true });
   const content = await loadAgentTemplate(agent);
   await Bun.write(dest, content);
   return dest;

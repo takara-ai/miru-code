@@ -7,7 +7,7 @@ import { dedupeResultsByFile } from "../src/utils.ts";
 import { pathMatches } from "./benchmark-lib.ts";
 import { REPO_BENCHES, TOP_K } from "./search-ab-queries.ts";
 
-loadEnvFiles();
+await loadEnvFiles();
 normalizeTakaraApiKeyEnv();
 await loadStoredCredentials();
 

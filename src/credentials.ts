@@ -1,4 +1,4 @@
-import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { hasTakaraApiKeyInEnv, normalizeTakaraApiKeyEnv } from "./env.ts";
 
@@ -37,7 +37,7 @@ export async function readStoredCredentials(): Promise<StoredCredentials | null>
     return null;
   }
   try {
-    const parsed = JSON.parse(await readFile(path, "utf-8")) as StoredCredentials;
+    const parsed = JSON.parse(await Bun.file(path).text()) as StoredCredentials;
     if (parsed.version !== CREDENTIALS_VERSION || !parsed.takara_api_key) {
       return null;
     }
@@ -69,10 +69,7 @@ export async function saveStoredCredentials(apiKey: string): Promise<string> {
     version: CREDENTIALS_VERSION,
     takara_api_key: apiKey,
   };
-  await writeFile(path, `${JSON.stringify(payload, null, 2)}\n`, {
-    encoding: "utf-8",
-    mode: 0o600,
-  });
+  await Bun.write(path, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
   try {
     await chmod(path, 0o600);
   } catch {
@@ -88,7 +85,7 @@ export async function clearStoredCredentials(): Promise<{ cleared: boolean; path
   }
 
   const stored = await readStoredCredentials();
-  await rm(path, { force: true });
+  await Bun.file(path).delete();
 
   if (stored && process.env.TAKARA_API_KEY === stored.takara_api_key) {
     delete process.env.TAKARA_API_KEY;

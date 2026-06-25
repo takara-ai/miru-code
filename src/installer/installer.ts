@@ -1,5 +1,4 @@
-import { mkdir, unlink, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { unlink } from "node:fs/promises";
 import { loadAgentTemplate } from "../agents.ts";
 import { brandTitle, dim, divider, green, hint, success, writeStdout } from "../cli-ui.ts";
 import { ensureCredentials } from "../setup.ts";
@@ -119,8 +118,7 @@ async function applyCursorRules(
   }
 
   const existed = await Bun.file(path).exists();
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${CURSOR_RULES_MDC.trim()}\n`, "utf-8");
+  await Bun.write(path, `${CURSOR_RULES_MDC.trim()}\n`);
   return { path, action: existed ? "updated" : "created" };
 }
 
@@ -142,8 +140,7 @@ async function applySubagent(agent: AgentTarget, mode: InstallMode): Promise<Wri
   try {
     const content = await loadAgentTemplate(templateId);
     const existed = await Bun.file(dest).exists();
-    await mkdir(dirname(dest), { recursive: true });
-    await writeFile(dest, content, "utf-8");
+    await Bun.write(dest, content);
     return { path: dest, action: existed ? "updated" : "created" };
   } catch {
     return { path: dest, action: "error" };

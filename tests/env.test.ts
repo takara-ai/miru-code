@@ -64,7 +64,7 @@ describe("loadEnvFiles", () => {
     try {
       await writeFile(join(dir, ".env.local"), "TAKARA_API_KEY=file-token\n", "utf-8");
       process.env.TAKARA_API_KEY = "mcp-token";
-      loadEnvFiles({ cwd: dir, packageRoot: dir });
+      await loadEnvFiles({ cwd: dir, packageRoot: dir });
       expect(process.env.TAKARA_API_KEY).toBe("mcp-token");
     } finally {
       await rm(dir, { recursive: true, force: true });

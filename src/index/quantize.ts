@@ -159,8 +159,6 @@ export class QuantizedVectorIndex implements SemanticIndex {
   }
 
   async save(dir: string): Promise<void> {
-    const { mkdir } = await import("node:fs/promises");
-    await mkdir(dir, { recursive: true });
     await Bun.write(`${dir}/codes.bin`, this.codes);
     await Bun.write(`${dir}/scales.bin`, this.scales);
     await Bun.write(

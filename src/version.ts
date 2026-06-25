@@ -1,4 +1,3 @@
-import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import packageJson from "../package.json";
 import { resolveCacheFolder } from "./cache.ts";
@@ -66,7 +65,7 @@ function updateCheckPath(): string {
 
 async function readUpdateCheckCache(): Promise<UpdateCheckCache | null> {
   try {
-    const raw = await readFile(updateCheckPath(), "utf-8");
+    const raw = await Bun.file(updateCheckPath()).text();
     const parsed = JSON.parse(raw) as UpdateCheckCache;
     if (typeof parsed.checkedAt !== "number" || typeof parsed.latest !== "string") {
       return null;
@@ -79,7 +78,7 @@ async function readUpdateCheckCache(): Promise<UpdateCheckCache | null> {
 
 async function writeUpdateCheckCache(latest: string): Promise<void> {
   const payload: UpdateCheckCache = { checkedAt: Date.now(), latest };
-  await writeFile(updateCheckPath(), `${JSON.stringify(payload)}\n`, "utf-8");
+  await Bun.write(updateCheckPath(), `${JSON.stringify(payload)}\n`);
 }
 
 export async function fetchLatestPublishedVersion(): Promise<string> {

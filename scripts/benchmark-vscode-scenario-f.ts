@@ -17,7 +17,7 @@ import { loadEnvFiles } from "../src/env-files.ts";
 import { MiruIndex } from "../src/miru-index.ts";
 import type { SearchResult } from "../src/types.ts";
 
-loadEnvFiles();
+await loadEnvFiles();
 normalizeTakaraApiKeyEnv();
 await loadStoredCredentials();
 
