@@ -1,6 +1,6 @@
 import { availableParallelism, cpus } from "node:os";
 
-const DEFAULT_RESERVE_CORES = 2;
+export const DEFAULT_RESERVE_CORES = 2;
 
 export function resolveCpuCount(): number {
   if (typeof availableParallelism === "function") {

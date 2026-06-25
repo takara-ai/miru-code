@@ -8,6 +8,7 @@ import {
   formatSearchResultsPretty,
   hint,
   prefersJsonOutput,
+  printCompactBrandIfInteractive,
   success,
 } from "./cli-ui.ts";
 import { loadStoredCredentials } from "./credentials.ts";
@@ -154,6 +155,7 @@ async function runSearch(
   content: ContentType[],
   jsonFlag: boolean,
 ): Promise<void> {
+  printCompactBrandIfInteractive(jsonFlag);
   await ensureCredentials({ interactive: true });
 
   const index = await withSpinner("Indexing and searching", async () => {
@@ -175,6 +177,7 @@ async function runExpand(
   content: ContentType[],
   jsonFlag: boolean,
 ): Promise<void> {
+  printCompactBrandIfInteractive(jsonFlag);
   await ensureCredentials({ interactive: true });
 
   const payload = await withSpinner("Expanding chunks", async () => {
@@ -222,6 +225,7 @@ async function runFindRelated(
   content: ContentType[],
   jsonFlag: boolean,
 ): Promise<void> {
+  printCompactBrandIfInteractive(jsonFlag);
   await ensureCredentials({ interactive: true });
 
   const { results, label } = await withSpinner("Finding related chunks", async () => {

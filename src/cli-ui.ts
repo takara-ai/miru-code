@@ -16,6 +16,10 @@ function colorEnabled(stream: NodeJS.WriteStream = process.stdout): boolean {
   return stream.isTTY && process.env.NO_COLOR === undefined;
 }
 
+export function shouldShowBrandBanner(stream: NodeJS.WriteStream = process.stdout): boolean {
+  return colorEnabled(stream);
+}
+
 function paint(text: string, code: string, stream?: NodeJS.WriteStream): string {
   if (!colorEnabled(stream)) {
     return text;
@@ -51,16 +55,109 @@ export function magenta(text: string, stream?: NodeJS.WriteStream): string {
   return paint(text, ANSI.magenta, stream);
 }
 
-export function isInteractiveStdout(): boolean {
-  return process.stdout.isTTY && process.env.NO_COLOR === undefined;
-}
-
 export function prefersJsonOutput(jsonFlag: boolean): boolean {
   return jsonFlag || !process.stdout.isTTY;
 }
 
+function formatBrandWordmark(stream: NodeJS.WriteStream, gap = " "): string {
+  return `${bold("MIRU", stream)}${gap}${cyan("見る", stream)}`;
+}
+
 export function brandTitle(): string {
   return bold("Miru", process.stderr) + dim(" (見る)", process.stderr);
+}
+
+const DEFAULT_BRAND_TAGLINE = "hybrid code search";
+const BANNER_INNER_WIDTH = 29;
+
+export function isQuietBrand(): boolean {
+  const value = process.env.MIRU_QUIET?.trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes";
+}
+
+function visibleLength(text: string): number {
+  let length = 0;
+  let inEscape = false;
+  for (const char of text) {
+    if (inEscape) {
+      if (char === "m") {
+        inEscape = false;
+      }
+      continue;
+    }
+    if (char === "\x1b") {
+      inEscape = true;
+      continue;
+    }
+    length += char.length;
+  }
+  return length;
+}
+
+function padVisible(text: string, width: number): string {
+  const pad = Math.max(0, width - visibleLength(text));
+  return `${text}${" ".repeat(pad)}`;
+}
+
+export function formatBrandBannerLines(
+  tagline = DEFAULT_BRAND_TAGLINE,
+  stream: NodeJS.WriteStream = process.stdout,
+): string[] {
+  const title = formatBrandWordmark(stream, "  ");
+  const subtitle = dim(tagline, stream);
+  const top = `  ╭${"─".repeat(BANNER_INNER_WIDTH + 2)}╮`;
+  const bottom = `  ╰${"─".repeat(BANNER_INNER_WIDTH + 2)}╯`;
+  return [
+    top,
+    `  │ ${padVisible(title, BANNER_INNER_WIDTH)} │`,
+    `  │ ${padVisible(subtitle, BANNER_INNER_WIDTH)} │`,
+    bottom,
+  ];
+}
+
+export function formatBrandCompactLine(
+  tagline?: string,
+  stream: NodeJS.WriteStream = process.stdout,
+): string {
+  const title = formatBrandWordmark(stream);
+  if (!tagline) {
+    return title;
+  }
+  return `${title}${dim(` · ${tagline}`, stream)}`;
+}
+
+export function printCompactBrandIfInteractive(
+  jsonFlag: boolean,
+  stream: NodeJS.WriteStream = process.stdout,
+): void {
+  if (!prefersJsonOutput(jsonFlag) && shouldShowBrandBanner(stream)) {
+    printBrandBanner({ stream, compact: true });
+  }
+}
+
+export interface PrintBrandBannerOptions {
+  stream?: NodeJS.WriteStream;
+  tagline?: string;
+  compact?: boolean;
+}
+
+export function printBrandBanner(options: PrintBrandBannerOptions = {}): void {
+  const stream = options.stream ?? process.stdout;
+  if (!shouldShowBrandBanner(stream)) {
+    return;
+  }
+
+  const tagline = options.tagline ?? DEFAULT_BRAND_TAGLINE;
+  const useCompact = options.compact || (stream.columns ?? 80) < 36 || isQuietBrand();
+
+  if (useCompact) {
+    stream.write(`${formatBrandCompactLine(tagline, stream)}\n`);
+    return;
+  }
+
+  for (const line of formatBrandBannerLines(tagline, stream)) {
+    stream.write(`${line}\n`);
+  }
 }
 
 export function writeStdout(line = ""): void {
@@ -78,9 +175,26 @@ export function divider(char = "─", width = 52, stream: NodeJS.WriteStream = p
 
 export function header(title: string, subtitle?: string): void {
   writeStdout("");
-  writeStdout(brandTitle() + (title ? dim(` · ${title}`) : ""));
-  if (subtitle) {
-    writeStdout(dim(subtitle));
+  const tagline = subtitle ?? title;
+  if (shouldShowBrandBanner(process.stdout)) {
+    printBrandBanner({ stream: process.stdout, tagline });
+  } else {
+    writeStdout(brandTitle() + (title ? dim(` · ${title}`) : ""));
+    if (subtitle) {
+      writeStdout(dim(subtitle));
+    }
+  }
+  divider();
+}
+
+export function commandHeader(name: string, summary: string): void {
+  writeStdout("");
+  if (shouldShowBrandBanner(process.stdout)) {
+    printBrandBanner({ stream: process.stdout, tagline: name });
+    writeStdout(summary);
+  } else {
+    writeStdout(`${brandTitle()} ${name}`);
+    writeStdout(summary);
   }
   divider();
 }
@@ -176,7 +290,7 @@ export function formatSearchResultsPretty(query: string, results: SearchResult[]
     }
   }
 
-  if (isInteractiveStdout()) {
+  if (shouldShowBrandBanner(process.stdout)) {
     lines.push("");
     lines.push(dim("Tip: add --json for machine-readable output"));
   }

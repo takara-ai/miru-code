@@ -1,4 +1,12 @@
-import { brandTitle, divider, fail, hint, info, success, writeStderr } from "./cli-ui.ts";
+import {
+  divider,
+  fail,
+  hint,
+  info,
+  printBrandBanner,
+  success,
+  writeStderr,
+} from "./cli-ui.ts";
 import {
   clearStoredCredentials,
   loadStoredCredentials,
@@ -55,7 +63,7 @@ export async function runSetup(options: RunSetupOptions = {}): Promise<RunSetupR
   }
 
   writeStderr("");
-  writeStderr(`${brandTitle()} setup`);
+  printBrandBanner({ stream: process.stderr, tagline: "setup" });
   divider("─", 48, process.stderr);
   writeStderr("Miru needs a Takara API key for code embeddings.");
   hint("Get a bearer token from Takara, then enter it below.");
@@ -128,6 +136,10 @@ export async function ensureCredentials(options?: { interactive?: boolean }): Pr
     resolveEmbeddingApiKey();
     return;
   }
+
+  writeStderr("");
+  printBrandBanner({ stream: process.stderr });
+  writeStderr("");
 
   throw new Error(
     "Takara API key required. Run `miru setup` in a terminal, or set TAKARA_API_KEY " +
