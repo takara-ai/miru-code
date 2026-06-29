@@ -1,31 +1,23 @@
-import { brandTitle, divider, fail, hint, info, success, writeStderr } from "./cli-ui.ts";
+import { brandTitle, divider, hint, info, success, writeStderr } from "./cli-ui.ts";
+import { authenticateWithProvider } from "./auth/providers.ts";
+import { credentialAccessToken } from "./auth/types.ts";
 import {
   clearStoredCredentials,
   loadStoredCredentials,
   readStoredCredentials,
   resolveCredentialsPath,
   saveStoredCredentials,
+  setStoredCredentialsEnvToken,
 } from "./credentials.ts";
-import { validateEmbeddingApiKey } from "./embeddings/validate.ts";
 import { hasTakaraApiKeyInEnv, resolveEmbeddingApiKey } from "./env.ts";
-import { promptHidden } from "./prompt.ts";
-import { Spinner } from "./spinner.ts";
-
-async function promptApiKey(): Promise<string> {
-  let key = "";
-  while (!key) {
-    key = await promptHidden("Takara API key (input hidden): ");
-    if (!key) {
-      fail("API key cannot be empty.");
-    }
-  }
-  return key;
-}
 
 export interface RunSetupOptions {
   apiKey?: string;
+  device?: boolean;
   force?: boolean;
   skipValidation?: boolean;
+  allowManualFallback?: boolean;
+  interactive?: boolean;
 }
 
 export interface RunSetupResult {
@@ -34,11 +26,12 @@ export interface RunSetupResult {
 }
 
 export async function runSetup(options: RunSetupOptions = {}): Promise<RunSetupResult> {
-  if (!options.force && hasTakaraApiKeyInEnv()) {
+  const interactive = options.interactive ?? canPromptForCredentials();
+  if (!options.force && hasTakaraApiKeyInEnv() && !options.apiKey && !options.device) {
     const path = resolveCredentialsPath();
     const stored = await readStoredCredentials();
     if (stored) {
-      info(`API key already configured (env + ${path}). Use --force to replace stored key.`);
+      info(`Credentials already configured (env + ${path}). Use --force to replace stored credentials.`);
       return { path, newlySaved: false };
     }
     info("API key already set via environment variable. Stored credentials unchanged.");
@@ -47,9 +40,9 @@ export async function runSetup(options: RunSetupOptions = {}): Promise<RunSetupR
 
   if (!options.force) {
     const stored = await readStoredCredentials();
-    if (stored && !options.apiKey) {
-      info(`API key already stored at ${resolveCredentialsPath()}. Use --force to replace.`);
-      process.env.TAKARA_API_KEY = stored.takara_api_key;
+    if (stored && !options.apiKey && !options.device) {
+      info(`Credentials already stored at ${resolveCredentialsPath()}. Use --force to replace.`);
+      setStoredCredentialsEnvToken(credentialAccessToken(stored));
       return { path: resolveCredentialsPath(), newlySaved: false };
     }
   }
@@ -57,28 +50,24 @@ export async function runSetup(options: RunSetupOptions = {}): Promise<RunSetupR
   writeStderr("");
   writeStderr(`${brandTitle()} setup`);
   divider("─", 48, process.stderr);
-  writeStderr("Miru needs a Takara API key for code embeddings.");
-  hint("Get a bearer token from Takara, then enter it below.");
+  writeStderr("Miru needs Takara credentials for code embeddings.");
+  hint("Device code login is the default. Manual API key entry is still available.");
   writeStderr("");
 
-  const apiKey = options.apiKey ?? (await promptApiKey());
-
-  if (!options.skipValidation) {
-    const spinner = new Spinner("Validating API key");
-    spinner.start();
-    const result = await validateEmbeddingApiKey({ apiKey });
-    if (!result.valid) {
-      spinner.stop();
-      throw new Error(result.message);
-    }
-    spinner.succeed("API key validated");
-  }
-
-  const path = await saveStoredCredentials(apiKey);
-  process.env.TAKARA_API_KEY = apiKey;
+  const credentials = await authenticateWithProvider({
+    apiKey: options.apiKey,
+    device: options.device,
+    skipValidation: options.skipValidation,
+    allowManualFallback: options.allowManualFallback ?? interactive,
+    interactive,
+  });
+  const path = await saveStoredCredentials(credentials);
+  setStoredCredentialsEnvToken(
+    credentials.kind === "api_key" ? credentials.apiKey : credentials.accessToken,
+  );
   writeStderr("");
   success(`Saved credentials to ${path}`);
-  hint("MCP loads this key from credentials.json automatically.");
+  hint("MCP loads credentials from credentials.json automatically.");
   writeStderr("");
   return { path, newlySaved: true };
 }
@@ -86,10 +75,10 @@ export async function runSetup(options: RunSetupOptions = {}): Promise<RunSetupR
 export async function runClearCredentials(): Promise<void> {
   const { cleared, path } = await clearStoredCredentials();
   if (cleared) {
-    success(`Removed stored API key from ${path}`);
+    success(`Removed stored credentials from ${path}`);
     return;
   }
-  info(`No stored API key at ${path}`);
+  info(`No stored credentials at ${path}`);
 }
 
 export function canPromptForCredentials(): boolean {
@@ -114,23 +103,42 @@ export async function ensureCredentials(options?: { interactive?: boolean }): Pr
     return;
   }
 
-  await refreshCredentialsFromStore();
+  const wantsPrompt = options?.interactive ?? true;
+  let refreshError: Error | null = null;
+  try {
+    await refreshCredentialsFromStore();
+  } catch (err) {
+    refreshError = err instanceof Error ? err : new Error(String(err));
+  }
   if (hasCredentials()) {
     return;
   }
 
-  const wantsPrompt = options?.interactive ?? true;
-  if (wantsPrompt && canPromptForCredentials()) {
+  if (wantsPrompt) {
     writeStderr("");
-    info("No Takara API key found.");
-    hint("Miru needs one for embeddings — enter it below (same as `miru setup`).");
-    await runSetup();
+    if (refreshError) {
+      info(`Stored credentials could not be used: ${refreshError.message}`);
+      hint("Starting a fresh device-code login.");
+    } else {
+      info("No Takara credentials found.");
+      hint("Starting the same device-code login flow as `miru setup`.");
+    }
+    await runSetup({
+      device: true,
+      force: true,
+      allowManualFallback: false,
+      interactive: true,
+    });
     resolveEmbeddingApiKey();
     return;
   }
 
+  if (refreshError) {
+    throw refreshError;
+  }
+
   throw new Error(
-    "Takara API key required. Run `miru setup` in a terminal, or set TAKARA_API_KEY " +
-      "in your MCP server env (Cursor mcp.json) or .env.local.",
+    "Takara credentials required. Initial login must be completed in an interactive terminal. " +
+      "Run `miru setup` or `miru setup --key TOKEN`, or set TAKARA_API_KEY in your environment.",
   );
 }

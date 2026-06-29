@@ -33,7 +33,7 @@ export function printMainHelp(): void {
   commandRow("search", "Hybrid search over a codebase");
   commandRow("expand", "Adjacent chunks in the same file as a hit");
   commandRow("find-related", "Find chunks related to a file:line");
-  commandRow("setup", "Save your Takara API key locally");
+  commandRow("setup", "Authenticate with Takara and save local credentials");
   commandRow("install", "Configure miru across coding agents");
   commandRow("uninstall", "Remove miru agent configuration");
   commandRow("init", "Write a project-local sub-agent file");
@@ -105,12 +105,13 @@ export function printCommandHelp(command: string): void {
       writeStdout("");
       return;
     case "setup":
-      printCommandHeader("setup", "Store and validate your Takara API key.");
+      printCommandHeader("setup", "Authenticate with Takara and save local credentials.");
       section("Usage");
-      writeStdout("  miru setup [--key TOKEN] [--force] [--clear]");
+      writeStdout("  miru setup [--device] [--key TOKEN] [--force] [--clear]");
       section("Options");
-      writeStdout("  --key, -k TOKEN     Non-interactive key entry");
-      writeStdout("  --force             Replace an existing stored key");
+      writeStdout("  --device            Start device-code login");
+      writeStdout("  --key, -k TOKEN     Store a bearer token directly");
+      writeStdout("  --force             Replace existing stored credentials");
       writeStdout("  --clear             Remove stored credentials");
       writeStdout("");
       return;

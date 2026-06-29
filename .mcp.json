@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "miru": {
+      "type": "stdio",
+      "command": "bunx",
+      "args": ["@takara-ai/miru-code"]
+    }
+  }
+}

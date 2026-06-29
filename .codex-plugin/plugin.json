@@ -1,0 +1,29 @@
+{
+  "name": "miru-code",
+  "version": "1.0.5",
+  "description": "Miru (見る) — hybrid code search for agents. Bun, TypeScript, Takara embeddings.",
+  "author": {
+    "name": "Takara",
+    "url": "https://github.com/takara-ai"
+  },
+  "homepage": "https://takara.ai",
+  "repository": "https://github.com/takara-ai/miru-code",
+  "license": "MIT",
+  "keywords": ["code-search", "semantic-search", "mcp", "agents", "takara"],
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Miru Code",
+    "shortDescription": "Semantic code search for coding agents.",
+    "longDescription": "Miru adds repo-aware semantic search to Codex via MCP and guides agents away from grep-style exploration.",
+    "developerName": "Takara",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Read"],
+    "websiteURL": "https://takara.ai",
+    "defaultPrompt": [
+      "Find where auth is wired in this repo.",
+      "Locate similar code paths for this file and line.",
+      "Search this project by behavior instead of grep."
+    ],
+    "brandColor": "#0F766E"
+  }
+}

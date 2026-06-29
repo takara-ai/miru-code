@@ -334,12 +334,15 @@ async function runCli(argv: string[]): Promise<void> {
 
   if (command === "setup") {
     let apiKey: string | undefined;
+    let device = false;
     let force = false;
     let clear = false;
     for (let i = 0; i < rest.length; i++) {
       const arg = rest[i];
       if (arg === "--force") {
         force = true;
+      } else if (arg === "--device") {
+        device = true;
       } else if (arg === "--clear") {
         clear = true;
       } else if ((arg === "--key" || arg === "-k") && rest[i + 1]) {
@@ -347,16 +350,20 @@ async function runCli(argv: string[]): Promise<void> {
       }
     }
     if (clear) {
-      if (apiKey) {
-        fail("miru setup --clear cannot be combined with --key.");
+      if (apiKey || device) {
+        fail("miru setup --clear cannot be combined with --key or --device.");
         process.exit(1);
       }
       await runClearCredentials();
       return;
     }
-    const { newlySaved } = await runSetup({ apiKey, force });
+    if (apiKey && device) {
+      fail("miru setup accepts either --device or --key TOKEN, not both.");
+      process.exit(1);
+    }
+    const { newlySaved } = await runSetup({ apiKey, device, force });
     if (newlySaved) {
-      const offerInstall = canPromptForCredentials() && !apiKey && !force;
+      const offerInstall = canPromptForCredentials() && !apiKey && !device && !force;
       if (offerInstall) {
         const install = await promptConfirm("Configure Miru in your coding agent now?");
         if (install) {
@@ -462,7 +469,7 @@ async function runMcp(argv: string[]): Promise<void> {
 }
 
 async function runMcpWithCredentials(argv: string[]): Promise<void> {
-  await ensureCredentials({ interactive: false });
+  await ensureCredentials({ interactive: true });
   await runMcp(argv);
 }
 
