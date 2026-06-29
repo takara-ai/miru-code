@@ -474,11 +474,19 @@ async function runCli(argv: string[]): Promise<void> {
   if (command === "setup") {
     const { args, error } = parseSetupCliArgs(rest);
     if (error === "clear_with_key") {
-      fail("miru setup --clear cannot be combined with --key.");
+      fail("miru setup --clear cannot be combined with --key, --device, or --sagemaker.");
       process.exit(1);
     }
     if (error === "sagemaker_with_key") {
       fail("miru setup --sagemaker cannot be combined with --key.");
+      process.exit(1);
+    }
+    if (error === "device_with_key") {
+      fail("miru setup accepts either --device or --key TOKEN, not both.");
+      process.exit(1);
+    }
+    if (error === "device_with_sagemaker") {
+      fail("miru setup --device cannot be combined with --sagemaker.");
       process.exit(1);
     }
     if (args.clear) {
@@ -487,13 +495,15 @@ async function runCli(argv: string[]): Promise<void> {
     }
     const { newlySaved } = await runSetup({
       apiKey: args.apiKey,
+      device: args.device,
       force: args.force,
       sagemaker: args.sagemaker,
       sagemakerArn: args.sagemakerArn,
       profile: args.profile,
     });
     if (newlySaved) {
-      const offerInstall = canPromptForCredentials() && !args.apiKey && !args.force;
+      const offerInstall =
+        canPromptForCredentials() && !args.apiKey && !args.device && !args.force;
       if (offerInstall) {
         const install = await promptConfirm("Configure Miru in your coding agent now?");
         if (install) {
@@ -675,7 +685,7 @@ async function runMcp(argv: string[]): Promise<void> {
 }
 
 async function runMcpWithCredentials(argv: string[]): Promise<void> {
-  await ensureCredentials({ interactive: false });
+  await ensureCredentials({ interactive: true });
   await runMcp(argv);
 }
 

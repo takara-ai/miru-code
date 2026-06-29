@@ -1,12 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  readStoredCredentials,
-  saveStoredCredentials,
-  saveStoredSageMakerCredentials,
-} from "../src/credentials.ts";
+import { loadStoredCredentials, readStoredCredentials, saveStoredCredentials } from "../src/credentials.ts";
 import { TAKARA_API_KEY_ENV } from "../src/env.ts";
 import {
   canPromptForCredentials,
@@ -34,6 +30,7 @@ describe("setup credentials", () => {
   let keySnapshot: string | undefined;
   let sageMakerArnSnapshot: string | undefined;
   let awsProfileSnapshot: string | undefined;
+  const originalFetch = globalThis.fetch;
 
   beforeEach(() => {
     keySnapshot = snapshotKey();
@@ -42,6 +39,8 @@ describe("setup credentials", () => {
     delete process.env[TAKARA_API_KEY_ENV];
     delete process.env.MIRU_SAGEMAKER_ENDPOINT_ARN;
     delete process.env.AWS_PROFILE;
+    delete process.env.MIRU_AUTH_BASE_URL;
+    delete process.env.MIRU_AUTH_CLIENT_ID;
   });
 
   afterEach(async () => {
@@ -56,6 +55,7 @@ describe("setup credentials", () => {
     } else {
       process.env.AWS_PROFILE = awsProfileSnapshot;
     }
+    globalThis.fetch = originalFetch;
     if (credDir) {
       await rm(credDir, { recursive: true, force: true });
       credDir = "";
@@ -72,13 +72,18 @@ describe("setup credentials", () => {
     expect(hasCredentials()).toBe(true);
   });
 
+  test("hasCredentials is true when SageMaker endpoint ARN is configured", () => {
+    process.env.MIRU_SAGEMAKER_ENDPOINT_ARN =
+      "arn:aws:sagemaker:us-east-1:123456789012:endpoint/miru-test";
+    expect(hasCredentials()).toBe(true);
+  });
+
   test("hasCredentials is true after loadStoredCredentials", async () => {
     credDir = await mkdtemp(join(tmpdir(), "miru-setup-"));
     process.env.MIRU_CREDENTIALS_DIR = credDir;
     await saveStoredCredentials("stored-token");
     delete process.env.TAKARA_API_KEY;
 
-    const { loadStoredCredentials } = await import("../src/credentials.ts");
     await loadStoredCredentials();
     expect(hasCredentials()).toBe(true);
   });
@@ -99,7 +104,7 @@ describe("setup credentials", () => {
     delete process.env.TAKARA_API_KEY;
 
     await expect(ensureCredentials({ interactive: false })).rejects.toThrow(
-      /Takara API key required/,
+      /Initial login must be completed in an interactive terminal/,
     );
   });
 
@@ -117,6 +122,15 @@ describe("setup credentials", () => {
     expect(result.path).toContain("credentials.json");
   });
 
+  test("runSetup accepts explicit key entry with validation disabled", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-setup-explicit-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+
+    const result = await runSetup({ apiKey: "explicit-token", skipValidation: true, force: true });
+    expect(result.newlySaved).toBe(true);
+    expect(process.env.TAKARA_API_KEY).toBe("explicit-token");
+  });
+
   test("runSageMakerSetup purges a stored Takara API key", async () => {
     credDir = await mkdtemp(join(tmpdir(), "miru-setup-sm-purge-"));
     process.env.MIRU_CREDENTIALS_DIR = credDir;
@@ -132,8 +146,8 @@ describe("setup credentials", () => {
 
     expect(result.newlySaved).toBe(true);
     const stored = await readStoredCredentials();
-    expect(stored?.takara_api_key).toBeUndefined();
-    expect(stored?.sagemaker).toEqual({ endpoint_arn: arn, profile: "miru" });
+    expect(stored?.kind).toBe("sagemaker");
+    expect(stored).toMatchObject({ kind: "sagemaker", endpoint_arn: arn, profile: "miru" });
     expect(process.env.TAKARA_API_KEY).toBeUndefined();
     // Cast: delete/assign on process.env narrows the property under Bun's Env types.
     expect(process.env.MIRU_SAGEMAKER_ENDPOINT_ARN as string | undefined).toBe(arn);
@@ -143,7 +157,7 @@ describe("setup credentials", () => {
     credDir = await mkdtemp(join(tmpdir(), "miru-setup-tk-purge-"));
     process.env.MIRU_CREDENTIALS_DIR = credDir;
     const arn = "arn:aws:sagemaker:us-east-1:123456789012:endpoint/miru-test";
-    await saveStoredSageMakerCredentials({ endpoint_arn: arn, profile: "miru" });
+    await saveStoredCredentials({ kind: "sagemaker", endpointArn: arn, profile: "miru" });
     process.env.MIRU_SAGEMAKER_ENDPOINT_ARN = arn;
     process.env.AWS_PROFILE = "miru";
     delete process.env.TAKARA_API_KEY;
@@ -156,8 +170,8 @@ describe("setup credentials", () => {
 
     expect(result.newlySaved).toBe(true);
     const stored = await readStoredCredentials();
-    expect(stored?.sagemaker).toBeUndefined();
-    expect(stored?.takara_api_key).toBe("new-takara-token");
+    expect(stored?.kind).toBe("api_key");
+    expect(stored).toMatchObject({ kind: "api_key", api_key: "new-takara-token" });
     expect(process.env.MIRU_SAGEMAKER_ENDPOINT_ARN).toBeUndefined();
     expect(process.env.AWS_PROFILE).toBeUndefined();
   });
@@ -166,7 +180,7 @@ describe("setup credentials", () => {
     credDir = await mkdtemp(join(tmpdir(), "miru-setup-migrate-"));
     process.env.MIRU_CREDENTIALS_DIR = credDir;
     const arn = "arn:aws:sagemaker:us-east-1:123456789012:endpoint/miru-test";
-    await saveStoredSageMakerCredentials({ endpoint_arn: arn, profile: "miru" });
+    await saveStoredCredentials({ kind: "sagemaker", endpointArn: arn, profile: "miru" });
     process.env.MIRU_SAGEMAKER_ENDPOINT_ARN = arn;
     process.env.AWS_PROFILE = "miru";
     process.env.TAKARA_API_KEY = "env-takara-token";
@@ -175,8 +189,8 @@ describe("setup credentials", () => {
 
     expect(result.newlySaved).toBe(true);
     const stored = await readStoredCredentials();
-    expect(stored?.sagemaker).toBeUndefined();
-    expect(stored?.takara_api_key).toBe("env-takara-token");
+    expect(stored?.kind).toBe("api_key");
+    expect(stored).toMatchObject({ kind: "api_key", api_key: "env-takara-token" });
     expect(process.env.MIRU_SAGEMAKER_ENDPOINT_ARN).toBeUndefined();
     expect(process.env.AWS_PROFILE).toBeUndefined();
   });
@@ -187,12 +201,174 @@ describe("setup credentials", () => {
     expect(hasCredentials()).toBe(true);
     delete process.env.MIRU_SAGEMAKER_ENDPOINT_ARN;
   });
+
+  test("ensureCredentials can bootstrap device login without a TTY-style prompt path", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-setup-device-bootstrap-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    process.env.MIRU_AUTH_BASE_URL = "https://auth.example.test";
+    process.env.MIRU_AUTH_CLIENT_ID = "miru-test";
+
+    let call = 0;
+    globalThis.fetch = (async (input) => {
+      call++;
+      if (call === 1) {
+        expect(String(input)).toBe("https://auth.example.test/oauth/device/code");
+        return new Response(
+          JSON.stringify({
+            device_code: "device-code",
+            user_code: "ABCD-EFGH",
+            verification_uri: "https://verify.example.test",
+            expires_in: 600,
+            interval: 0,
+          }),
+          { status: 200 },
+        );
+      }
+      expect(String(input)).toBe("https://auth.example.test/oauth/token");
+      return new Response(
+        JSON.stringify({
+          access_token: "device-access-token",
+          refresh_token: "device-refresh-token",
+          expires_in: 3600,
+          token_type: "Bearer",
+        }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+
+    await ensureCredentials({ interactive: true });
+    expect(process.env.TAKARA_API_KEY).toBe("device-access-token");
+  });
+
+  test("ensureCredentials falls back to re-auth when refresh fails and interactive login is allowed", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-setup-refresh-fallback-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    process.env.MIRU_AUTH_BASE_URL = "https://auth.example.test";
+    process.env.MIRU_AUTH_CLIENT_ID = "miru-test";
+    await saveStoredCredentials({
+      kind: "device_code",
+      accessToken: "stale-token",
+      refreshToken: "revoked-refresh-token",
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+
+    let call = 0;
+    globalThis.fetch = (async (input, init) => {
+      call++;
+      if (call === 1) {
+        expect(String(input)).toBe("https://auth.example.test/oauth/token");
+        expect(String(init?.body)).toContain("grant_type=refresh_token");
+        return new Response(
+          JSON.stringify({
+            error: "invalid_grant",
+            error_description: "refresh token revoked",
+          }),
+          { status: 400 },
+        );
+      }
+      if (call === 2) {
+        expect(String(input)).toBe("https://auth.example.test/oauth/device/code");
+        return new Response(
+          JSON.stringify({
+            device_code: "new-device-code",
+            user_code: "ZXCV-BNMQ",
+            verification_uri: "https://verify.example.test",
+            expires_in: 600,
+            interval: 0,
+          }),
+          { status: 200 },
+        );
+      }
+      expect(String(input)).toBe("https://auth.example.test/oauth/token");
+      expect(String(init?.body)).toContain("grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code");
+      return new Response(
+        JSON.stringify({
+          access_token: "reauth-token",
+          refresh_token: "reauth-refresh-token",
+          expires_in: 3600,
+          token_type: "Bearer",
+        }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+
+    await ensureCredentials({ interactive: true });
+    expect(process.env.TAKARA_API_KEY).toBe("reauth-token");
+  });
+
+  test("runSetup marks saved device tokens as store-managed for later refresh in long-lived processes", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-setup-managed-device-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    process.env.MIRU_AUTH_BASE_URL = "https://auth.example.test";
+    process.env.MIRU_AUTH_CLIENT_ID = "miru-test";
+
+    let call = 0;
+    globalThis.fetch = (async (input, init) => {
+      call++;
+      if (call === 1) {
+        return new Response(
+          JSON.stringify({
+            device_code: "setup-device-code",
+            user_code: "QWER-TYUI",
+            verification_uri: "https://verify.example.test",
+            expires_in: 600,
+            interval: 0,
+          }),
+          { status: 200 },
+        );
+      }
+      if (call === 2) {
+        return new Response(
+          JSON.stringify({
+            access_token: "initial-device-token",
+            refresh_token: "initial-refresh-token",
+            expires_in: 3600,
+            token_type: "Bearer",
+          }),
+          { status: 200 },
+        );
+      }
+      expect(String(input)).toBe("https://auth.example.test/oauth/token");
+      expect(String(init?.body)).toContain("grant_type=refresh_token");
+      return new Response(
+        JSON.stringify({
+          access_token: "refreshed-device-token",
+          refresh_token: "refreshed-refresh-token",
+          expires_in: 3600,
+          token_type: "Bearer",
+        }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+
+    await runSetup({ device: true, force: true, interactive: true });
+    expect(process.env.TAKARA_API_KEY).toBe("initial-device-token");
+
+    await saveStoredCredentials({
+      kind: "device_code",
+      accessToken: "initial-device-token",
+      refreshToken: "initial-refresh-token",
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+
+    const loaded = await loadStoredCredentials();
+    expect(loaded).toBe(true);
+    expect(process.env.TAKARA_API_KEY).toBe("refreshed-device-token");
+
+    const stored = JSON.parse(await readFile(join(credDir, "credentials.json"), "utf-8")) as {
+      access_token: string;
+      refresh_token: string;
+    };
+    expect(stored.access_token).toBe("refreshed-device-token");
+    expect(stored.refresh_token).toBe("refreshed-refresh-token");
+  });
 });
 
 describe("parseSetupCliArgs", () => {
   test("parses Takara --key / -k and --force", () => {
     expect(parseSetupCliArgs(["--key", "tok", "--force"]).args).toEqual({
       apiKey: "tok",
+      device: false,
       force: true,
       clear: false,
       sagemaker: false,
@@ -202,10 +378,23 @@ describe("parseSetupCliArgs", () => {
     expect(parseSetupCliArgs(["-k", "tok"]).args.apiKey).toBe("tok");
   });
 
+  test("parses --device", () => {
+    expect(parseSetupCliArgs(["--device", "--force"]).args).toEqual({
+      apiKey: undefined,
+      device: true,
+      force: true,
+      clear: false,
+      sagemaker: false,
+      sagemakerArn: undefined,
+      profile: undefined,
+    });
+  });
+
   test("parses SageMaker flags and implies sagemaker from --arn", () => {
     const arn = "arn:aws:sagemaker:us-east-1:123456789012:endpoint/miru-test";
     expect(parseSetupCliArgs(["--sagemaker", "--arn", arn, "--profile", "miru"]).args).toEqual({
       apiKey: undefined,
+      device: false,
       force: false,
       clear: false,
       sagemaker: true,
@@ -230,13 +419,26 @@ describe("parseSetupCliArgs", () => {
     expect(parseSetupCliArgs(["--arn", arn, "--key", "tok"]).error).toBe("sagemaker_with_key");
   });
 
+  test("rejects combining --device with --key", () => {
+    expect(parseSetupCliArgs(["--device", "--key", "tok"]).error).toBe("device_with_key");
+  });
+
+  test("rejects combining --device with --sagemaker", () => {
+    expect(parseSetupCliArgs(["--device", "--sagemaker"]).error).toBe("device_with_sagemaker");
+  });
+
   test("rejects combining --clear with --key", () => {
     expect(parseSetupCliArgs(["--clear", "--key", "tok"]).error).toBe("clear_with_key");
+  });
+
+  test("rejects combining --clear with --device", () => {
+    expect(parseSetupCliArgs(["--clear", "--device"]).error).toBe("clear_with_key");
   });
 
   test("parses --clear alone", () => {
     expect(parseSetupCliArgs(["--clear"]).args).toEqual({
       apiKey: undefined,
+      device: false,
       force: false,
       clear: true,
       sagemaker: false,

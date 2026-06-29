@@ -73,7 +73,10 @@ export async function promptText(message: string, defaultValue = ""): Promise<st
   }
 }
 
-export async function promptHidden(message: string): Promise<string> {
+export async function promptHidden(
+  message: string,
+  stream: NodeJS.WriteStream = output,
+): Promise<string> {
   if (!input.isTTY) {
     throw new Error(
       "Cannot prompt for API key: stdin is not a TTY. Run `miru setup --key YOUR_KEY` or set TAKARA_API_KEY.",
@@ -81,7 +84,7 @@ export async function promptHidden(message: string): Promise<string> {
   }
 
   return new Promise((resolve, reject) => {
-    output.write(message);
+    stream.write(message);
     input.setRawMode?.(true);
     input.resume();
     input.setEncoding("utf8");
@@ -95,20 +98,20 @@ export async function promptHidden(message: string): Promise<string> {
 
         if (result.cancel) {
           cleanup();
-          output.write("\n");
+          stream.write("\n");
           reject(new Error("Setup cancelled."));
           process.exit(130);
         }
 
         if (result.submit) {
           cleanup();
-          output.write("\n");
+          stream.write("\n");
           resolve(state.value.trim());
           return;
         }
 
         if (result.echo) {
-          output.write(result.echo);
+          stream.write(result.echo);
         }
       }
     };
