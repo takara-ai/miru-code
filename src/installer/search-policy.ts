@@ -87,7 +87,7 @@ export const INSTRUCTIONS_MARKDOWN = `## Miru Code Search
 
 ${SEARCH_POLICY_BODY}
 
-Run \`miru setup\` once — the MCP server loads your API key from \`credentials.json\`.
+Run \`miru setup\` once — the MCP server loads credentials from \`credentials.json\`, and interactive first use can auto-start device login when nothing is stored.
 
 CLI fallback when MCP is unavailable:
 
