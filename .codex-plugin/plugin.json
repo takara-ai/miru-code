@@ -10,6 +10,7 @@
   "repository": "https://github.com/takara-ai/miru-code",
   "license": "MIT",
   "keywords": ["code-search", "semantic-search", "mcp", "agents", "takara"],
+  "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Miru Code Search",
@@ -17,7 +18,7 @@
     "longDescription": "Miru adds repo-aware semantic search to Codex via MCP and guides agents away from grep-style exploration.",
     "developerName": "Takara",
     "category": "Productivity",
-    "capabilities": ["Interactive", "Read"],
+    "capabilities": ["Instructions", "Interactive"],
     "websiteURL": "https://takara.ai",
     "defaultPrompt": [
       "Find where auth is wired in this repo.",

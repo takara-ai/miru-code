@@ -73,6 +73,20 @@ miru uninstall   # remove miru config
 
 Sub-agent files are also written where supported (see `miru install` plan). Windsurf hooks only — no MCP entry yet.
 
+### Plugin packaging
+
+This repo now includes plugin packaging for:
+
+- Codex: `.codex-plugin/plugin.json` and `.agents/plugins/marketplace.json`
+- Claude Code: `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`
+- Cursor: `plugin.json` and `.cursor/rules/miru-code-search.mdc`
+
+Current limitation:
+
+- these plugin manifests still launch the published Miru runtime through `bunx @takara-ai/miru-code`
+- that means local source edits do not affect plugin behavior until a package version is published
+- and a fully self-contained “no Bun required” plugin install is still future work
+
 ### Search hooks
 
 Hooks run `miru hook-guard` before built-in search tools execute. They **block** conceptual Grep/Glob/SemanticSearch and shell `rg`/`grep`/`find`, and tell the agent to use Miru MCP `search` instead. Exact literal lookups (e.g. `REDIS_HOST`, a symbol name) still pass through.

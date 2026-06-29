@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "miru",
+  "description": "Semantic code search for coding agents. Find code by meaning, not grep.",
+  "owner": {
+    "name": "Takara",
+    "url": "https://github.com/takara-ai"
+  },
+  "plugins": [
+    {
+      "name": "miru",
+      "description": "Repo-aware semantic code search with MCP and first-use device authentication.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}
