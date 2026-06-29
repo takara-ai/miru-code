@@ -66,6 +66,21 @@ miru uninstall   # remove miru config
 | Visual Studio  | `%USERPROFILE%\.mcp.json`             | —                               | `~/.copilot/hooks/miru-search.json`               |
 | Windsurf       | —                                     | —                               | `~/.codeium/windsurf/hooks.json`                  |
 
+### Plugin packaging
+
+This repo now includes plugin packaging for:
+
+- Codex: `.codex-plugin/plugin.json` and `.agents/plugins/marketplace.json`
+- Claude Code: `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`
+- Cursor: `plugin.json` and `.cursor/rules/miru-code-search.mdc`
+
+Current limitation:
+
+- these plugin manifests still launch the published Miru runtime through `bunx @takara-ai/miru-code`
+- that means local source edits do not affect plugin behavior until a package version is published
+- and a fully self-contained “no Bun required” plugin install is still future work
+
+### Search hooks
 
 Sub-agent files are also written where supported (see `miru install` plan). Windsurf hooks only *(experimental)* — no MCP entry yet.
 

@@ -1,5 +1,8 @@
 # Cursor
 .cursor
+!.cursor/
+!.cursor/rules/
+!.cursor/rules/miru-code-search.mdc
 
 # dependencies (bun install)
 node_modules
