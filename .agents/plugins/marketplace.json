@@ -5,10 +5,11 @@
   },
   "plugins": [
     {
-      "name": "miru-code",
+      "name": "miru",
       "source": {
-        "source": "local",
-        "path": "."
+        "source": "url",
+        "url": "https://github.com/takara-ai/miru-code.git",
+        "ref": "main"
       },
       "policy": {
         "installation": "AVAILABLE",
