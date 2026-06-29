@@ -1,5 +1,5 @@
 {
-  "name": "miru-code",
+  "name": "miru",
   "version": "1.0.5",
   "description": "Miru (見る) — hybrid code search for agents. Bun, TypeScript, Takara embeddings.",
   "author": {
@@ -12,7 +12,7 @@
   "keywords": ["code-search", "semantic-search", "mcp", "agents", "takara"],
   "mcpServers": "./.mcp.json",
   "interface": {
-    "displayName": "Miru Code",
+    "displayName": "Miru Code Search",
     "shortDescription": "Semantic code search for coding agents.",
     "longDescription": "Miru adds repo-aware semantic search to Codex via MCP and guides agents away from grep-style exploration.",
     "developerName": "Takara",
