@@ -48,13 +48,25 @@ export function isVersionNewer(latest: string, current: string): boolean {
     return latest !== current;
   }
 
-  for (let i = 0; i < 3; i++) {
-    if (a[i]! > b[i]!) {
-      return true;
-    }
-    if (a[i]! < b[i]!) {
-      return false;
-    }
+  const [a0, a1, a2] = a;
+  const [b0, b1, b2] = b;
+  if (a0 > b0) {
+    return true;
+  }
+  if (a0 < b0) {
+    return false;
+  }
+  if (a1 > b1) {
+    return true;
+  }
+  if (a1 < b1) {
+    return false;
+  }
+  if (a2 > b2) {
+    return true;
+  }
+  if (a2 < b2) {
+    return false;
   }
   return false;
 }

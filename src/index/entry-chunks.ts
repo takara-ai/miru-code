@@ -1,7 +1,7 @@
 import { join, relative } from "node:path";
 import type { Chunk } from "../types.ts";
 
-function indexedPath(absPath: string, repoRoot: string, displayRoot?: string): string {
+function indexedPath(absPath: string, _repoRoot: string, displayRoot?: string): string {
   if (displayRoot) {
     return relative(displayRoot, absPath).replace(/\\/g, "/");
   }

@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  formatSearchResultsPretty,
-  prefersJsonOutput,
-} from "../src/cli-ui.ts";
+import { formatSearchResultsPretty, prefersJsonOutput } from "../src/cli-ui.ts";
 import { stripJsonComments as stripComments } from "../src/installer/config.ts";
 import type { SearchResult } from "../src/types.ts";
 

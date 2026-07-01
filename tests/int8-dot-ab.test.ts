@@ -44,16 +44,24 @@ describe("int8 dot A/B", () => {
     const scalarMs = bench(() => {
       let acc = 0;
       for (let d = 0; d < count; d++) {
-        acc += quantizedDotFlatScalar(q, codes, d * dim, dim, scales[d]!);
+        const scale = scales[d];
+        if (scale === undefined) {
+          throw new Error("unexpected missing scale");
+        }
+        acc += quantizedDotFlatScalar(q, codes, d * dim, dim, scale);
       }
-      if (acc === Number.NaN) throw new Error("unexpected");
+      if (Number.isNaN(acc)) throw new Error("unexpected");
     });
     const optimizedMs = bench(() => {
       let acc = 0;
       for (let d = 0; d < count; d++) {
-        acc += quantizedDotFlat(q, codes, d * dim, dim, scales[d]!);
+        const scale = scales[d];
+        if (scale === undefined) {
+          throw new Error("unexpected missing scale");
+        }
+        acc += quantizedDotFlat(q, codes, d * dim, dim, scale);
       }
-      if (acc === Number.NaN) throw new Error("unexpected");
+      if (Number.isNaN(acc)) throw new Error("unexpected");
     });
 
     console.log(

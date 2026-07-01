@@ -124,10 +124,7 @@ export function resolveEmbeddingBaseUrl(): string {
   return envFirstString(
     ["MIRU_OPENAI_BASE_URL", "OPENAI_BASE_URL"],
     DEFAULT_EMBEDDING_BASE_URL,
-  ).replace(
-    /\/$/,
-    "",
-  );
+  ).replace(/\/$/, "");
 }
 
 interface Int8Embedding {

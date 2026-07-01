@@ -129,7 +129,7 @@ describe("utils", () => {
   });
 
   test("formatResults omits guidance", () => {
-    const hit = chunk("def render(): pass\n" + "x = 1\n".repeat(20), "src/a.py", 1, 22);
+    const hit = chunk(`def render(): pass\n${"x = 1\n".repeat(20)}`, "src/a.py", 1, 22);
     const out = formatResults("why does render fail", [{ chunk: hit, score: 0.9 }]);
     expect(out).not.toHaveProperty("guidance");
     expect(out.results).toHaveLength(1);

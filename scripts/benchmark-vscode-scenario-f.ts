@@ -240,9 +240,7 @@ console.error(
 const ast = await miruSearchArm(indexRoot, true, deprecated);
 console.error(`AST:        ${ast.chunks} chunks, indexed in ${(ast.indexMs / 1000).toFixed(1)}s`);
 
-console.error(
-  "\n=== Miru search top_k=" + TOP_K + " (semantic retrieval, not exhaustive scan) ===",
-);
+console.error(`\n=== Miru search top_k=${TOP_K} (semantic retrieval, not exhaustive scan) ===`);
 console.error("symbol          grep    struct(true/noise)  ast(true/noise)");
 for (const sym of NOISY_SYMBOLS) {
   const s = structural.bySymbol[sym];
