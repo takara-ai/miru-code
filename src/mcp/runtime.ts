@@ -1,5 +1,4 @@
 import * as z from "zod";
-import { HIT_LINE_TOOLS, normalizeHitLineArgs } from "./hit-line.ts";
 import {
   type JsonRpcError,
   type JsonRpcId,
@@ -184,10 +183,7 @@ export class MiruMcpServer {
       throw rpcError(JSONRPC_ERROR.invalidParams, `Tool ${input.data.name} not found`);
     }
 
-    let args = input.data.arguments ?? {};
-    if (HIT_LINE_TOOLS.has(input.data.name)) {
-      args = normalizeHitLineArgs(args);
-    }
+    const args = input.data.arguments ?? {};
     const parsed = z.object(tool.inputSchema).safeParse(args);
     if (!parsed.success) {
       throw rpcError(JSONRPC_ERROR.invalidParams, parsed.error.message);

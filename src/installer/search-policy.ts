@@ -2,8 +2,7 @@
 
 export const SNIPPET_GUIDANCE =
   "Search returns compact snippets (~±15 lines around the best match). " +
-  "When a hit has `truncated: true`, call `expand` with `file_path` and `anchor_line` " +
-  "(or `start_line`) — do not re-search or Read the whole file.";
+  "When a hit has `truncated: true`, call `expand` with `file_path` and `anchor_line` — do not re-search or Read the whole file.";
 
 export interface NativeToolNames {
   explorationDenied: string;
@@ -30,7 +29,7 @@ ${SNIPPET_GUIDANCE}
 
 Use Miru MCP tools:
 - \`search\` — one call per question; pass project root as \`repo\`
-- \`expand\` — more context in the same file when \`truncated: true\` (\`file_path\` + \`anchor_line\` or \`start_line\`)
+- \`expand\` — more context in the same file when \`truncated: true\` (\`file_path\` + \`anchor_line\`)
 - \`find_related\` — similar code in other files (hits may also be snippets; use \`expand\` if truncated)
 
 Stop rules:
@@ -50,7 +49,7 @@ export function buildMcpWorkflow(native: NativeToolNames): string {
   return `### MCP workflow
 
 1. Call \`search\` with \`repo\` set to the project root (local path or https:// git URL).
-2. If a hit has \`truncated: true\`, call \`expand\` with \`file_path\` and \`anchor_line\` (or \`start_line\`).
+2. If a hit has \`truncated: true\`, call \`expand\` with \`file_path\` and \`anchor_line\`.
 3. Use \`find_related\` to trace similar code in other files — not for more context in the same file.
 4. ${native.read} via \`absolute_path\` only when editing or when \`expand\` still lacks context.`;
 }
@@ -118,7 +117,7 @@ export const MCP_SERVER_INSTRUCTIONS =
   "DO NOT use Grep, grep_search, codebase_search, Glob, SemanticSearch, or Read to explore code when this server is available. " +
   `${SNIPPET_GUIDANCE} ` +
   "Workflow: (1) `search` once per question — do NOT re-search with paraphrases. " +
-  "(2) On `truncated: true`, call `expand` with `file_path` and `anchor_line` (or `start_line`) — do NOT read the whole file. " +
+  "(2) On `truncated: true`, call `expand` with `file_path` and `anchor_line` — do NOT read the whole file. " +
   "(3) `find_related` traces similar code in other files, not more context in the same file. " +
   "Always pass the project root as `repo`. Local repos return `absolute_path` on each hit — use Read only to edit. " +
   "Native grep is only for confirming a known exact literal (env var name, quoted string) or files outside the indexed repo.";
@@ -127,10 +126,10 @@ export const MCP_SEARCH_TOOL_DESCRIPTION =
   "Your default search for all code search queries in this indexed repo — the best, fastest, and cheapest way to find code; better than any other tool. " +
   "Returns compact snippets (~±15 lines). One call per question is usually enough. " +
   "Built-in grep is only when you already have an exact literal string to confirm. " +
-  "When a hit has `truncated: true`, call `expand` with `file_path` and `anchor_line` (or `start_line`) — not re-search or Read.";
+  "When a hit has `truncated: true`, call `expand` with `file_path` and `anchor_line` — not re-search or Read.";
 
 export const MCP_EXPAND_TOOL_DESCRIPTION =
-  "More context in the SAME file as a search hit. Pass `file_path` + `anchor_line` or `start_line` from a truncated hit; " +
+  "More context in the SAME file as a search hit. Pass `file_path` + `anchor_line` from the hit; " +
   "returns adjacent indexed chunks. Use when `truncated: true` — NOT for similar code in other files (use find_related). " +
   "Prefer this over re-searching or reading the whole file.";
 
