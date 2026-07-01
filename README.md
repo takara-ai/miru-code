@@ -47,7 +47,7 @@ Interactive TUI — **↑↓** move, **space** toggle, **a** all, **enter** conf
 | Instructions | Search policy in `CLAUDE.md` / `AGENTS.md` / `GEMINI.md` |
 | Sub-agent | Dedicated `miru-code` agent file |
 | Cursor rules | Always-on `.cursor/rules/miru-code.mdc` (Cursor only) |
-| Search hooks | Block built-in Grep/Glob and redirect to Miru MCP |
+| Search hooks *(experimental)* | Block built-in Grep/Glob and redirect to Miru MCP |
 
 Restart the IDE when done.
 
@@ -57,7 +57,7 @@ miru uninstall   # remove miru config
 
 **Supported:** Cursor · Claude Code · Gemini CLI · Kiro · OpenCode · GitHub Copilot · Codex · VS Code · Visual Studio (Windows) · Windsurf / Devin Desktop
 
-| IDE | MCP | Instructions / rules | Hooks |
+| IDE | MCP | Instructions / rules | Hooks *(experimental)* |
 |-----|-----|------------------------|-------|
 | Cursor | `~/.cursor/mcp.json` | `~/.cursor/rules/miru-code.mdc` | `~/.cursor/hooks.json` |
 | Claude Code | `~/.claude.json` | `~/.claude/CLAUDE.md` | `~/.claude/settings.json` |
@@ -70,13 +70,15 @@ miru uninstall   # remove miru config
 | Visual Studio | `%USERPROFILE%\.mcp.json` | — | `~/.copilot/hooks/miru-search.json` |
 | Windsurf | — | — | `~/.codeium/windsurf/hooks.json` |
 
-Sub-agent files are also written where supported (see `miru install` plan). Windsurf hooks only — no MCP entry yet.
+Sub-agent files are also written where supported (see `miru install` plan). Windsurf hooks only *(experimental)* — no MCP entry yet.
 
-### Search hooks
+### Search hooks *(experimental)*
+
+Search hooks are **experimental** — behavior and IDE support may change between releases.
 
 Hooks run `miru hook-guard` before built-in search tools execute. They **block** conceptual Grep/Glob/SemanticSearch and shell `rg`/`grep`/`find`, and tell the agent to use Miru MCP `search` instead. Exact literal lookups (e.g. `REDIS_HOST`, a symbol name) still pass through.
 
-Hooks are optional at install time but **on by default**. Disable them in the installer if you only want MCP + instructions.
+Hooks are optional at install time but **on by default**. Disable them in the installer if you only want MCP + instructions, or while evaluating the experimental hook integration.
 
 **Team sub-agent in a repo** (optional):
 
@@ -206,7 +208,7 @@ Set `MIRU_AST_CHUNKING=0` to disable AST and use structural → lines only.
 | `miru find-related <file> <line> [path]` | Related chunks |
 | `miru init --agent <id>` | Project-local sub-agent |
 | `miru clear [path]` | Drop index cache |
-| `miru hook-guard` | PreToolUse hook entrypoint (used by installers; reads JSON stdin) |
+| `miru hook-guard` | PreToolUse hook entrypoint *(experimental)*; used by installers, reads JSON stdin |
 | `miru` | Start MCP server |
 
 ## Library
