@@ -19,6 +19,7 @@ import {
   resolveChunk,
 } from "../utils.ts";
 import { getIndexForRepo, type IndexCache, toolText } from "./index-cache.ts";
+import { hitLineInputSchema } from "./hit-line.ts";
 import { MiruMcpServer } from "./runtime.ts";
 
 const REPO_DESCRIPTION =
@@ -87,12 +88,7 @@ export function createMcpServer(cache: IndexCache): MiruMcpServer {
         file_path: z
           .string()
           .describe("Path from a search hit (`file_path` or `absolute_path` for local repos)."),
-        line: z
-          .number()
-          .int()
-          .describe(
-            "Line from the hit: `anchor_line` when truncated, otherwise `start_line` (1-indexed).",
-          ),
+        ...hitLineInputSchema,
         repo: z.string().describe(REPO_DESCRIPTION),
         before: z
           .number()
@@ -150,12 +146,7 @@ export function createMcpServer(cache: IndexCache): MiruMcpServer {
         file_path: z
           .string()
           .describe("Path from a search hit (`file_path` or `absolute_path` for local repos)."),
-        line: z
-          .number()
-          .int()
-          .describe(
-            "Line from the hit: `anchor_line` when truncated, otherwise `start_line` (1-indexed).",
-          ),
+        ...hitLineInputSchema,
         repo: z.string().describe(REPO_DESCRIPTION),
         top_k: z
           .number()
