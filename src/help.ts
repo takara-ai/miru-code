@@ -1,7 +1,7 @@
 import type { AgentId } from "./agents.ts";
 import {
-  commandRow,
   commandHeader,
+  commandRow,
   divider,
   fail,
   header,
@@ -10,10 +10,7 @@ import {
   writeStdout,
 } from "./cli-ui.ts";
 import { DEFAULT_RESERVE_CORES } from "./concurrency.ts";
-import {
-  DEFAULT_EMBEDDING_BASE_URL,
-  DEFAULT_EMBEDDING_MODEL,
-} from "./embeddings/openai.ts";
+import { DEFAULT_EMBEDDING_BASE_URL, DEFAULT_EMBEDDING_MODEL } from "./embeddings/openai.ts";
 import { TAKARA_API_KEY_ENV } from "./env.ts";
 
 export const AGENT_IDS: readonly AgentId[] = [
@@ -28,7 +25,7 @@ export const AGENT_IDS: readonly AgentId[] = [
 const AGENT_LIST = AGENT_IDS.join(", ");
 
 export function printMainHelp(): void {
-  header("hybrid code search for agents");
+  header();
 
   section("Usage");
   writeStdout("  miru                         Start MCP server (stdio)");

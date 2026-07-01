@@ -43,7 +43,7 @@ Interactive TUI — **↑↓** move, **space** toggle, **a** all, **enter** conf
 
 | Integration | What it does |
 |-------------|----------------|
-| MCP server | `search` and `find_related` tools in the agent |
+| MCP server | `search`, `expand`, and `find_related` tools in the agent |
 | Instructions | Search policy in `CLAUDE.md` / `AGENTS.md` / `GEMINI.md` |
 | Sub-agent | Dedicated `miru-code` agent file |
 | Cursor rules | Always-on `.cursor/rules/miru-code.mdc` (Cursor only) |
@@ -88,6 +88,7 @@ miru init --agent claude --force
 
 ```bash
 miru search "auth middleware" ./src
+miru expand src/auth.ts 42 ./src
 miru find-related src/auth.ts 42 ./src
 ```
 
@@ -101,14 +102,53 @@ bunx @takara-ai/miru-code search "auth middleware" ./src
 
 ## MCP tools
 
-When wired via `miru install`, your agent gets:
+When wired via `miru install`, the MCP server exposes three tools. Pass the **project root** as `repo` for local workspaces (or an `https://` git URL). The index is built on the first call and cached for the session.
 
-| Tool | What it does |
-|------|----------------|
-| `search` | Query by meaning; pass `repo` (project root or `https://` git URL) |
-| `find_related` | Similar code at a `file_path` + line from a search hit |
+| Tool | When to use |
+|------|-------------|
+| `search` | Default for code exploration — hybrid semantic + keyword search. One call per question. |
+| `expand` | More context in the **same file** when a hit has `truncated: true`. |
+| `find_related` | Similar code in **other files** from a `file_path` + line anchor. |
 
-Pass the **project root** as `repo` for local projects. Prefer these over Grep, Glob, or SemanticSearch when Miru MCP is connected — hooks and instructions enforce that when enabled.
+### Workflow
+
+1. **`search`** with `query` + `repo` — returns compact snippets (~±15 lines) and relevance scores.
+2. If a hit has **`truncated: true`**, call **`expand`** with `file_path`, `line` (`anchor_line` or `start_line`), and `repo` — not another search or a full-file read.
+3. To trace similar patterns elsewhere, call **`find_related`** with the same `file_path`, `line`, and `repo`.
+4. Use your editor's **Read** on `absolute_path` only when editing or when `expand` still lacks context.
+
+Prefer these tools over Grep, Glob, or SemanticSearch when Miru MCP is connected — hooks and instructions enforce that when enabled.
+
+### Parameters
+
+**`search`**
+
+| Param | Required | Notes |
+|-------|----------|-------|
+| `query` | yes | Natural language or code query |
+| `repo` | yes | Project root or git URL |
+| `top_k` | no | Results to return (default 3, max 10) |
+| `dedupe_by_file` | no | Keep best hit per file (default `true`) |
+
+**`expand`**
+
+| Param | Required | Notes |
+|-------|----------|-------|
+| `file_path` | yes | From hit `file_path` or `absolute_path` (local repos) |
+| `line` | yes | `anchor_line` when truncated, else `start_line` (1-indexed) |
+| `repo` | yes | Same repo as the search |
+| `before` / `after` | no | Extra chunks before/after anchor (default 1 each) |
+
+**`find_related`**
+
+| Param | Required | Notes |
+|-------|----------|-------|
+| `file_path` | yes | From a search hit |
+| `line` | yes | `anchor_line` or `start_line` |
+| `repo` | yes | Same repo as the search |
+| `top_k` | no | Related chunks to return (default 3, max 10) |
+
+Local repo hits include `absolute_path` for one-click navigation. Confirm exact literals (env var names, quoted strings) with native grep when needed.
 
 ## How it works
 
@@ -194,6 +234,7 @@ const results = await index.search({ query: "BM25 tokenize", topK: 10 });
 | `MIRU_ALLOW_HTTP_GIT` | Set `1` to allow plain `http://` git clones |
 | `MIRU_MCP_WATCH` | Set `0` to disable MCP file watch |
 | `MIRU_AST_CHUNKING` | Set `0` to disable tree-sitter AST chunking |
+| `MIRU_QUIET` | Set `1` to skip the framed CLI banner (subtitle only on color terminals) |
 | `NO_COLOR` | Disable CLI colors |
 
 See `.env.example` for more.
@@ -222,6 +263,18 @@ bun test && bun run typecheck
 ```
 
 Local MCP: `"command": "bun", "args": ["/path/to/miru-code/src/cli.ts"]`
+
+### CLI banner
+
+`miru help` and setup print a framed wordmark and Takara crane on color terminals. Set `MIRU_QUIET=1` to use the subtitle line only.
+
+Crane ASCII art is committed in `src/brand-banner.ts`. To regenerate it from the SVG source (local `assets/red_crane_vector.svg`, gitignored):
+
+```bash
+bun run scripts/render-crane-art.ts
+```
+
+Copy the printed `TAKARA_CRANE` constant into `src/brand-banner.ts`. Requires ImageMagick (`magick`).
 
 ## License
 

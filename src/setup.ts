@@ -1,12 +1,4 @@
-import {
-  divider,
-  fail,
-  hint,
-  info,
-  printBrandBanner,
-  success,
-  writeStderr,
-} from "./cli-ui.ts";
+import { divider, fail, hint, info, printBrandBanner, success, writeStderr } from "./cli-ui.ts";
 import {
   clearStoredCredentials,
   loadStoredCredentials,
@@ -139,7 +131,7 @@ export async function ensureCredentials(options?: { interactive?: boolean }): Pr
   }
 
   writeStderr("");
-  // stderr banner: setup runs before stdout may be a TTY (e.g. piped miru search).
+  // Brand on stderr when credentials are missing in non-interactive mode (stdout may not be a TTY).
   printBrandBanner(process.stderr);
   writeStderr("");
 

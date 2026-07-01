@@ -44,13 +44,10 @@ function showBanner(stream: NodeJS.WriteStream = process.stdout): boolean {
   return true;
 }
 
-export function header(title: string, subtitle?: string): void {
+export function header(): void {
   writeStdout("");
   if (!showBanner()) {
-    writeStdout(brandTitle() + (title ? dim(` · ${title}`) : ""));
-    if (subtitle) {
-      writeStdout(dim(subtitle));
-    }
+    writeStdout(brandTitle());
   }
   divider();
 }
