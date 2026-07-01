@@ -4,11 +4,6 @@ import { stripJsonComments as stripComments } from "../src/installer/config.ts";
 import type { SearchResult } from "../src/types.ts";
 
 describe("cli-ui", () => {
-  test("prefersJsonOutput when --json or non-tty", () => {
-    expect(prefersJsonOutput(true)).toBe(true);
-    expect(prefersJsonOutput(false)).toBe(!process.stdout.isTTY);
-  });
-
   test("formatSearchResultsPretty includes location and score", () => {
     const results: SearchResult[] = [
       {
@@ -27,6 +22,11 @@ describe("cli-ui", () => {
     expect(text).toContain("src/auth.ts:1-3");
     expect(text).toContain("100%");
     expect(text).toContain("export function auth()");
+  });
+
+  test("prefersJsonOutput when --json or non-tty", () => {
+    expect(prefersJsonOutput(true)).toBe(true);
+    expect(prefersJsonOutput(false)).toBe(!process.stdout.isTTY);
   });
 });
 

@@ -44,7 +44,7 @@ import {
 } from "./utils.ts";
 import { maybeNotifyUpdate, miruVersion } from "./version.ts";
 
-loadEnvFiles();
+await loadEnvFiles();
 normalizeTakaraApiKeyEnv();
 await loadStoredCredentials();
 
@@ -158,7 +158,7 @@ async function runSearch(
 
   const index = await withSpinner("Indexing and searching", async () => {
     const built = await MiruIndex.fromSource(path, content);
-    await built.saveToDefaultCache(path);
+    await built.saveToCache(path);
     const results = await built.search({ query, topK });
     return { index: built, results };
   });
@@ -188,7 +188,7 @@ async function runExpand(
       before,
       after,
     );
-    await built.saveToDefaultCache(path);
+    await built.saveToCache(path);
     return formatExpandResults(filePath, line, anchor, expanded, {
       repoRoot,
       before,
@@ -231,7 +231,7 @@ async function runFindRelated(
       throw new RelatedChunkNotFoundError(filePath, line);
     }
     const hits = await built.findRelated(chunk, topK);
-    await built.saveToDefaultCache(path);
+    await built.saveToCache(path);
     return {
       results: hits,
       label: formatRelatedHeader(filePath, line),

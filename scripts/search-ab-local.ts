@@ -12,7 +12,7 @@ import { MiruIndex } from "../src/miru-index.ts";
 import type { SearchResult } from "../src/types.ts";
 import { dedupeResultsByFile } from "../src/utils.ts";
 
-loadEnvFiles();
+await loadEnvFiles();
 normalizeTakaraApiKeyEnv();
 await loadStoredCredentials();
 

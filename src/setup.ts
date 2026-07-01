@@ -1,4 +1,4 @@
-import { brandTitle, divider, fail, hint, info, success, writeStderr } from "./cli-ui.ts";
+import { divider, fail, hint, info, printBrandBanner, success, writeStderr } from "./cli-ui.ts";
 import {
   clearStoredCredentials,
   loadStoredCredentials,
@@ -55,7 +55,8 @@ export async function runSetup(options: RunSetupOptions = {}): Promise<RunSetupR
   }
 
   writeStderr("");
-  writeStderr(`${brandTitle()} setup`);
+  // stderr banner: setup runs before stdout may be a TTY (e.g. piped miru search).
+  printBrandBanner(process.stderr);
   divider("─", 48, process.stderr);
   writeStderr("Miru needs a Takara API key for code embeddings.");
   hint("Get a bearer token from Takara, then enter it below.");
@@ -128,6 +129,11 @@ export async function ensureCredentials(options?: { interactive?: boolean }): Pr
     resolveEmbeddingApiKey();
     return;
   }
+
+  writeStderr("");
+  // Brand on stderr when credentials are missing in non-interactive mode (stdout may not be a TTY).
+  printBrandBanner(process.stderr);
+  writeStderr("");
 
   throw new Error(
     "Takara API key required. Run `miru setup` in a terminal, or set TAKARA_API_KEY " +

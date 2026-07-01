@@ -23,7 +23,7 @@ import { type GrepFileHit, grepSearch } from "./benchmark-grep.ts";
 import { pathMatches } from "./benchmark-lib.ts";
 import { pathExists, REPO_BENCHES, TOP_K } from "./search-ab-queries.ts";
 
-loadEnvFiles();
+await loadEnvFiles();
 normalizeTakaraApiKeyEnv();
 await loadStoredCredentials();
 

@@ -7,7 +7,7 @@ import { dedupeResultsByFile } from "../src/utils.ts";
 import { pathMatches } from "./benchmark-lib.ts";
 import { REPO_BENCHES, TOP_K } from "./search-ab-queries.ts";
 
-loadEnvFiles();
+await loadEnvFiles();
 normalizeTakaraApiKeyEnv();
 await loadStoredCredentials();
 
@@ -36,8 +36,7 @@ for (const bench of benches) {
     console.log(
       `Recall@${TOP_K}: ${relevantFound > 0 ? "PASS" : "FAIL"} (${relevantFound}/${spec.relevant.length} files)`,
     );
-    for (let i = 0; i < results.length; i++) {
-      const r = results[i]!;
+    for (const [i, r] of results.entries()) {
       const hits = spec.relevant.filter((want) => pathMatches(r.chunk.file_path, want));
       console.log(
         `  ${i + 1}. ${r.chunk.file_path}:${r.chunk.start_line}-${r.chunk.end_line}${hits.length ? ` [MATCH: ${hits.join(", ")}]` : ""}`,

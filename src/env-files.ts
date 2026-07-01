@@ -1,4 +1,3 @@
-import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 function applyEnvLine(line: string): void {
@@ -24,21 +23,25 @@ function applyEnvLine(line: string): void {
   process.env[key] = value;
 }
 
-function loadEnvFile(path: string): void {
-  if (!existsSync(path)) {
+async function loadEnvFile(path: string): Promise<void> {
+  const file = Bun.file(path);
+  if (!(await file.exists())) {
     return;
   }
-  for (const line of readFileSync(path, "utf-8").split("\n")) {
+  for (const line of (await file.text()).split("\n")) {
     applyEnvLine(line);
   }
 }
 
 /** Load .env.local / .env without overriding vars already set (e.g. MCP config env). */
-export function loadEnvFiles(options?: { packageRoot?: string; cwd?: string }): void {
+export async function loadEnvFiles(options?: {
+  packageRoot?: string;
+  cwd?: string;
+}): Promise<void> {
   const cwd = options?.cwd ?? process.cwd();
   const packageRoot = options?.packageRoot ?? join(import.meta.dir, "..");
   for (const dir of [packageRoot, cwd]) {
-    loadEnvFile(join(dir, ".env.local"));
-    loadEnvFile(join(dir, ".env"));
+    await loadEnvFile(join(dir, ".env.local"));
+    await loadEnvFile(join(dir, ".env"));
   }
 }

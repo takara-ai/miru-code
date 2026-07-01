@@ -9,6 +9,7 @@ import {
 } from "./embeddings/openai.ts";
 import { cloneGitRepository } from "./git.ts";
 import type { BM25Index } from "./index/bm25.ts";
+import { buildChunkSelector } from "./index/chunk-selector.ts";
 import { createIndexFromPath } from "./index/create.ts";
 import { applyIncrementalFileChanges } from "./index/incremental.ts";
 import { persistencePaths, saveIndexBundle } from "./index/persistence.ts";
@@ -19,27 +20,71 @@ import { chunkKey, chunkToDict } from "./types.ts";
 import { computeSourceCacheKey, isGitUrl } from "./utils.ts";
 import { indexCacheEpoch } from "./version.ts";
 
+/**
+ * In-memory search index over a codebase: BM25 keyword scores plus semantic
+ * embeddings, with optional disk cache for reuse across runs.
+ *
+ * Construct via `fromPath`, `fromGit`, or `fromSource`; load a saved bundle
+ * with `loadFromDisk`. Search combines both signals; `findRelated` is
+ * semantic-only similarity from an existing chunk or hit.
+ *
+ * Lifecycle:
+ * - **Build** — parse files, chunk, embed, score with BM25
+ * - **Cache** — `save` writes a bundle keyed by source path or git URL + ref
+ * - **Query** — `search` blends BM25 and vectors; filters use prebuilt mappings
+ * - **Update** — `applyFileChanges` re-indexes only touched paths (local roots)
+ */
 export class MiruIndex {
+  /** OpenAI (or configured) client used for query embeddings and reranking. */
   readonly embeddings: EmbeddingBackend;
+
+  /** Flat list of all chunks; index position is the stable chunk id. */
   private chunksInternal: Chunk[];
+
+  /** Inverted index for lexical (BM25) retrieval. */
   private bm25Index: BM25Index;
+
+  /** Vector store for semantic nearest-neighbor search. */
   private semanticIndex: SemanticIndex;
+
+  /**
+   * True when hydrated from disk via `loadFromDisk`.
+   * Affects `saveToCache`, which skips re-saving already-cached indexes unless forced.
+   */
   private loadedFromDiskFlag: boolean;
 
+  /** Model id stored in cache metadata and used for new embeddings. */
   readonly embeddingModel: string;
+
+  /**
+   * Absolute path to the indexed tree on disk, or `null` for git-only indexes
+   * (clone is deleted after indexing; incremental updates need a local root).
+   */
   private readonly root: string | null;
+
+  /** Content kinds indexed at build time (e.g. `code`, `markdown`). */
   private readonly content: ContentType[];
+
+  /** Repo-relative file path → chunk indices in `chunksInternal`. */
   private fileMapping: Map<string, number[]>;
+
+  /** Language tag → chunk indices, for `filterLanguages` in search. */
   private languageMapping: Map<string, number[]>;
 
+  /** Read-only view of indexed chunks. */
   get chunks(): Chunk[] {
     return this.chunksInternal;
   }
 
+  /** Whether this instance was loaded from a cache bundle rather than freshly built. */
   get loadedFromDisk(): boolean {
     return this.loadedFromDiskFlag;
   }
 
+  /**
+   * Prefer static factories (`fromPath`, `fromGit`, `loadFromDisk`) over calling
+   * directly; the constructor is public for tests and advanced composition.
+   */
   constructor(options: {
     embeddings: EmbeddingBackend;
     bm25Index: BM25Index;
@@ -63,6 +108,10 @@ export class MiruIndex {
     this.rebuildMappings();
   }
 
+  /**
+   * Rebuild file/language → chunk-index maps after chunks change.
+   * Called from the constructor and after incremental updates.
+   */
   private rebuildMappings(): void {
     this.fileMapping = new Map();
     this.languageMapping = new Map();
@@ -85,6 +134,12 @@ export class MiruIndex {
     }
   }
 
+  /**
+   * Clone a remote repo, index it, persist to cache, and return the in-memory index.
+   *
+   * Cache key is derived from URL + ref. On hit, skips clone and embedding work.
+   * The temporary clone directory is always removed in `finally`.
+   */
   static async fromGit(
     url: string,
     content: ContentType[] = ["code"],
@@ -113,6 +168,7 @@ export class MiruIndex {
         semanticIndex: semantic,
         chunks,
         embeddingModel: model,
+        // No durable local root — clone is deleted; incremental updates unavailable.
         root: null,
         content,
       });
@@ -123,6 +179,7 @@ export class MiruIndex {
     }
   }
 
+  /** Resolve a local path or git URL and delegate to `fromPath` or `fromGit`. */
   static async fromSource(
     source: string,
     content: ContentType[] = ["code"],
@@ -135,6 +192,13 @@ export class MiruIndex {
     return MiruIndex.fromPath(source, content, embeddingModel);
   }
 
+  /**
+   * Index a directory on disk, reusing a validated cache hit when available.
+   *
+   * `root` is set to the resolved path so `applyFileChanges` can re-chunk files
+   * later. Unlike `fromGit`, this does not auto-save to cache; callers use
+   * `saveToCache` when they want persistence.
+   */
   static async fromPath(
     path: string,
     content: ContentType[] = ["code"],
@@ -178,6 +242,12 @@ export class MiruIndex {
     });
   }
 
+  /**
+   * Hydrate BM25, semantic vectors, and chunks from a saved index bundle.
+   *
+   * Validates embedding model compatibility via cache metadata. Sets
+   * `loadedFromDisk` so callers can avoid redundant cache writes.
+   */
   static async loadFromDisk(path: string, embeddingModel?: string): Promise<MiruIndex> {
     const model = embeddingModel ?? resolveEmbeddingModel();
     const { bm25, semantic, chunks, metadata } = await loadCachedIndex(path);
@@ -196,6 +266,12 @@ export class MiruIndex {
     });
   }
 
+  /**
+   * Write BM25, semantic vectors, chunk metadata, and index metadata to `path`.
+   *
+   * Metadata includes `index_epoch` for invalidation when Miru's on-disk format
+   * changes, plus embedding model/dimensions for cache validation on reload.
+   */
   async save(path: string): Promise<void> {
     const paths = persistencePaths(path);
     await mkdir(paths.root, { recursive: true });
@@ -218,17 +294,24 @@ export class MiruIndex {
     });
   }
 
-  async saveToDefaultCache(sourcePath: string): Promise<void> {
-    if (!this.loadedFromDiskFlag) {
+  /**
+   * Persist to the default cache location for `sourcePath`.
+   *
+   * By default this is a no-op for unchanged indexes loaded from disk, avoiding
+   * redundant cache writes. Pass `force: true` after mutating a cached index.
+   */
+  async saveToCache(sourcePath: string, options: { force?: boolean } = {}): Promise<void> {
+    if (!this.loadedFromDiskFlag || options.force) {
       await this.save(findIndexCachePath(sourcePath));
     }
   }
 
-  async persistToCache(sourcePath: string): Promise<void> {
-    await this.save(findIndexCachePath(sourcePath));
-  }
-
-  /** Re-chunk and re-embed only the given repo-relative paths; drop their old chunks. */
+  /**
+   * Re-chunk and re-embed only the given repo-relative paths; drop their old chunks.
+   *
+   * Requires `root` (local `fromPath` indexes only). Updates BM25, semantic
+   * index, and mappings in place; clears `loadedFromDisk` since data changed.
+   */
   async applyFileChanges(relativePaths: readonly string[]): Promise<void> {
     if (!this.root) {
       throw new Error("Incremental update requires a local index with root_path set.");
@@ -253,20 +336,27 @@ export class MiruIndex {
     this.rebuildMappings();
   }
 
-  private getSelector(filterLanguages?: string[], filterPaths?: string[]): number[] | undefined {
-    const selector: number[] = [];
-    for (const lang of filterLanguages ?? []) {
-      selector.push(...(this.languageMapping.get(lang) ?? []));
-    }
-    for (const fp of filterPaths ?? []) {
-      selector.push(...(this.fileMapping.get(fp) ?? []));
-    }
-    if (selector.length === 0) {
-      return undefined;
-    }
-    return [...new Set(selector)];
+  private getSelector(
+    filterLanguages?: string[],
+    filterPaths?: string[],
+  ): readonly number[] | undefined {
+    return buildChunkSelector(
+      {
+        fileMapping: this.fileMapping,
+        languageMapping: this.languageMapping,
+      },
+      filterLanguages,
+      filterPaths,
+    );
   }
 
+  /**
+   * Hybrid BM25 + semantic search over indexed chunks.
+   *
+   * `alpha` blends keyword vs vector scores (default depends on content type).
+   * `filterLanguages` / `filterPaths` restrict candidates before ranking.
+   * `rerank` defaults to on for code indexes (cross-encoder style reranking).
+   */
   async search(options: {
     query: string;
     topK?: number;
@@ -296,6 +386,13 @@ export class MiruIndex {
     });
   }
 
+  /**
+   * Semantic neighbors of a chunk or search hit, excluding the source itself.
+   *
+   * Uses the chunk's text as the query embedding. When the source has a
+   * language, search is scoped to same-language chunks. Requests `topK + 1`
+   * hits so filtering out the source still yields `topK` results.
+   */
   async findRelated(source: Chunk | SearchResult, topK = 5): Promise<SearchResult[]> {
     const target = "chunk" in source ? source.chunk : source;
     const selector = target.language ? this.getSelector([target.language]) : undefined;

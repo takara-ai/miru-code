@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { cpSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 /**
  * Copy prebuilt .wasm grammars from official tree-sitter-* npm packages into grammars/.
  *

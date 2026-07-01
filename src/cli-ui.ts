@@ -1,66 +1,26 @@
+import { printBrandBanner } from "./brand-banner.ts";
+import { bold, colorEnabled, cyan, dim, green, magenta, red, yellow } from "./terminal.ts";
 import type { SearchResult } from "./types.ts";
 import { formatRelevanceScore } from "./utils.ts";
 
-const ANSI = {
-  reset: "\x1b[0m",
-  bold: "\x1b[1m",
-  dim: "\x1b[2m",
-  cyan: "\x1b[36m",
-  green: "\x1b[32m",
-  red: "\x1b[31m",
-  yellow: "\x1b[33m",
-  magenta: "\x1b[35m",
-} as const;
-
-function colorEnabled(stream: NodeJS.WriteStream = process.stdout): boolean {
-  return stream.isTTY && process.env.NO_COLOR === undefined;
-}
-
-function paint(text: string, code: string, stream?: NodeJS.WriteStream): string {
-  if (!colorEnabled(stream)) {
-    return text;
-  }
-  return `${code}${text}${ANSI.reset}`;
-}
-
-export function bold(text: string, stream?: NodeJS.WriteStream): string {
-  return paint(text, ANSI.bold, stream);
-}
-
-export function dim(text: string, stream?: NodeJS.WriteStream): string {
-  return paint(text, ANSI.dim, stream);
-}
-
-export function cyan(text: string, stream?: NodeJS.WriteStream): string {
-  return paint(text, ANSI.cyan, stream);
-}
-
-export function green(text: string, stream?: NodeJS.WriteStream): string {
-  return paint(text, ANSI.green, stream);
-}
-
-export function red(text: string, stream?: NodeJS.WriteStream): string {
-  return paint(text, ANSI.red, stream);
-}
-
-export function yellow(text: string, stream?: NodeJS.WriteStream): string {
-  return paint(text, ANSI.yellow, stream);
-}
-
-export function magenta(text: string, stream?: NodeJS.WriteStream): string {
-  return paint(text, ANSI.magenta, stream);
-}
-
-export function isInteractiveStdout(): boolean {
-  return process.stdout.isTTY && process.env.NO_COLOR === undefined;
-}
+export { formatBrandBannerLines, isQuietBrand, printBrandBanner } from "./brand-banner.ts";
+// Re-export terminal + banner APIs for existing cli-ui consumers.
+export {
+  bold,
+  cyan,
+  dim,
+  green,
+  magenta,
+  red,
+  yellow,
+} from "./terminal.ts";
 
 export function prefersJsonOutput(jsonFlag: boolean): boolean {
   return jsonFlag || !process.stdout.isTTY;
 }
 
 export function brandTitle(): string {
-  return bold("Miru", process.stderr) + dim(" (見る)", process.stderr);
+  return bold("MIRU", process.stderr) + dim(" (見る)", process.stderr);
 }
 
 export function writeStdout(line = ""): void {
@@ -72,15 +32,33 @@ export function writeStderr(line = ""): void {
 }
 
 export function divider(char = "─", width = 52, stream: NodeJS.WriteStream = process.stdout): void {
-  const line = char.repeat(width);
-  stream.write(`${dim(line, stream)}\n`);
+  stream.write(`${dim(char.repeat(width), stream)}\n`);
 }
 
-export function header(title: string, subtitle?: string): void {
+function showBanner(stream: NodeJS.WriteStream = process.stdout): boolean {
+  // Full banner replaces the plain "MIRU · title" header on color TTYs.
+  if (!colorEnabled(stream)) {
+    return false;
+  }
+  printBrandBanner(stream);
+  return true;
+}
+
+export function header(): void {
   writeStdout("");
-  writeStdout(brandTitle() + (title ? dim(` · ${title}`) : ""));
-  if (subtitle) {
-    writeStdout(dim(subtitle));
+  if (!showBanner()) {
+    writeStdout(brandTitle());
+  }
+  divider();
+}
+
+export function commandHeader(name: string, summary: string): void {
+  writeStdout("");
+  if (!showBanner()) {
+    writeStdout(`${brandTitle()} ${name}`);
+    writeStdout(summary);
+  } else {
+    writeStdout(summary);
   }
   divider();
 }
@@ -176,7 +154,8 @@ export function formatSearchResultsPretty(query: string, results: SearchResult[]
     }
   }
 
-  if (isInteractiveStdout()) {
+  if (colorEnabled(process.stdout)) {
+    // Only nudge interactive users; JSON output should stay machine-clean.
     lines.push("");
     lines.push(dim("Tip: add --json for machine-readable output"));
   }

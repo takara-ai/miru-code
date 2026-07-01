@@ -1,5 +1,5 @@
-import { mkdir, unlink, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { unlink } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import type { HooksFormat, InstallAction } from "../agents.ts";
 import { stripJsonComments } from "../config.ts";
 
@@ -121,8 +121,7 @@ async function writeJson(
   data: Record<string, unknown>,
   existed: boolean,
 ): Promise<InstallAction> {
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(data, null, 2)}\n`, "utf-8");
+  await Bun.write(path, `${JSON.stringify(data, null, 2)}\n`);
   return existed ? "updated" : "created";
 }
 
@@ -220,7 +219,7 @@ async function removeHooksSection(
     return "removed";
   }
 
-  await writeFile(path, `${JSON.stringify(parsed, null, 2)}\n`, "utf-8");
+  await Bun.write(path, `${JSON.stringify(parsed, null, 2)}\n`);
   return "removed";
 }
 
@@ -327,8 +326,7 @@ export async function mergeVscodeHooks(path: string): Promise<InstallAction> {
       return "unchanged";
     }
   }
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(content, null, 2)}\n`, "utf-8");
+  await Bun.write(path, `${JSON.stringify(content, null, 2)}\n`);
   return existed ? "updated" : "created";
 }
 
@@ -403,8 +401,7 @@ export async function mergeOpenCodePlugin(pluginPath: string): Promise<InstallAc
   if (existed && (await Bun.file(pluginPath).text()) === content) {
     return "unchanged";
   }
-  await mkdir(dirname(pluginPath), { recursive: true });
-  await writeFile(pluginPath, content, "utf-8");
+  await Bun.write(pluginPath, content);
   return existed ? "updated" : "created";
 }
 

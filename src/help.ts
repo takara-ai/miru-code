@@ -1,6 +1,6 @@
 import type { AgentId } from "./agents.ts";
 import {
-  brandTitle,
+  commandHeader,
   commandRow,
   divider,
   fail,
@@ -9,6 +9,9 @@ import {
   section,
   writeStdout,
 } from "./cli-ui.ts";
+import { DEFAULT_RESERVE_CORES } from "./concurrency.ts";
+import { DEFAULT_EMBEDDING_BASE_URL, DEFAULT_EMBEDDING_MODEL } from "./embeddings/openai.ts";
+import { TAKARA_API_KEY_ENV } from "./env.ts";
 
 export const AGENT_IDS: readonly AgentId[] = [
   "claude",
@@ -22,7 +25,7 @@ export const AGENT_IDS: readonly AgentId[] = [
 const AGENT_LIST = AGENT_IDS.join(", ");
 
 export function printMainHelp(): void {
-  header("hybrid code search for agents");
+  header();
 
   section("Usage");
   writeStdout("  miru                         Start MCP server (stdio)");
@@ -51,14 +54,14 @@ export function printMainHelp(): void {
 
 export function printEnvHelp(): void {
   section("Environment");
-  writeStdout("  TAKARA_API_KEY");
+  writeStdout(`  ${TAKARA_API_KEY_ENV}`);
   writeStdout("      Takara bearer token for embeddings");
   writeStdout("  MIRU_OPENAI_BASE_URL");
-  writeStdout("      Default: https://infer.takara.ai/v1");
+  writeStdout(`      Default: ${DEFAULT_EMBEDDING_BASE_URL}`);
   writeStdout("  MIRU_OPENAI_EMBEDDING_MODEL");
-  writeStdout("      Default: ds1-miru-int8");
+  writeStdout(`      Default: ${DEFAULT_EMBEDDING_MODEL}`);
   writeStdout("  MIRU_CONCURRENCY");
-  writeStdout("      Parallel workers (default: CPUs − 2)");
+  writeStdout(`      Parallel workers (default: CPUs − ${DEFAULT_RESERVE_CORES})`);
   writeStdout("");
 }
 
@@ -67,17 +70,10 @@ export function printFullHelp(): void {
   printEnvHelp();
 }
 
-function printCommandHeader(name: string, summary: string): void {
-  writeStdout("");
-  writeStdout(`${brandTitle()} ${name}`);
-  writeStdout(summary);
-  divider();
-}
-
 export function printCommandHelp(command: string): void {
   switch (command) {
     case "search":
-      printCommandHeader("search", "Hybrid semantic + keyword search.");
+      commandHeader("search", "Hybrid semantic + keyword search.");
       section("Usage");
       writeStdout("  miru search <query> [path] [options]");
       section("Options");
@@ -89,7 +85,7 @@ export function printCommandHelp(command: string): void {
       writeStdout("");
       return;
     case "expand":
-      printCommandHeader("expand", "More context in the same file as a search hit.");
+      commandHeader("expand", "More context in the same file as a search hit.");
       section("Usage");
       writeStdout("  miru expand <file> <line> [path] [--before N] [--after N]");
       section("Example");
@@ -97,7 +93,7 @@ export function printCommandHelp(command: string): void {
       writeStdout("");
       return;
     case "find-related":
-      printCommandHeader("find-related", "Semantic neighbors of a file location.");
+      commandHeader("find-related", "Semantic neighbors of a file location.");
       section("Usage");
       writeStdout("  miru find-related <file> <line> [path] [options]");
       section("Example");
@@ -105,7 +101,7 @@ export function printCommandHelp(command: string): void {
       writeStdout("");
       return;
     case "setup":
-      printCommandHeader("setup", "Store and validate your Takara API key.");
+      commandHeader("setup", "Store and validate your Takara API key.");
       section("Usage");
       writeStdout("  miru setup [--key TOKEN] [--force] [--clear]");
       section("Options");
@@ -115,7 +111,7 @@ export function printCommandHelp(command: string): void {
       writeStdout("");
       return;
     case "install":
-      printCommandHeader("install", "Interactive global agent setup.");
+      commandHeader("install", "Interactive global agent setup.");
       writeStdout("Configures MCP server, instructions, and sub-agent files under");
       writeStdout("your user config (~/.claude, ~/.cursor, etc.).");
       writeStdout("");
@@ -123,12 +119,12 @@ export function printCommandHelp(command: string): void {
       writeStdout("");
       return;
     case "uninstall":
-      printCommandHeader("uninstall", "Remove miru configuration from agents.");
+      commandHeader("uninstall", "Remove miru configuration from agents.");
       writeStdout("Removes MCP entries, marked instruction blocks, and global sub-agents.");
       writeStdout("");
       return;
     case "init":
-      printCommandHeader("init", "Project-local sub-agent file.");
+      commandHeader("init", "Project-local sub-agent file.");
       writeStdout("Prefer miru install for global setup. Use init to commit into a repo.");
       section("Usage");
       writeStdout("  miru init --agent AGENT [--force]");
@@ -139,7 +135,7 @@ export function printCommandHelp(command: string): void {
       writeStdout("");
       return;
     case "clear":
-      printCommandHeader("clear", "Drop the on-disk index cache.");
+      commandHeader("clear", "Drop the on-disk index cache.");
       section("Usage");
       writeStdout("  miru clear [path]");
       section("Example");
@@ -147,7 +143,7 @@ export function printCommandHelp(command: string): void {
       writeStdout("");
       return;
     case "mcp":
-      printCommandHeader("mcp", "Stdio MCP server (default with no subcommand).");
+      commandHeader("mcp", "Stdio MCP server (default with no subcommand).");
       section("Usage");
       writeStdout("  miru [--ref BRANCH] [--content TYPE ...]");
       writeStdout("");

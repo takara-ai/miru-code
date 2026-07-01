@@ -1,70 +1,114 @@
-/** Cosine-distance vector index with optional chunk selector. */
-import { mkdir } from "node:fs/promises";
+/** Uncompressed float32 semantic index. Debug/precision baseline only; production uses int8. */
 import type { SemanticIndex } from "./semantic-index.ts";
-import { selectTopKByDistance } from "./topk.ts";
+import { TopKDistanceCollector } from "./topk.ts";
+
+function cosineDistanceFlat(
+  data: Float32Array,
+  dim: number,
+  docIndex: number,
+  query: Float32Array,
+): number {
+  const offset = docIndex * dim;
+  let dot = 0;
+  for (let i = 0; i < dim; i++) {
+    dot += (query[i] ?? 0) * (data[offset + i] ?? 0);
+  }
+  return 1 - dot;
+}
 
 export class VectorIndex implements SemanticIndex {
-  private vectors: Float32Array[];
+  private readonly data: Float32Array;
+  private readonly count: number;
+  private readonly dim: number;
+  private vectorsCache: Float32Array[] | null = null;
 
   constructor(vectors: Float32Array[]) {
-    this.vectors = vectors;
+    if (vectors.length === 0) {
+      this.count = 0;
+      this.dim = 0;
+      this.data = new Float32Array(0);
+      return;
+    }
+    this.count = vectors.length;
+    this.dim = vectors[0]?.length ?? 0;
+    this.data = new Float32Array(this.count * this.dim);
+    for (let i = 0; i < this.count; i++) {
+      const vec = vectors[i];
+      if (vec) {
+        this.data.set(vec, i * this.dim);
+      }
+    }
+  }
+
+  static fromFlatBuffer(data: Float32Array, count: number, dim: number): VectorIndex {
+    const index = Object.create(VectorIndex.prototype) as VectorIndex;
+    Object.assign(index, { data, count, dim });
+    return index;
   }
 
   get size(): number {
-    return this.vectors.length;
+    return this.count;
   }
 
   get dimensions(): number {
-    return this.vectors[0]?.length ?? 0;
+    return this.dim;
   }
 
   getVectors(): readonly Float32Array[] {
-    return this.vectors;
+    if (this.vectorsCache) {
+      return this.vectorsCache;
+    }
+    const vectors: Float32Array[] = [];
+    for (let i = 0; i < this.count; i++) {
+      vectors.push(this.data.subarray(i * this.dim, (i + 1) * this.dim));
+    }
+    this.vectorsCache = vectors;
+    return vectors;
   }
 
   vectorAt(docIndex: number): Float32Array {
-    const vec = this.vectors[docIndex];
-    if (!vec) {
+    if (docIndex < 0 || docIndex >= this.count) {
       throw new Error(`Missing vector at index ${docIndex}`);
     }
-    return vec;
+    return this.data.subarray(docIndex * this.dim, (docIndex + 1) * this.dim);
   }
 
   memoryBytes(): number {
-    return this.vectors.length * this.dimensions * 4;
+    return this.count * this.dim * 4;
   }
 
   query(
     queryVector: Float32Array,
     k: number,
-    selector?: number[],
+    selector?: readonly number[],
   ): { indices: number[]; distances: number[] } {
     if (k < 1) {
       throw new Error(`k should be >= 1, is now ${k}`);
     }
-
-    const numVectors = this.vectors.length;
-    if (numVectors === 0) {
+    if (this.count === 0) {
       return { indices: [], distances: [] };
     }
 
-    const indices = selector ?? Array.from({ length: numVectors }, (_, i) => i);
-    const effectiveK = Math.min(k, indices.length);
+    const effectiveK = Math.min(k, selector?.length ?? this.count);
     if (effectiveK === 0) {
       return { indices: [], distances: [] };
     }
 
-    const top = selectTopKByDistance(
-      indices.flatMap((idx) => {
-        const vec = this.vectors[idx];
-        if (!vec) {
-          return [];
+    const collector = new TopKDistanceCollector(effectiveK);
+    if (selector) {
+      for (const idx of selector) {
+        if (idx < 0 || idx >= this.count) {
+          continue;
         }
-        return [{ index: idx, distance: cosineDistance(queryVector, vec) }];
-      }),
-      effectiveK,
-    );
+        collector.offer(idx, cosineDistanceFlat(this.data, this.dim, idx, queryVector));
+      }
+    } else {
+      for (let i = 0; i < this.count; i++) {
+        collector.offer(i, cosineDistanceFlat(this.data, this.dim, i, queryVector));
+      }
+    }
 
+    const top = collector.finish();
     return {
       indices: top.map((t) => t.index),
       distances: top.map((t) => t.distance),
@@ -72,21 +116,10 @@ export class VectorIndex implements SemanticIndex {
   }
 
   async save(dir: string): Promise<void> {
-    await mkdir(dir, { recursive: true });
-
-    const dim = this.dimensions;
-    const count = this.size;
-    const buffer = new Float32Array(count * dim);
-    for (let i = 0; i < count; i++) {
-      const vec = this.vectors[i];
-      if (vec) {
-        buffer.set(vec, i * dim);
-      }
-    }
-    await Bun.write(`${dir}/vectors.bin`, buffer);
+    await Bun.write(`${dir}/vectors.bin`, this.data);
     await Bun.write(
       `${dir}/meta.json`,
-      JSON.stringify({ count, dimensions: dim, storage: "float32" }),
+      JSON.stringify({ count: this.count, dimensions: this.dim, storage: "float32" }),
     );
   }
 
@@ -95,19 +128,7 @@ export class VectorIndex implements SemanticIndex {
       count: number;
       dimensions: number;
     };
-    const raw = new Float32Array(await Bun.file(`${dir}/vectors.bin`).arrayBuffer());
-    const vectors: Float32Array[] = [];
-    for (let i = 0; i < meta.count; i++) {
-      vectors.push(raw.subarray(i * meta.dimensions, (i + 1) * meta.dimensions));
-    }
-    return new VectorIndex(vectors);
+    const data = new Float32Array(await Bun.file(`${dir}/vectors.bin`).arrayBuffer());
+    return VectorIndex.fromFlatBuffer(data, meta.count, meta.dimensions);
   }
-}
-
-function cosineDistance(a: Float32Array, b: Float32Array): number {
-  let dot = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += (a[i] ?? 0) * (b[i] ?? 0);
-  }
-  return 1 - dot;
 }

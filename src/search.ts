@@ -35,7 +35,7 @@ function semanticFromQueryVector(
   semanticIndex: SemanticIndex,
   chunks: Chunk[],
   topK: number,
-  selector?: number[],
+  selector?: readonly number[],
 ): SearchResult[] {
   const { indices, distances } = semanticIndex.query(queryVec, topK, selector);
   return indices.flatMap((index, i) => {
@@ -52,7 +52,7 @@ async function searchBm25(
   bm25Index: BM25Index,
   chunks: Chunk[],
   topK: number,
-  selector?: number[],
+  selector?: readonly number[],
 ): Promise<SearchResult[]> {
   const tokens = tokenize(query);
   if (tokens.length === 0) {
@@ -79,7 +79,7 @@ export async function hybridSearch(options: {
   chunks: Chunk[];
   topK: number;
   alpha?: number | null;
-  selector?: number[];
+  selector?: readonly number[];
   rerank?: boolean;
 }): Promise<SearchResult[]> {
   const {
@@ -170,7 +170,7 @@ export async function searchSemanticOnly(options: {
   semanticIndex: SemanticIndex;
   chunks: Chunk[];
   topK: number;
-  selector?: number[];
+  selector?: readonly number[];
 }): Promise<SearchResult[]> {
   const queryVec = await options.embeddings.embedQuery(options.query);
   return semanticFromQueryVector(

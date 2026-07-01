@@ -1,5 +1,6 @@
+import { quantizedDotFlat } from "./int8-dot.ts";
 import type { SemanticIndex } from "./semantic-index.ts";
-import { selectTopKByDistance } from "./topk.ts";
+import { TopKDistanceCollector } from "./topk.ts";
 
 export interface QuantizedVector {
   codes: Int8Array;
@@ -28,54 +29,49 @@ export function quantizeVector(vector: Float32Array): QuantizedVector {
   return { codes, scale };
 }
 
-function quantizedDot(query: QuantizedVector, docCodes: Int8Array, docScale: number): number {
-  let sum = 0;
-  const q = query.codes;
-  for (let i = 0; i < q.length; i++) {
-    sum += (q[i] ?? 0) * (docCodes[i] ?? 0);
-  }
-  return sum * query.scale * docScale;
-}
-
-/** int8 codes + per-vector scale; ~4x smaller than float32 at same dimensionality. */
+/** Production semantic index: symmetric int8 codes with per-vector scale (~4x less RAM than float32). */
 export class QuantizedVectorIndex implements SemanticIndex {
-  private readonly codes: Int8Array[];
+  private readonly codes: Int8Array;
   private readonly scales: Float32Array;
+  private readonly count: number;
   private readonly dim: number;
 
   constructor(vectors: Float32Array[]) {
     if (vectors.length === 0) {
+      this.count = 0;
       this.dim = 0;
-      this.codes = [];
+      this.codes = new Int8Array(0);
       this.scales = new Float32Array(0);
       return;
     }
+    this.count = vectors.length;
     this.dim = vectors[0]?.length ?? 0;
-    this.codes = new Array(vectors.length);
-    this.scales = new Float32Array(vectors.length);
-    for (let i = 0; i < vectors.length; i++) {
+    this.codes = new Int8Array(this.count * this.dim);
+    this.scales = new Float32Array(this.count);
+    for (let i = 0; i < this.count; i++) {
       const vector = vectors[i];
       if (!vector) {
         continue;
       }
       const { codes, scale } = quantizeVector(vector);
-      this.codes[i] = codes;
+      this.codes.set(codes, i * this.dim);
       this.scales[i] = scale;
     }
   }
 
   static fromPersisted(
-    codes: Int8Array[],
+    codes: Int8Array,
     scales: Float32Array,
+    count: number,
     dim: number,
   ): QuantizedVectorIndex {
     const index = Object.create(QuantizedVectorIndex.prototype) as QuantizedVectorIndex;
-    Object.assign(index, { dim, codes, scales });
+    Object.assign(index, { codes, scales, count, dim });
     return index;
   }
 
   get size(): number {
-    return this.codes.length;
+    return this.count;
   }
 
   get dimensions(): number {
@@ -83,18 +79,21 @@ export class QuantizedVectorIndex implements SemanticIndex {
   }
 
   memoryBytes(): number {
-    return this.codes.length * this.dim + this.scales.byteLength;
+    return this.count * this.dim + this.scales.byteLength;
   }
 
   vectorAt(docIndex: number): Float32Array {
-    const codes = this.codes[docIndex];
-    const scale = this.scales[docIndex];
-    if (!codes || scale === undefined) {
+    if (docIndex < 0 || docIndex >= this.count) {
       throw new Error(`Missing quantized vector at index ${docIndex}`);
     }
-    const out = new Float32Array(codes.length);
-    for (let i = 0; i < codes.length; i++) {
-      out[i] = (codes[i] ?? 0) * scale;
+    const offset = docIndex * this.dim;
+    const scale = this.scales[docIndex];
+    if (scale === undefined) {
+      throw new Error(`Missing quantized vector at index ${docIndex}`);
+    }
+    const out = new Float32Array(this.dim);
+    for (let i = 0; i < this.dim; i++) {
+      out[i] = (this.codes[offset + i] ?? 0) * scale;
     }
     let norm = 0;
     for (let i = 0; i < out.length; i++) {
@@ -113,38 +112,46 @@ export class QuantizedVectorIndex implements SemanticIndex {
   query(
     queryVector: Float32Array,
     k: number,
-    selector?: number[],
+    selector?: readonly number[],
   ): { indices: number[]; distances: number[] } {
     if (k < 1) {
       throw new Error(`k should be >= 1, is now ${k}`);
     }
-    if (this.size === 0) {
+    if (this.count === 0) {
       return { indices: [], distances: [] };
     }
 
     const q = quantizeVector(queryVector);
-    const indices = selector ?? Array.from({ length: this.size }, (_, i) => i);
-    const effectiveK = Math.min(k, indices.length);
+    const effectiveK = Math.min(k, selector?.length ?? this.count);
     if (effectiveK === 0) {
       return { indices: [], distances: [] };
     }
 
-    const top = selectTopKByDistance(
-      indices.flatMap((idx) => {
-        const codes = this.codes[idx];
-        if (!codes) {
-          return [];
+    const collector = new TopKDistanceCollector(effectiveK);
+    if (selector) {
+      for (const idx of selector) {
+        if (idx < 0 || idx >= this.count) {
+          continue;
         }
         const scale = this.scales[idx];
         if (scale === undefined) {
-          return [];
+          continue;
         }
-        const similarity = quantizedDot(q, codes, scale);
-        return [{ index: idx, distance: 1 - similarity }];
-      }),
-      effectiveK,
-    );
+        const similarity = quantizedDotFlat(q, this.codes, idx * this.dim, this.dim, scale);
+        collector.offer(idx, 1 - similarity);
+      }
+    } else {
+      for (let i = 0; i < this.count; i++) {
+        const scale = this.scales[i];
+        if (scale === undefined) {
+          continue;
+        }
+        const similarity = quantizedDotFlat(q, this.codes, i * this.dim, this.dim, scale);
+        collector.offer(i, 1 - similarity);
+      }
+    }
 
+    const top = collector.finish();
     return {
       indices: top.map((t) => t.index),
       distances: top.map((t) => t.distance),
@@ -152,23 +159,11 @@ export class QuantizedVectorIndex implements SemanticIndex {
   }
 
   async save(dir: string): Promise<void> {
-    const { mkdir } = await import("node:fs/promises");
-    await mkdir(dir, { recursive: true });
-
-    const count = this.size;
-    const dim = this.dim;
-    const flatCodes = new Int8Array(count * dim);
-    for (let i = 0; i < count; i++) {
-      const codes = this.codes[i];
-      if (codes) {
-        flatCodes.set(codes, i * dim);
-      }
-    }
-    await Bun.write(`${dir}/codes.bin`, flatCodes);
+    await Bun.write(`${dir}/codes.bin`, this.codes);
     await Bun.write(`${dir}/scales.bin`, this.scales);
     await Bun.write(
       `${dir}/meta.json`,
-      JSON.stringify({ count, dimensions: dim, storage: "int8" }),
+      JSON.stringify({ count: this.count, dimensions: this.dim, storage: "int8" }),
     );
   }
 
@@ -178,15 +173,8 @@ export class QuantizedVectorIndex implements SemanticIndex {
       dimensions: number;
       storage?: string;
     };
-    const rawCodes = new Int8Array(await Bun.file(`${dir}/codes.bin`).arrayBuffer());
+    const codes = new Int8Array(await Bun.file(`${dir}/codes.bin`).arrayBuffer());
     const scales = new Float32Array(await Bun.file(`${dir}/scales.bin`).arrayBuffer());
-    const index = QuantizedVectorIndex.fromPersisted(
-      Array.from({ length: meta.count }, (_, i) =>
-        rawCodes.subarray(i * meta.dimensions, (i + 1) * meta.dimensions),
-      ),
-      scales,
-      meta.dimensions,
-    );
-    return index;
+    return QuantizedVectorIndex.fromPersisted(codes, scales, meta.count, meta.dimensions);
   }
 }

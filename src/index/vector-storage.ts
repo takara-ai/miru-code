@@ -4,7 +4,12 @@ import type { SemanticIndex } from "./semantic-index.ts";
 
 export type SemanticStorage = "int8" | "float32";
 
-/** Default: int8 quantized vectors (~4x less RAM). Set MIRU_FLOAT_VECTORS=1 for float32. */
+/**
+ * Production default: int8 quantized vectors (~4x less RAM than float32).
+ *
+ * Set `MIRU_FLOAT_VECTORS=1` to build/load float32 instead. That path exists for
+ * debugging, precision baselines, and quantization A/B tests — not normal use.
+ */
 export function resolveSemanticStorage(): SemanticStorage {
   return process.env.MIRU_FLOAT_VECTORS === "1" ? "float32" : "int8";
 }

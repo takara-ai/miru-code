@@ -118,7 +118,7 @@ export class IndexCache {
     const task = (async () => {
       const index = await MiruIndex.fromSource(source, this.content, undefined, ref);
       if (!isGitUrl(source)) {
-        await index.saveToDefaultCache(resolve(source));
+        await index.saveToCache(resolve(source));
       }
       return index;
     })();
@@ -254,7 +254,7 @@ export class IndexCache {
       try {
         await index.applyFileChanges(paths);
         if (!isGitUrl(source)) {
-          await index.persistToCache(resolve(source));
+          await index.saveToCache(resolve(source), { force: true });
         }
       } catch {
         for (const p of paths) {

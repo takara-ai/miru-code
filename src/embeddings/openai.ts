@@ -1,8 +1,8 @@
 import { mapPool, resolveWorkerConcurrency } from "../concurrency.ts";
 import { envFirstString, envOptionalInt, resolveEmbeddingApiKey } from "../env.ts";
 
-const DEFAULT_MODEL = "ds1-miru-int8";
-const DEFAULT_BASE_URL = "https://infer.takara.ai/v1";
+export const DEFAULT_EMBEDDING_MODEL = "ds1-miru-int8";
+export const DEFAULT_EMBEDDING_BASE_URL = "https://infer.takara.ai/v1";
 const DEFAULT_BATCH_SIZE = 32;
 const DEFAULT_MAX_EMBED_CHARS = 1300;
 const WINDOW_OVERLAP_CHARS = 120;
@@ -32,7 +32,10 @@ export interface EmbeddingBackend {
 }
 
 export function resolveEmbeddingModel(): string {
-  return envFirstString(["MIRU_OPENAI_EMBEDDING_MODEL", "OPENAI_EMBEDDING_MODEL"], DEFAULT_MODEL);
+  return envFirstString(
+    ["MIRU_OPENAI_EMBEDDING_MODEL", "OPENAI_EMBEDDING_MODEL"],
+    DEFAULT_EMBEDDING_MODEL,
+  );
 }
 
 export function resolveMaxEmbedChars(): number {
@@ -118,10 +121,10 @@ export function resolveEmbeddingBatchSize(): number {
 }
 
 export function resolveEmbeddingBaseUrl(): string {
-  return envFirstString(["MIRU_OPENAI_BASE_URL", "OPENAI_BASE_URL"], DEFAULT_BASE_URL).replace(
-    /\/$/,
-    "",
-  );
+  return envFirstString(
+    ["MIRU_OPENAI_BASE_URL", "OPENAI_BASE_URL"],
+    DEFAULT_EMBEDDING_BASE_URL,
+  ).replace(/\/$/, "");
 }
 
 interface Int8Embedding {

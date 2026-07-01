@@ -100,7 +100,7 @@ describe("PRD-218: single-input 413 must not misalign embedding vectors", () => 
       client: {
         async createEmbeddings(input) {
           const texts = Array.isArray(input) ? input : [input];
-          if (texts.length === 1 && texts[0]!.length > 128) {
+          if (texts.length === 1 && (texts[0]?.length ?? 0) > 128) {
             throw payloadTooLargeError();
           }
           return {

@@ -1,4 +1,3 @@
-import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import packageJson from "../package.json";
 import { resolveCacheFolder } from "./cache.ts";
@@ -49,13 +48,25 @@ export function isVersionNewer(latest: string, current: string): boolean {
     return latest !== current;
   }
 
-  for (let i = 0; i < 3; i++) {
-    if (a[i]! > b[i]!) {
-      return true;
-    }
-    if (a[i]! < b[i]!) {
-      return false;
-    }
+  const [a0, a1, a2] = a;
+  const [b0, b1, b2] = b;
+  if (a0 > b0) {
+    return true;
+  }
+  if (a0 < b0) {
+    return false;
+  }
+  if (a1 > b1) {
+    return true;
+  }
+  if (a1 < b1) {
+    return false;
+  }
+  if (a2 > b2) {
+    return true;
+  }
+  if (a2 < b2) {
+    return false;
   }
   return false;
 }
@@ -66,7 +77,7 @@ function updateCheckPath(): string {
 
 async function readUpdateCheckCache(): Promise<UpdateCheckCache | null> {
   try {
-    const raw = await readFile(updateCheckPath(), "utf-8");
+    const raw = await Bun.file(updateCheckPath()).text();
     const parsed = JSON.parse(raw) as UpdateCheckCache;
     if (typeof parsed.checkedAt !== "number" || typeof parsed.latest !== "string") {
       return null;
@@ -79,7 +90,7 @@ async function readUpdateCheckCache(): Promise<UpdateCheckCache | null> {
 
 async function writeUpdateCheckCache(latest: string): Promise<void> {
   const payload: UpdateCheckCache = { checkedAt: Date.now(), latest };
-  await writeFile(updateCheckPath(), `${JSON.stringify(payload)}\n`, "utf-8");
+  await Bun.write(updateCheckPath(), `${JSON.stringify(payload)}\n`);
 }
 
 export async function fetchLatestPublishedVersion(): Promise<string> {

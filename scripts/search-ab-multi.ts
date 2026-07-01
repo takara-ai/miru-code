@@ -23,7 +23,7 @@ import {
   TOP_K,
 } from "./search-ab-queries.ts";
 
-loadEnvFiles();
+await loadEnvFiles();
 normalizeTakaraApiKeyEnv();
 await loadStoredCredentials();
 

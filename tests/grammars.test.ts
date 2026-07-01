@@ -27,11 +27,14 @@ describe("vendored tree-sitter grammars", () => {
     await Parser.init({ locateFile: () => webTreeSitterRuntimePath() });
     const pythonWasm = wasmPathForLanguage("python");
     expect(pythonWasm).not.toBeNull();
-    const language = await Language.load(pythonWasm!);
+    if (pythonWasm === null) {
+      throw new Error("expected python grammar wasm");
+    }
+    const language = await Language.load(pythonWasm);
     const parser = new Parser();
     parser.setLanguage(language);
     const tree = parser.parse("def hello():\n    return 1\n");
     expect(tree).not.toBeNull();
-    expect(tree!.rootNode.type).toBe("module");
+    expect(tree?.rootNode.type).toBe("module");
   });
 });

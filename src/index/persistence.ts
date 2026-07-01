@@ -1,4 +1,3 @@
-import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { BM25Index } from "./bm25.ts";
 import { VectorIndex } from "./dense.ts";
@@ -78,7 +77,6 @@ export async function saveIndexBundle(options: {
   metadata: Record<string, unknown>;
 }): Promise<void> {
   const { paths, bm25, semantic, chunks, metadata } = options;
-  await mkdir(paths.root, { recursive: true });
   await saveBm25(bm25, paths.bm25Index);
   await saveSemantic(semantic, paths.semanticIndex);
   await Bun.write(

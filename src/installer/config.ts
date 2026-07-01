@@ -1,5 +1,4 @@
-import { mkdir, unlink, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { unlink } from "node:fs/promises";
 import { type InstallAction, MIRU_END, MIRU_START } from "./agents.ts";
 
 const CODEX_MCP_HEADER = "[mcp_servers.miru]";
@@ -114,8 +113,7 @@ export async function mergeJsonMember(
 
   const next = `${JSON.stringify(parsed, null, 2)}\n`;
 
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, next, "utf-8");
+  await Bun.write(path, next);
   return existed ? "updated" : "created";
 }
 
@@ -156,12 +154,11 @@ export async function removeJsonMember(
     return "removed";
   }
 
-  await writeFile(path, next, "utf-8");
+  await Bun.write(path, next);
   return "removed";
 }
 
 export async function replaceOrAppendMarked(path: string, content: string): Promise<InstallAction> {
-  await mkdir(dirname(path), { recursive: true });
   const existed = await Bun.file(path).exists();
   const existing = existed ? await Bun.file(path).text() : "";
 
@@ -175,13 +172,13 @@ export async function replaceOrAppendMarked(path: string, content: string): Prom
     if (updated === existing) {
       return "unchanged";
     }
-    await writeFile(path, updated, "utf-8");
+    await Bun.write(path, updated);
     return "updated";
   }
 
   const separator =
     existing && !existing.endsWith("\n\n") ? (existing.endsWith("\n") ? "\n" : "\n\n") : "";
-  await writeFile(path, `${existing}${separator}${content}`, "utf-8");
+  await Bun.write(path, `${existing}${separator}${content}`);
   return existed ? "updated" : "created";
 }
 
@@ -208,7 +205,7 @@ export async function removeMarked(path: string): Promise<InstallAction> {
     return "removed";
   }
 
-  await writeFile(path, withNewline, "utf-8");
+  await Bun.write(path, withNewline);
   return "removed";
 }
 
@@ -237,7 +234,6 @@ function stripTomlSection(text: string, header: string): string {
 }
 
 export async function mergeTomlBlock(path: string): Promise<InstallAction> {
-  await mkdir(dirname(path), { recursive: true });
   const existed = await Bun.file(path).exists();
   const existing = existed ? await Bun.file(path).text() : "";
 
@@ -247,7 +243,7 @@ export async function mergeTomlBlock(path: string): Promise<InstallAction> {
 
   const base = stripTomlSection(existing, CODEX_MCP_HEADER).replace(/\n+$/, "");
   const next = base.length > 0 ? `${base}\n\n${CODEX_MCP_BLOCK}` : CODEX_MCP_BLOCK;
-  await writeFile(path, next.endsWith("\n") ? next : `${next}\n`, "utf-8");
+  await Bun.write(path, next.endsWith("\n") ? next : `${next}\n`);
   return existed ? "updated" : "created";
 }
 
@@ -267,6 +263,6 @@ export async function removeTomlBlock(path: string): Promise<InstallAction> {
     return "removed";
   }
 
-  await writeFile(path, `${remaining}\n`, "utf-8");
+  await Bun.write(path, `${remaining}\n`);
   return "removed";
 }
