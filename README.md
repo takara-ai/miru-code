@@ -110,13 +110,13 @@ When wired via `miru install`, the MCP server exposes three tools. Pass the **pr
 |------|-------------|
 | `search` | Default for code exploration — hybrid semantic + keyword search. One call per question. |
 | `expand` | More context in the **same file** when a hit has `truncated: true`. |
-| `find_related` | Similar code in **other files** from a `file_path` + line anchor. |
+| `find_related` | Similar code in **other files** from a `file_path` + `anchor_line`. |
 
 ### Workflow
 
 1. **`search`** with `query` + `repo` — returns compact snippets (~±15 lines) and relevance scores.
-2. If a hit has **`truncated: true`**, call **`expand`** with `file_path`, `line` (`anchor_line` or `start_line`), and `repo` — not another search or a full-file read.
-3. To trace similar patterns elsewhere, call **`find_related`** with the same `file_path`, `line`, and `repo`.
+2. If a hit has **`truncated: true`**, call **`expand`** with `file_path`, `anchor_line`, and `repo` — not another search or a full-file read.
+3. To trace similar patterns elsewhere, call **`find_related`** with the same `file_path`, `anchor_line`, and `repo`.
 4. Use your editor's **Read** on `absolute_path` only when editing or when `expand` still lacks context.
 
 Prefer these tools over Grep, Glob, or SemanticSearch when Miru MCP is connected — hooks and instructions enforce that when enabled.
@@ -137,7 +137,7 @@ Prefer these tools over Grep, Glob, or SemanticSearch when Miru MCP is connected
 | Param | Required | Notes |
 |-------|----------|-------|
 | `file_path` | yes | From hit `file_path` or `absolute_path` (local repos) |
-| `line` | yes | `anchor_line` when truncated, else `start_line` (1-indexed) |
+| `anchor_line` | yes | From the search hit (`anchor_line` when truncated, else `start_line`) |
 | `repo` | yes | Same repo as the search |
 | `before` / `after` | no | Extra chunks before/after anchor (default 1 each) |
 
@@ -146,7 +146,7 @@ Prefer these tools over Grep, Glob, or SemanticSearch when Miru MCP is connected
 | Param | Required | Notes |
 |-------|----------|-------|
 | `file_path` | yes | From a search hit |
-| `line` | yes | `anchor_line` or `start_line` |
+| `anchor_line` | yes | From the search hit |
 | `repo` | yes | Same repo as the search |
 | `top_k` | no | Related chunks to return (default 3, max 10) |
 

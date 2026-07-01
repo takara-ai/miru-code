@@ -87,12 +87,10 @@ export function createMcpServer(cache: IndexCache): MiruMcpServer {
         file_path: z
           .string()
           .describe("Path from a search hit (`file_path` or `absolute_path` for local repos)."),
-        line: z
+        anchor_line: z
           .number()
           .int()
-          .describe(
-            "Line from the hit: `anchor_line` when truncated, otherwise `start_line` (1-indexed).",
-          ),
+          .describe("Line from the search hit (`anchor_line` when truncated, else `start_line`)."),
         repo: z.string().describe(REPO_DESCRIPTION),
         before: z
           .number()
@@ -108,7 +106,7 @@ export function createMcpServer(cache: IndexCache): MiruMcpServer {
           .describe("Extra chunks after the anchor (default 1)."),
       },
     },
-    async ({ file_path: filePath, line, repo, before, after }) => {
+    async ({ file_path: filePath, anchor_line: anchorLine, repo, before, after }) => {
       try {
         const index = await getIndexForRepo(repo, cache);
         const repoRoot = localRepoRoot(repo);
@@ -117,19 +115,19 @@ export function createMcpServer(cache: IndexCache): MiruMcpServer {
         const { anchor, chunks: expanded } = expandChunksAtLine(
           index.chunks,
           filePath,
-          line,
+          anchorLine,
           repoRoot,
           beforeCount,
           afterCount,
         );
         if (!anchor) {
           return toolText(
-            `No chunk found at ${filePath}:${line}. Make sure the file is indexed and the line number is within a known chunk.`,
+            `No chunk found at ${filePath}:${anchorLine}. Make sure the file is indexed and the line number is within a known chunk.`,
           );
         }
         return toolText(
           JSON.stringify(
-            formatExpandResults(filePath, line, anchor, expanded, {
+            formatExpandResults(filePath, anchorLine, anchor, expanded, {
               repoRoot,
               before: beforeCount,
               after: afterCount,
@@ -150,12 +148,10 @@ export function createMcpServer(cache: IndexCache): MiruMcpServer {
         file_path: z
           .string()
           .describe("Path from a search hit (`file_path` or `absolute_path` for local repos)."),
-        line: z
+        anchor_line: z
           .number()
           .int()
-          .describe(
-            "Line from the hit: `anchor_line` when truncated, otherwise `start_line` (1-indexed).",
-          ),
+          .describe("Line from the search hit (`anchor_line` when truncated, else `start_line`)."),
         repo: z.string().describe(REPO_DESCRIPTION),
         top_k: z
           .number()
@@ -168,25 +164,25 @@ export function createMcpServer(cache: IndexCache): MiruMcpServer {
           ),
       },
     },
-    async ({ file_path: filePath, line, repo, top_k: topK }) => {
+    async ({ file_path: filePath, anchor_line: anchorLine, repo, top_k: topK }) => {
       try {
         const index = await getIndexForRepo(repo, cache);
         const repoRoot = localRepoRoot(repo);
-        const chunk = resolveChunk(index.chunks, filePath, line, repoRoot);
+        const chunk = resolveChunk(index.chunks, filePath, anchorLine, repoRoot);
         if (!chunk) {
           return toolText(
-            `No chunk found at ${filePath}:${line}. Make sure the file is indexed and the line number is within a known chunk.`,
+            `No chunk found at ${filePath}:${anchorLine}. Make sure the file is indexed and the line number is within a known chunk.`,
           );
         }
         const results = await index.findRelated(chunk, clampMcpTopK(topK));
         if (results.length === 0) {
           return toolText(
-            JSON.stringify({ error: `No related chunks found for ${filePath}:${line}.` }),
+            JSON.stringify({ error: `No related chunks found for ${filePath}:${anchorLine}.` }),
           );
         }
         return toolText(
           JSON.stringify(
-            formatResults(`Chunks related to ${filePath}:${line}`, results, {
+            formatResults(`Chunks related to ${filePath}:${anchorLine}`, results, {
               repoRoot,
               snippet: true,
             }),
