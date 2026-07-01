@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.1.0](https://github.com/takara-ai/miru-code/compare/v1.0.5...v1.1.0) (2026-07-01)
+
+
+### Features
+
+* **cli:** add interactive brand banner and centralize defaults ([ca1c0ea](https://github.com/takara-ai/miru-code/commit/ca1c0ea71f00672113216691f850d038500cef86))
+
+
+### Bug Fixes
+
+* **mcp:** accept anchor_line and start_line on expand and find_related ([fd17b44](https://github.com/takara-ai/miru-code/commit/fd17b44767840b976d0198a0e91308d3b368072f))
+* **mcp:** rename expand and find_related line param to anchor_line ([b228515](https://github.com/takara-ai/miru-code/commit/b22851509d9aca361b5281449cfb5ba23082e68c))
+* **mcp:** rename expand and find_related line param to anchor_line ([0e06e8c](https://github.com/takara-ai/miru-code/commit/0e06e8c0bc018df6b40414e9e044f4e3ee6b354f))
+
+
+### Performance Improvements
+
+* **index:** flat vector storage, heap top-k, and unrolled int8 dot ([cbb6248](https://github.com/takara-ai/miru-code/commit/cbb6248483882c0ae88d64e21b02f99b19da3827))
+
 ## [1.0.5](https://github.com/takara-ai/miru-code/compare/v1.0.4...v1.0.5) (2026-06-25)
 
 
