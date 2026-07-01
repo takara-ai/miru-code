@@ -1,163 +1,26 @@
+import { printBrandBanner } from "./brand-banner.ts";
+import { bold, colorEnabled, cyan, dim, green, magenta, red, yellow } from "./terminal.ts";
 import type { SearchResult } from "./types.ts";
 import { formatRelevanceScore } from "./utils.ts";
 
-const ANSI = {
-  reset: "\x1b[0m",
-  bold: "\x1b[1m",
-  dim: "\x1b[2m",
-  cyan: "\x1b[36m",
-  green: "\x1b[32m",
-  red: "\x1b[31m",
-  yellow: "\x1b[33m",
-  magenta: "\x1b[35m",
-} as const;
-
-function colorEnabled(stream: NodeJS.WriteStream = process.stdout): boolean {
-  return stream.isTTY && process.env.NO_COLOR === undefined;
-}
-
-export function shouldShowBrandBanner(stream: NodeJS.WriteStream = process.stdout): boolean {
-  return colorEnabled(stream);
-}
-
-function paint(text: string, code: string, stream?: NodeJS.WriteStream): string {
-  if (!colorEnabled(stream)) {
-    return text;
-  }
-  return `${code}${text}${ANSI.reset}`;
-}
-
-export function bold(text: string, stream?: NodeJS.WriteStream): string {
-  return paint(text, ANSI.bold, stream);
-}
-
-export function dim(text: string, stream?: NodeJS.WriteStream): string {
-  return paint(text, ANSI.dim, stream);
-}
-
-export function cyan(text: string, stream?: NodeJS.WriteStream): string {
-  return paint(text, ANSI.cyan, stream);
-}
-
-export function green(text: string, stream?: NodeJS.WriteStream): string {
-  return paint(text, ANSI.green, stream);
-}
-
-export function red(text: string, stream?: NodeJS.WriteStream): string {
-  return paint(text, ANSI.red, stream);
-}
-
-export function yellow(text: string, stream?: NodeJS.WriteStream): string {
-  return paint(text, ANSI.yellow, stream);
-}
-
-export function magenta(text: string, stream?: NodeJS.WriteStream): string {
-  return paint(text, ANSI.magenta, stream);
-}
+export { formatBrandBannerLines, isQuietBrand, printBrandBanner } from "./brand-banner.ts";
+// Re-export terminal + banner APIs for existing cli-ui consumers.
+export {
+  bold,
+  cyan,
+  dim,
+  green,
+  magenta,
+  red,
+  yellow,
+} from "./terminal.ts";
 
 export function prefersJsonOutput(jsonFlag: boolean): boolean {
   return jsonFlag || !process.stdout.isTTY;
 }
 
-function formatBrandWordmark(stream: NodeJS.WriteStream, gap = " "): string {
-  return `${bold("MIRU", stream)}${gap}${cyan("見る", stream)}`;
-}
-
 export function brandTitle(): string {
-  return bold("Miru", process.stderr) + dim(" (見る)", process.stderr);
-}
-
-const DEFAULT_BRAND_TAGLINE = "hybrid code search";
-const BANNER_INNER_WIDTH = 29;
-
-export function isQuietBrand(): boolean {
-  const value = process.env.MIRU_QUIET?.trim().toLowerCase();
-  return value === "1" || value === "true" || value === "yes";
-}
-
-function visibleLength(text: string): number {
-  let length = 0;
-  let inEscape = false;
-  for (const char of text) {
-    if (inEscape) {
-      if (char === "m") {
-        inEscape = false;
-      }
-      continue;
-    }
-    if (char === "\x1b") {
-      inEscape = true;
-      continue;
-    }
-    length += char.length;
-  }
-  return length;
-}
-
-function padVisible(text: string, width: number): string {
-  const pad = Math.max(0, width - visibleLength(text));
-  return `${text}${" ".repeat(pad)}`;
-}
-
-export function formatBrandBannerLines(
-  tagline = DEFAULT_BRAND_TAGLINE,
-  stream: NodeJS.WriteStream = process.stdout,
-): string[] {
-  const title = formatBrandWordmark(stream, "  ");
-  const subtitle = dim(tagline, stream);
-  const top = `  ╭${"─".repeat(BANNER_INNER_WIDTH + 2)}╮`;
-  const bottom = `  ╰${"─".repeat(BANNER_INNER_WIDTH + 2)}╯`;
-  return [
-    top,
-    `  │ ${padVisible(title, BANNER_INNER_WIDTH)} │`,
-    `  │ ${padVisible(subtitle, BANNER_INNER_WIDTH)} │`,
-    bottom,
-  ];
-}
-
-export function formatBrandCompactLine(
-  tagline?: string,
-  stream: NodeJS.WriteStream = process.stdout,
-): string {
-  const title = formatBrandWordmark(stream);
-  if (!tagline) {
-    return title;
-  }
-  return `${title}${dim(` · ${tagline}`, stream)}`;
-}
-
-export function printCompactBrandIfInteractive(
-  jsonFlag: boolean,
-  stream: NodeJS.WriteStream = process.stdout,
-): void {
-  if (!prefersJsonOutput(jsonFlag) && shouldShowBrandBanner(stream)) {
-    printBrandBanner({ stream, compact: true });
-  }
-}
-
-export interface PrintBrandBannerOptions {
-  stream?: NodeJS.WriteStream;
-  tagline?: string;
-  compact?: boolean;
-}
-
-export function printBrandBanner(options: PrintBrandBannerOptions = {}): void {
-  const stream = options.stream ?? process.stdout;
-  if (!shouldShowBrandBanner(stream)) {
-    return;
-  }
-
-  const tagline = options.tagline ?? DEFAULT_BRAND_TAGLINE;
-  const useCompact = options.compact || (stream.columns ?? 80) < 36 || isQuietBrand();
-
-  if (useCompact) {
-    stream.write(`${formatBrandCompactLine(tagline, stream)}\n`);
-    return;
-  }
-
-  for (const line of formatBrandBannerLines(tagline, stream)) {
-    stream.write(`${line}\n`);
-  }
+  return bold("MIRU", process.stderr) + dim(" (見る)", process.stderr);
 }
 
 export function writeStdout(line = ""): void {
@@ -169,16 +32,21 @@ export function writeStderr(line = ""): void {
 }
 
 export function divider(char = "─", width = 52, stream: NodeJS.WriteStream = process.stdout): void {
-  const line = char.repeat(width);
-  stream.write(`${dim(line, stream)}\n`);
+  stream.write(`${dim(char.repeat(width), stream)}\n`);
+}
+
+function showBanner(stream: NodeJS.WriteStream = process.stdout): boolean {
+  // Full banner replaces the plain "MIRU · title" header on color TTYs.
+  if (!colorEnabled(stream)) {
+    return false;
+  }
+  printBrandBanner(stream);
+  return true;
 }
 
 export function header(title: string, subtitle?: string): void {
   writeStdout("");
-  const tagline = subtitle ?? title;
-  if (shouldShowBrandBanner(process.stdout)) {
-    printBrandBanner({ stream: process.stdout, tagline });
-  } else {
+  if (!showBanner()) {
     writeStdout(brandTitle() + (title ? dim(` · ${title}`) : ""));
     if (subtitle) {
       writeStdout(dim(subtitle));
@@ -189,11 +57,10 @@ export function header(title: string, subtitle?: string): void {
 
 export function commandHeader(name: string, summary: string): void {
   writeStdout("");
-  if (shouldShowBrandBanner(process.stdout)) {
-    printBrandBanner({ stream: process.stdout, tagline: name });
+  if (!showBanner()) {
+    writeStdout(`${brandTitle()} ${name}`);
     writeStdout(summary);
   } else {
-    writeStdout(`${brandTitle()} ${name}`);
     writeStdout(summary);
   }
   divider();
@@ -290,7 +157,8 @@ export function formatSearchResultsPretty(query: string, results: SearchResult[]
     }
   }
 
-  if (shouldShowBrandBanner(process.stdout)) {
+  if (colorEnabled(process.stdout)) {
+    // Only nudge interactive users; JSON output should stay machine-clean.
     lines.push("");
     lines.push(dim("Tip: add --json for machine-readable output"));
   }

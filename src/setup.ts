@@ -63,7 +63,8 @@ export async function runSetup(options: RunSetupOptions = {}): Promise<RunSetupR
   }
 
   writeStderr("");
-  printBrandBanner({ stream: process.stderr, tagline: "setup" });
+  // stderr banner: setup runs before stdout may be a TTY (e.g. piped miru search).
+  printBrandBanner(process.stderr);
   divider("─", 48, process.stderr);
   writeStderr("Miru needs a Takara API key for code embeddings.");
   hint("Get a bearer token from Takara, then enter it below.");
@@ -138,7 +139,8 @@ export async function ensureCredentials(options?: { interactive?: boolean }): Pr
   }
 
   writeStderr("");
-  printBrandBanner({ stream: process.stderr });
+  // stderr banner: setup runs before stdout may be a TTY (e.g. piped miru search).
+  printBrandBanner(process.stderr);
   writeStderr("");
 
   throw new Error(
