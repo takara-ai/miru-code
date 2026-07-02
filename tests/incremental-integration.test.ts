@@ -55,8 +55,9 @@ type CacheEntryInternal = {
 };
 
 type IndexCacheTestAccess = {
-  ensureEntry(cacheKey: string): CacheEntryInternal;
+  ensureEntry(cacheKey: string, source?: string): CacheEntryInternal;
   noteFileChange(source: string, filename: string | null | undefined): void;
+  checkAndQueueStaleFiles(source: string, index: MiruIndex, cacheKey: string): Promise<void>;
 };
 
 function cacheInternals(cache: IndexCache): IndexCacheTestAccess {
@@ -217,6 +218,135 @@ describe("incremental integration", () => {
         rerank: false,
       });
       expect(authHit[0]?.chunk.file_path).toBe("src/auth.ts");
+
+      cache.close();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("IndexCache freshness check detects new files added while the index wasn't loaded", async () => {
+    const root = await buildTempRepo();
+    const resolvedRoot = resolve(root);
+    try {
+      const embeddings = trackingEmbeddings();
+      const built = await createIndexFromPath(resolvedRoot, embeddings, ["code"], resolvedRoot);
+
+      // Snapshot mtimes for the files that exist now, simulating a cache bundle
+      // that was saved before the new file below was ever created.
+      const storedFileMtimes: Record<string, number> = {};
+      for (const rel of ["src/auth.ts", "src/utils.ts"]) {
+        const stat = await Bun.file(join(resolvedRoot, rel)).stat();
+        storedFileMtimes[rel] = Math.floor(stat.mtime?.getTime() ?? 0);
+      }
+
+      const index = new MiruIndex({
+        embeddings,
+        bm25Index: built.bm25,
+        semanticIndex: built.semantic,
+        chunks: built.chunks,
+        embeddingModel: embeddings.model,
+        root: resolvedRoot,
+        content: ["code"],
+        loadedFromDisk: true,
+        storedFileMtimes,
+      });
+
+      // Created after the snapshot -- absent from storedFileMtimes entirely,
+      // so the mtime-comparison loop alone would never notice it.
+      await writeFile(
+        join(resolvedRoot, "src/newfile.ts"),
+        "export function brandNewMiruFeature() {\n  return 'miruFreshFileToken';\n}\n",
+        "utf-8",
+      );
+
+      const cache = new IndexCache(["code"]);
+      const cacheKey = computeSourceCacheKey(resolvedRoot);
+      const internals = cacheInternals(cache);
+      const entry = internals.ensureEntry(cacheKey, resolvedRoot);
+      entry.index = index;
+      entry.task = Promise.resolve(index);
+
+      embeddings.resetEmbedCount();
+      await internals.checkAndQueueStaleFiles(resolvedRoot, index, cacheKey);
+
+      expect(embeddings.documentEmbedCount).toBeGreaterThan(0);
+      expect(embeddings.lastEmbeddedTexts.some((text) => text.includes("miruFreshFileToken"))).toBe(
+        true,
+      );
+
+      const hit = await index.search({
+        query: "miruFreshFileToken",
+        topK: 1,
+        alpha: 0,
+        rerank: false,
+      });
+      expect(hit[0]?.chunk.file_path).toBe("src/newfile.ts");
+
+      cache.close();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("IndexCache freshness check for a modified file resolves fully within a single await", async () => {
+    const root = await buildTempRepo();
+    const resolvedRoot = resolve(root);
+    try {
+      const embeddings = trackingEmbeddings();
+      const built = await createIndexFromPath(resolvedRoot, embeddings, ["code"], resolvedRoot);
+
+      const storedFileMtimes: Record<string, number> = {};
+      for (const rel of ["src/auth.ts", "src/utils.ts"]) {
+        const stat = await Bun.file(join(resolvedRoot, rel)).stat();
+        storedFileMtimes[rel] = Math.floor(stat.mtime?.getTime() ?? 0);
+      }
+
+      const index = new MiruIndex({
+        embeddings,
+        bm25Index: built.bm25,
+        semanticIndex: built.semantic,
+        chunks: built.chunks,
+        embeddingModel: embeddings.model,
+        root: resolvedRoot,
+        content: ["code"],
+        loadedFromDisk: true,
+        storedFileMtimes,
+      });
+
+      // Guard against coarse-grained filesystem mtime resolution.
+      await new Promise((r) => setTimeout(r, 20));
+      await writeFile(
+        join(resolvedRoot, "src/auth.ts"),
+        "export function authenticateUser() {\n  return 'miruRaceFixToken';\n}\n",
+        "utf-8",
+      );
+
+      const cache = new IndexCache(["code"]);
+      const cacheKey = computeSourceCacheKey(resolvedRoot);
+      const internals = cacheInternals(cache);
+      const entry = internals.ensureEntry(cacheKey, resolvedRoot);
+      entry.index = index;
+      entry.task = Promise.resolve(index);
+
+      embeddings.resetEmbedCount();
+      await internals.checkAndQueueStaleFiles(resolvedRoot, index, cacheKey);
+
+      // No queueMicrotask/setTimeout polling here: a caller that awaits
+      // checkAndQueueStaleFiles (as IndexCache.get now does via startBuild)
+      // must observe the fully reconciled index right away, not a stale one
+      // still mid-flush on a separate microtask chain.
+      expect(entry.pendingPaths.size).toBe(0);
+      expect(embeddings.documentEmbedCount).toBeGreaterThan(0);
+
+      const hit = await index.search({
+        query: "miruRaceFixToken",
+        topK: 1,
+        alpha: 0,
+        rerank: false,
+      });
+      expect(hit[0]?.chunk.file_path).toBe("src/auth.ts");
+      expect(hit[0]?.chunk.content).toContain("miruRaceFixToken");
 
       cache.close();
     } finally {

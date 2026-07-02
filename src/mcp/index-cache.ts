@@ -1,5 +1,7 @@
 import { watch } from "node:fs";
-import { resolve } from "node:path";
+import { relative, resolve } from "node:path";
+import { walkFiles } from "../index/file-walker.ts";
+import { getExtensions } from "../index/files.ts";
 import { normalizeRelativePath, relativePathFromRoot } from "../index/incremental.ts";
 import { MiruIndex } from "../miru-index.ts";
 import type { ContentType } from "../types.ts";
@@ -120,6 +122,11 @@ export class IndexCache {
       if (!isGitUrl(source)) {
         await index.saveToCache(resolve(source));
       }
+      if (index.loadedFromDisk) {
+        // Await reconciliation here (not fire-and-forget) so callers of `get()`
+        // never observe an index that's stale relative to what's on disk.
+        await this.checkAndQueueStaleFiles(source, index, cacheKey);
+      }
       return index;
     })();
 
@@ -129,7 +136,6 @@ export class IndexCache {
       .then((index) => {
         entry.index = index;
         this.maybeStartWatcher(source);
-        void this.flushFileUpdates(cacheKey, source);
         return index;
       })
       .catch(() => {
@@ -162,7 +168,7 @@ export class IndexCache {
     if (!entry.flushQueued) {
       entry.flushQueued = true;
       queueMicrotask(() => {
-        this.flushFileUpdates(cacheKey, source);
+        void this.flushFileUpdates(cacheKey, source);
       });
     }
   }
@@ -219,10 +225,10 @@ export class IndexCache {
     this.scheduleFlush(cacheKey, source, entry);
   }
 
-  private flushFileUpdates(cacheKey: string, source: string): void {
+  private flushFileUpdates(cacheKey: string, source: string): Promise<void> {
     const entry = this.entries.get(cacheKey);
     if (!entry) {
-      return;
+      return Promise.resolve();
     }
     entry.flushQueued = false;
 
@@ -264,6 +270,57 @@ export class IndexCache {
     };
 
     entry.updateChain = entry.updateChain.then(run, run);
+    return entry.updateChain;
+  }
+
+  private async checkAndQueueStaleFiles(
+    source: string,
+    index: MiruIndex,
+    cacheKey: string,
+  ): Promise<void> {
+    if (isGitUrl(source)) {
+      return;
+    }
+
+    const root = index.root;
+    if (!root) {
+      return;
+    }
+
+    const storedMtimes = index.getStoredFileMtimes();
+    const entry = this.ensureEntry(cacheKey, source);
+
+    try {
+      await Promise.all(
+        [...storedMtimes].map(async ([filePath, storedMtime]) => {
+          try {
+            const currentStat = await Bun.file(resolve(root, filePath)).stat();
+            const currentMtime = Math.floor(currentStat.mtime?.getTime() ?? 0);
+
+            if (currentMtime !== storedMtime) {
+              entry.pendingPaths.add(normalizeRelativePath(filePath));
+            }
+          } catch {
+            entry.pendingPaths.add(normalizeRelativePath(filePath));
+          }
+        }),
+      );
+
+      // Files created on disk while this index wasn't loaded (or never indexed
+      // before) have no entry in `storedMtimes` and are otherwise invisible to
+      // the mtime comparison above; a directory walk is the only way to find them.
+      const extensions = getExtensions(index.contentTypes);
+      for await (const absolutePath of walkFiles(root, extensions)) {
+        const relativePath = normalizeRelativePath(relative(root, absolutePath));
+        if (!storedMtimes.has(relativePath)) {
+          entry.pendingPaths.add(relativePath);
+        }
+      }
+
+      if (entry.pendingPaths.size > 0) {
+        await this.flushFileUpdates(cacheKey, source);
+      }
+    } catch {}
   }
 
   private maybeStartWatcher(source: string): void {
