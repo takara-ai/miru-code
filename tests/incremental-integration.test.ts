@@ -254,10 +254,9 @@ describe("incremental integration", () => {
 
       // Created after the snapshot -- absent from storedFileMtimes entirely,
       // so the mtime-comparison loop alone would never notice it.
-      await writeFile(
+      await Bun.write(
         join(resolvedRoot, "src/newfile.ts"),
         "export function brandNewMiruFeature() {\n  return 'miruFreshFileToken';\n}\n",
-        "utf-8",
       );
 
       const cache = new IndexCache(["code"]);
@@ -316,10 +315,9 @@ describe("incremental integration", () => {
 
       // Guard against coarse-grained filesystem mtime resolution.
       await new Promise((r) => setTimeout(r, 20));
-      await writeFile(
+      await Bun.write(
         join(resolvedRoot, "src/auth.ts"),
         "export function authenticateUser() {\n  return 'miruRaceFixToken';\n}\n",
-        "utf-8",
       );
 
       const cache = new IndexCache(["code"]);
