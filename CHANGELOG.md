@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.0](https://github.com/takara-ai/miru-code/compare/v1.1.0...v1.2.0) (2026-07-02)
+
+
+### Features
+
+* prd 276 index freshness cache invalidation ([a8ce1b3](https://github.com/takara-ai/miru-code/commit/a8ce1b3335d44bc523e3fce689ce1add41d9c442))
+
+
+### Bug Fixes
+
+* **mcp:** detect new files and close race in index freshness check ([c237898](https://github.com/takara-ai/miru-code/commit/c237898479086ddbad056f2ae0f3b3c26eacbeb6))
+
 ## [1.1.0](https://github.com/takara-ai/miru-code/compare/v1.0.5...v1.1.0) (2026-07-01)
 
 
