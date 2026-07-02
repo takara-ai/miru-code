@@ -60,7 +60,7 @@ export class MiruIndex {
    * Absolute path to the indexed tree on disk, or `null` for git-only indexes
    * (clone is deleted after indexing; incremental updates need a local root).
    */
-  private readonly root: string | null;
+  private readonly _root: string | null;
 
   /** Content kinds indexed at build time (e.g. `code`, `markdown`). */
   private readonly content: ContentType[];
@@ -71,6 +71,9 @@ export class MiruIndex {
   /** Language tag → chunk indices, for `filterLanguages` in search. */
   private languageMapping: Map<string, number[]>;
 
+  /** Stored file mtimes (file path → mtime_ms) for cache freshness checking. */
+  private storedFileMtimes: Map<string, number>;
+
   /** Read-only view of indexed chunks. */
   get chunks(): Chunk[] {
     return this.chunksInternal;
@@ -79,6 +82,21 @@ export class MiruIndex {
   /** Whether this instance was loaded from a cache bundle rather than freshly built. */
   get loadedFromDisk(): boolean {
     return this.loadedFromDiskFlag;
+  }
+
+  /** Get stored file mtimes for cache validation. */
+  getStoredFileMtimes(): Map<string, number> {
+    return this.storedFileMtimes;
+  }
+
+  /** Get the root path for local indexes (null for git indexes). */
+  get root(): string | null {
+    return this._root;
+  }
+
+  /** Content kinds indexed at build time, for re-walking the tree during freshness checks. */
+  get contentTypes(): ContentType[] {
+    return this.content;
   }
 
   /**
@@ -94,15 +112,17 @@ export class MiruIndex {
     root?: string | null;
     content?: ContentType[];
     loadedFromDisk?: boolean;
+    storedFileMtimes?: Record<string, number>;
   }) {
     this.embeddings = options.embeddings;
     this.bm25Index = options.bm25Index;
     this.semanticIndex = options.semanticIndex;
     this.chunksInternal = options.chunks;
     this.embeddingModel = options.embeddingModel;
-    this.root = options.root ?? null;
+    this._root = options.root ?? null;
     this.content = options.content ?? ["code"];
     this.loadedFromDiskFlag = options.loadedFromDisk ?? false;
+    this.storedFileMtimes = new Map(Object.entries(options.storedFileMtimes ?? {}));
     this.fileMapping = new Map();
     this.languageMapping = new Map();
     this.rebuildMappings();
@@ -253,6 +273,7 @@ export class MiruIndex {
     const { bm25, semantic, chunks, metadata } = await loadCachedIndex(path);
     const content = (metadata.content_type as ContentType[]) ?? ["code"];
     const root = metadata.root_path ? String(metadata.root_path) : null;
+    const storedFileMtimes = (metadata.file_mtimes as Record<string, number>) ?? {};
 
     return new MiruIndex({
       embeddings: getEmbeddingBackend(model),
@@ -263,6 +284,7 @@ export class MiruIndex {
       root,
       content,
       loadedFromDisk: true,
+      storedFileMtimes,
     });
   }
 
@@ -275,6 +297,19 @@ export class MiruIndex {
   async save(path: string): Promise<void> {
     const paths = persistencePaths(path);
     await mkdir(paths.root, { recursive: true });
+
+    const fileMtimes: Record<string, number> = {};
+    if (this._root) {
+      for (const filePath of this.fileMapping.keys()) {
+        try {
+          const stat = await Bun.file(resolve(this._root, filePath)).stat();
+          fileMtimes[filePath] = Math.floor(stat.mtime?.getTime() ?? 0);
+        } catch {
+          fileMtimes[filePath] = 0;
+        }
+      }
+    }
+
     await saveIndexBundle({
       paths,
       bm25: this.bm25Index,
@@ -282,7 +317,7 @@ export class MiruIndex {
       chunks: this.chunks.map(chunkToDict),
       metadata: {
         index_epoch: indexCacheEpoch(),
-        root_path: this.root,
+        root_path: this._root,
         time: Date.now() / 1000,
         embedding_model: this.embeddingModel,
         embedding_dimensions:
@@ -290,6 +325,7 @@ export class MiruIndex {
         embedding_provider: "openai",
         content_type: this.content,
         file_paths: [...this.fileMapping.keys()].sort(),
+        file_mtimes: fileMtimes,
       },
     });
   }
@@ -313,7 +349,7 @@ export class MiruIndex {
    * index, and mappings in place; clears `loadedFromDisk` since data changed.
    */
   async applyFileChanges(relativePaths: readonly string[]): Promise<void> {
-    if (!this.root) {
+    if (!this._root) {
       throw new Error("Incremental update requires a local index with root_path set.");
     }
     if (relativePaths.length === 0) {
@@ -321,7 +357,7 @@ export class MiruIndex {
     }
 
     const updated = await applyIncrementalFileChanges({
-      root: this.root,
+      root: this._root,
       content: this.content,
       embeddings: this.embeddings,
       chunks: this.chunksInternal,
