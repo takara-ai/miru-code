@@ -6,9 +6,10 @@ import { StdioTransport } from "./stdio.ts";
 export async function serveMcp(options: {
   ref?: string | null;
   content?: ContentType[];
+  benchmark?: boolean;
 }): Promise<void> {
   const cache = new IndexCache(options.content ?? ["code"], options.ref ?? null);
-  const server = createMcpServer(cache);
+  const server = createMcpServer(cache, { benchmark: options.benchmark ?? false });
   const transport = new StdioTransport();
   await server.connect(transport);
 }

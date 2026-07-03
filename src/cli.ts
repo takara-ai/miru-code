@@ -433,10 +433,15 @@ async function runCli(argv: string[]): Promise<void> {
 
 async function runMcp(argv: string[]): Promise<void> {
   let ref: string | null = null;
+  let benchmark = false;
   const contentTokens: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
+    if (arg === "--benchmark") {
+      benchmark = true;
+      continue;
+    }
     if (arg === "--ref" && argv[i + 1]) {
       ref = argv[++i] ?? null;
       continue;
@@ -458,6 +463,7 @@ async function runMcp(argv: string[]): Promise<void> {
   await serveMcp({
     ref,
     content: resolveContent(contentTokens.length > 0 ? contentTokens : ["code"]),
+    benchmark,
   });
 }
 

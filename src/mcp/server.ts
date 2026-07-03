@@ -1,6 +1,8 @@
 import * as z from "zod";
 import packageJson from "../../package.json";
+import { attachSearchBenchmark, benchmarkSearchComparison } from "../benchmark/compare.ts";
 import {
+  MCP_BENCHMARK_SERVER_INSTRUCTIONS,
   MCP_EXPAND_TOOL_DESCRIPTION,
   MCP_FIND_RELATED_TOOL_DESCRIPTION,
   MCP_SEARCH_TOOL_DESCRIPTION,
@@ -26,14 +28,18 @@ const REPO_DESCRIPTION =
   "Pass the project root for local workspaces. " +
   "The index is built on the first tool call and cached for the session.";
 
-export function createMcpServer(cache: IndexCache): MiruMcpServer {
+export function createMcpServer(
+  cache: IndexCache,
+  options?: { benchmark?: boolean },
+): MiruMcpServer {
+  const benchmark = options?.benchmark ?? false;
   const server = new MiruMcpServer(
     {
       name: "miru",
       version: packageJson.version,
     },
     {
-      instructions: MCP_SERVER_INSTRUCTIONS,
+      instructions: benchmark ? MCP_BENCHMARK_SERVER_INSTRUCTIONS : MCP_SERVER_INSTRUCTIONS,
     },
   );
 
@@ -64,15 +70,43 @@ export function createMcpServer(cache: IndexCache): MiruMcpServer {
     async ({ query, repo, top_k: topK, dedupe_by_file: dedupeByFile }) => {
       try {
         const index = await getIndexForRepo(repo, cache);
-        let results = await index.search({ query, topK: clampMcpTopK(topK) });
+        const repoRoot = localRepoRoot(repo);
+        const k = clampMcpTopK(topK);
+
+        if (benchmark && repoRoot) {
+          const comparison = await benchmarkSearchComparison({
+            query,
+            repoPath: repoRoot,
+            index,
+            topK: k,
+          });
+          let results = comparison.results;
+          if (dedupeByFile !== false) {
+            results = dedupeResultsByFile(results);
+          }
+          if (results.length === 0) {
+            return toolText(JSON.stringify({ error: "No results found." }));
+          }
+          return toolText(
+            JSON.stringify(
+              attachSearchBenchmark(
+                formatResults(query, results, { repoRoot, snippet: true }),
+                comparison.benchmark,
+              ),
+            ),
+          );
+        }
+
+        let results = await index.search({ query, topK: k });
         if (dedupeByFile !== false) {
           results = dedupeResultsByFile(results);
         }
         if (results.length === 0) {
           return toolText(JSON.stringify({ error: "No results found." }));
         }
-        const repoRoot = localRepoRoot(repo);
-        return toolText(JSON.stringify(formatResults(query, results, { repoRoot, snippet: true })));
+        return toolText(
+          JSON.stringify(formatResults(query, results, { repoRoot, snippet: true })),
+        );
       } catch (err) {
         return toolText(err instanceof Error ? err.message : String(err));
       }

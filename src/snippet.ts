@@ -149,6 +149,4 @@ export function applySnippetsToResults(
   });
 }
 
-export function estimateResultTokens(results: SearchResult[]): number {
-  return results.reduce((sum, r) => sum + Math.floor(r.chunk.content.length / 4), 0);
-}
+export { countTokens, estimateResultTokens, tokenCountMethod, tokenizerJsonPath } from "./token-count.ts";
