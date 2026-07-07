@@ -64,8 +64,6 @@ export function printEnvHelp(): void {
   writeStdout(`      Parallel workers (default: CPUs − ${DEFAULT_RESERVE_CORES})`);
   writeStdout("  MIRU_TOKENIZER_JSON");
   writeStdout("      Path to tokenizer.json (default: <package>/tokenizer/tokenizer.json)");
-  writeStdout("  MIRU_TOKENIZER_CONFIG");
-  writeStdout("      Optional tokenizer_config.json (defaults to sibling of tokenizer.json)");
   writeStdout("");
 }
 

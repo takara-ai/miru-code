@@ -1,6 +1,6 @@
 export interface SearchBenchmarkBlock {
   mode: true;
-  token_count_method: "huggingface";
+  token_count_method: "wordpiece";
   tokenizer_json: string | null;
   miru: {
     search_tokens: number;
