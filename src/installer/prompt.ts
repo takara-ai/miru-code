@@ -91,22 +91,47 @@ function readKey(): Promise<Buffer> {
   });
 }
 
-function parseKey(chunk: Buffer): string {
-  const text = chunk.toString("utf8");
-  if (chunk.length >= 3 && chunk[0] === 0x1b && chunk[1] === 0x5b) {
-    const code = chunk[2];
-    if (code === 0x41) {
+function parseArrowKey(chunk: Buffer, text: string): string | null {
+  if (chunk.length >= 2 && (chunk[0] === 0x00 || chunk[0] === 0xe0)) {
+    const scanCode = chunk[1];
+    if (scanCode === 0x48) {
       return "up";
     }
-    if (code === 0x42) {
+    if (scanCode === 0x50) {
       return "down";
     }
-    if (code === 0x43) {
+    if (scanCode === 0x4d) {
       return "right";
     }
-    if (code === 0x44) {
+    if (scanCode === 0x4b) {
       return "left";
     }
+  }
+
+  // Support both ANSI CSI (ESC [ A) and SS3 (ESC O A) arrow sequences.
+  const ansiArrow = text.match(/^\x1b[\[O](?:\d+;)*(\d+)?([ABCD])$/);
+  const arrow = ansiArrow?.[2];
+  if (arrow === "A") {
+    return "up";
+  }
+  if (arrow === "B") {
+    return "down";
+  }
+  if (arrow === "C") {
+    return "right";
+  }
+  if (arrow === "D") {
+    return "left";
+  }
+
+  return null;
+}
+
+function parseKey(chunk: Buffer): string {
+  const text = chunk.toString("utf8");
+  const arrowKey = parseArrowKey(chunk, text);
+  if (arrowKey) {
+    return arrowKey;
   }
   if (text === "\r" || text === "\n") {
     return "enter";
@@ -127,6 +152,11 @@ function parseKey(chunk: Buffer): string {
     return "no";
   }
   return text;
+}
+
+/** Test hook for validating raw key sequence parsing without a TTY. */
+export function parseInstallerKeyForTest(chunk: Buffer): string {
+  return parseKey(chunk);
 }
 
 async function withRawMode<T>(fn: () => Promise<T>): Promise<T> {

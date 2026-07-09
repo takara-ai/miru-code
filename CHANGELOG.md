@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/takara-ai/miru-code/compare/v1.1.0...v1.1.1) (2026-07-09)
+
+
+### Bug Fixes
+
+* **installer:** support Windows arrow key sequences in interactive prompts
+
 ## [1.1.0](https://github.com/takara-ai/miru-code/compare/v1.0.5...v1.1.0) (2026-07-01)
 
 
