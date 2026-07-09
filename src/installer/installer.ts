@@ -183,7 +183,7 @@ const INTEGRATIONS: Integration[] = [
     label: "Search hooks",
     description: "blocks built-in search; routes to Miru MCP",
     experimental: true,
-    defaultChecked: false,
+    defaultChecked: true,
     planPath: (agent) => agent.hooksPath,
     apply: applyHooks,
   },
