@@ -1,4 +1,5 @@
 import { unlink } from "node:fs/promises";
+import { applyEdits, modify, parse } from "jsonc-parser";
 import { type InstallAction, MIRU_END, MIRU_START } from "./agents.ts";
 
 const CODEX_MCP_HEADER = "[mcp_servers.miru]";
@@ -107,13 +108,8 @@ export async function mergeJsonMember(
   if (JSON.stringify(section[memberKey]) === JSON.stringify(value)) {
     return "unchanged";
   }
-
-  section[memberKey] = value;
-  parsed[sectionKey] = section;
-
-  const next = `${JSON.stringify(parsed, null, 2)}\n`;
-
-  await Bun.write(path, next);
+  const next = applyJsonEdits(text, [sectionKey, memberKey], value);
+  await Bun.write(path, ensureTrailingNewline(next));
   return existed ? "updated" : "created";
 }
 
@@ -136,26 +132,51 @@ export async function removeJsonMember(
   if (section === "error" || !(memberKey in section)) {
     return "not-found";
   }
-
-  delete section[memberKey];
-  if (Object.keys(section).length === 0) {
-    delete parsed[sectionKey];
-  } else {
-    parsed[sectionKey] = section;
+  let next = applyJsonEdits(text, [sectionKey, memberKey], undefined);
+  const afterMemberRemoval = parse(next) as Record<string, unknown>;
+  if (
+    afterMemberRemoval &&
+    typeof afterMemberRemoval === "object" &&
+    !Array.isArray(afterMemberRemoval)
+  ) {
+    const nextSection = afterMemberRemoval[sectionKey];
+    if (
+      nextSection &&
+      typeof nextSection === "object" &&
+      !Array.isArray(nextSection) &&
+      Object.keys(nextSection as Record<string, unknown>).length === 0
+    ) {
+      next = applyJsonEdits(next, [sectionKey], undefined);
+    }
   }
-
-  const next = `${JSON.stringify(parsed, null, 2)}\n`;
-  if (next === `${text.endsWith("\n") ? text : `${text}\n`}`) {
+  if (ensureTrailingNewline(next) === ensureTrailingNewline(text)) {
     return "not-found";
   }
-
-  if (Object.keys(parsed).length === 0) {
+  const nextParsed = parse(next) as Record<string, unknown>;
+  if (!nextParsed || typeof nextParsed !== "object" || Object.keys(nextParsed).length === 0) {
     await unlink(path);
     return "removed";
   }
-
-  await Bun.write(path, next);
+  await Bun.write(path, ensureTrailingNewline(next));
   return "removed";
+}
+
+function applyJsonEdits(text: string, path: (string | number)[], value: unknown): string {
+  const source = text.trim().length > 0 ? text : "{}";
+  const edits = modify(source, path, value, {
+    formattingOptions: {
+      insertSpaces: true,
+      tabSize: 2,
+      eol: "\n",
+    },
+    getInsertionIndex: undefined,
+    isArrayInsertion: false,
+  });
+  return applyEdits(source, edits);
+}
+
+function ensureTrailingNewline(text: string): string {
+  return text.endsWith("\n") ? text : `${text}\n`;
 }
 
 export async function replaceOrAppendMarked(path: string, content: string): Promise<InstallAction> {
