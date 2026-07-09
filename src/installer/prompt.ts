@@ -109,19 +109,23 @@ function parseArrowKey(chunk: Buffer, text: string): string | null {
   }
 
   // Support both ANSI CSI (ESC [ A) and SS3 (ESC O A) arrow sequences.
-  const ansiArrow = text.match(/^\x1b[\[O](?:\d+;)*(\d+)?([ABCD])$/);
-  const arrow = ansiArrow?.[2];
-  if (arrow === "A") {
-    return "up";
-  }
-  if (arrow === "B") {
-    return "down";
-  }
-  if (arrow === "C") {
-    return "right";
-  }
-  if (arrow === "D") {
-    return "left";
+  if (text.startsWith(ESC) && text.length >= 3) {
+    const introducer = text.charAt(1);
+    if (introducer === "[" || introducer === "O") {
+      const arrow = text.charAt(text.length - 1);
+      if (arrow === "A") {
+        return "up";
+      }
+      if (arrow === "B") {
+        return "down";
+      }
+      if (arrow === "C") {
+        return "right";
+      }
+      if (arrow === "D") {
+        return "left";
+      }
+    }
   }
 
   return null;
