@@ -1,5 +1,4 @@
 import { unlink } from "node:fs/promises";
-import { applyEdits, modify, parse } from "jsonc-parser";
 import { type InstallAction, MIRU_END, MIRU_START } from "./agents.ts";
 
 const CODEX_MCP_HEADER = "[mcp_servers.miru]";
@@ -108,8 +107,8 @@ export async function mergeJsonMember(
   if (JSON.stringify(section[memberKey]) === JSON.stringify(value)) {
     return "unchanged";
   }
-  const next = applyJsonEdits(text, [sectionKey, memberKey], value);
-  await Bun.write(path, ensureTrailingNewline(next));
+  const next = upsertJsonMemberText(text, sectionKey, memberKey, value);
+  await Bun.write(path, ensureTrailingNewline(next ?? JSON.stringify(withMergedMember(parsed, sectionKey, memberKey, value), null, 2)));
   return existed ? "updated" : "created";
 }
 
@@ -132,27 +131,13 @@ export async function removeJsonMember(
   if (section === "error" || !(memberKey in section)) {
     return "not-found";
   }
-  let next = applyJsonEdits(text, [sectionKey, memberKey], undefined);
-  const afterMemberRemoval = parse(next) as Record<string, unknown>;
-  if (
-    afterMemberRemoval &&
-    typeof afterMemberRemoval === "object" &&
-    !Array.isArray(afterMemberRemoval)
-  ) {
-    const nextSection = afterMemberRemoval[sectionKey];
-    if (
-      nextSection &&
-      typeof nextSection === "object" &&
-      !Array.isArray(nextSection) &&
-      Object.keys(nextSection as Record<string, unknown>).length === 0
-    ) {
-      next = applyJsonEdits(next, [sectionKey], undefined);
-    }
-  }
+  const nextText = removeJsonMemberText(text, sectionKey, memberKey);
+  const nextObject = withRemovedMember(parsed, sectionKey, memberKey);
+  const next = nextText ?? JSON.stringify(nextObject, null, 2);
   if (ensureTrailingNewline(next) === ensureTrailingNewline(text)) {
     return "not-found";
   }
-  const nextParsed = parse(next) as Record<string, unknown>;
+  const nextParsed = parseJsonObject(next);
   if (!nextParsed || typeof nextParsed !== "object" || Object.keys(nextParsed).length === 0) {
     await unlink(path);
     return "removed";
@@ -161,18 +146,255 @@ export async function removeJsonMember(
   return "removed";
 }
 
-function applyJsonEdits(text: string, path: (string | number)[], value: unknown): string {
-  const source = text.trim().length > 0 ? text : "{}";
-  const edits = modify(source, path, value, {
-    formattingOptions: {
-      insertSpaces: true,
-      tabSize: 2,
-      eol: "\n",
-    },
-    getInsertionIndex: undefined,
-    isArrayInsertion: false,
-  });
-  return applyEdits(source, edits);
+function withMergedMember(
+  root: Record<string, unknown>,
+  sectionKey: string,
+  memberKey: string,
+  value: Record<string, unknown>,
+): Record<string, unknown> {
+  const next = { ...root };
+  const section =
+    next[sectionKey] && typeof next[sectionKey] === "object" && !Array.isArray(next[sectionKey])
+      ? { ...(next[sectionKey] as Record<string, unknown>) }
+      : {};
+  section[memberKey] = value;
+  next[sectionKey] = section;
+  return next;
+}
+
+function withRemovedMember(
+  root: Record<string, unknown>,
+  sectionKey: string,
+  memberKey: string,
+): Record<string, unknown> {
+  const next = { ...root };
+  const section =
+    next[sectionKey] && typeof next[sectionKey] === "object" && !Array.isArray(next[sectionKey])
+      ? { ...(next[sectionKey] as Record<string, unknown>) }
+      : null;
+  if (!section || !(memberKey in section)) {
+    return next;
+  }
+  delete section[memberKey];
+  if (Object.keys(section).length === 0) {
+    delete next[sectionKey];
+  } else {
+    next[sectionKey] = section;
+  }
+  return next;
+}
+
+function upsertJsonMemberText(
+  text: string,
+  sectionKey: string,
+  memberKey: string,
+  value: Record<string, unknown>,
+): string | null {
+  if (!hasJsoncSyntax(text)) {
+    return null;
+  }
+  const sectionRange = findSectionRange(text, sectionKey);
+  if (!sectionRange) {
+    return null;
+  }
+  const { openBrace, closeBrace, indent } = sectionRange;
+  const sectionBody = text.slice(openBrace + 1, closeBrace);
+  const memberMatch = new RegExp(`"(${escapeRegExp(memberKey)})"\\s*:`).exec(sectionBody);
+  const valueText = JSON.stringify(value);
+  if (memberMatch) {
+    const memberKeyStart = openBrace + 1 + memberMatch.index;
+    const colonIndex = text.indexOf(":", memberKeyStart);
+    const valueStart = skipWhitespace(text, colonIndex + 1);
+    const valueEnd = parseJsonValueEnd(text, valueStart);
+    if (valueEnd <= valueStart) {
+      return null;
+    }
+    return `${text.slice(0, valueStart)} ${valueText}${text.slice(valueEnd)}`;
+  }
+
+  const memberIndent = `${indent}  `;
+  const insertion = `${sectionBody.trim().length === 0 ? "" : ","}\n${memberIndent}"${memberKey}": ${valueText}\n${indent}`;
+  return `${text.slice(0, closeBrace)}${insertion}${text.slice(closeBrace)}`;
+}
+
+function removeJsonMemberText(text: string, sectionKey: string, memberKey: string): string | null {
+  if (!hasJsoncSyntax(text)) {
+    return null;
+  }
+  const sectionRange = findSectionRange(text, sectionKey);
+  if (!sectionRange) {
+    return null;
+  }
+  const { openBrace, closeBrace } = sectionRange;
+  const sectionBody = text.slice(openBrace + 1, closeBrace);
+  const memberMatch = new RegExp(`"(${escapeRegExp(memberKey)})"\\s*:`).exec(sectionBody);
+  if (!memberMatch) {
+    return null;
+  }
+  const memberStart = openBrace + 1 + memberMatch.index;
+  const colonIndex = text.indexOf(":", memberStart);
+  const valueStart = skipWhitespace(text, colonIndex + 1);
+  const valueEnd = parseJsonValueEnd(text, valueStart);
+  let removeStart = memberStart;
+  let removeEnd = valueEnd;
+
+  const trailing = skipWhitespace(text, valueEnd);
+  if (text[trailing] === ",") {
+    removeEnd = trailing + 1;
+  } else {
+    const leadingComma = findLeadingComma(text, memberStart, openBrace + 1);
+    if (leadingComma >= 0) {
+      removeStart = leadingComma;
+    }
+  }
+  return `${text.slice(0, removeStart)}${text.slice(removeEnd)}`;
+}
+
+function hasJsoncSyntax(text: string): boolean {
+  return text.includes("//") || text.includes("/*");
+}
+
+function findSectionRange(
+  text: string,
+  sectionKey: string,
+): { openBrace: number; closeBrace: number; indent: string } | null {
+  const keyMatch = new RegExp(`(^|\\n)([ \\t]*)"${escapeRegExp(sectionKey)}"\\s*:\\s*\\{`).exec(text);
+  if (!keyMatch) {
+    return null;
+  }
+  const openBrace = text.indexOf("{", keyMatch.index);
+  const closeBrace = findMatchingBrace(text, openBrace);
+  if (openBrace < 0 || closeBrace < 0) {
+    return null;
+  }
+  return { openBrace, closeBrace, indent: keyMatch[2] ?? "" };
+}
+
+function findMatchingBrace(text: string, openIndex: number): number {
+  let depth = 0;
+  let inString = false;
+  let quote = "";
+  let inLineComment = false;
+  let inBlockComment = false;
+  for (let i = openIndex; i < text.length; i++) {
+    const ch = text[i] ?? "";
+    const next = text[i + 1] ?? "";
+    if (inLineComment) {
+      if (ch === "\n") inLineComment = false;
+      continue;
+    }
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        inBlockComment = false;
+        i++;
+      }
+      continue;
+    }
+    if (inString) {
+      if (ch === "\\") {
+        i++;
+        continue;
+      }
+      if (ch === quote) {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === "/" && next === "/") {
+      inLineComment = true;
+      i++;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      inBlockComment = true;
+      i++;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inString = true;
+      quote = ch;
+      continue;
+    }
+    if (ch === "{") depth++;
+    if (ch === "}") {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+function parseJsonValueEnd(text: string, start: number): number {
+  const first = text[start];
+  if (!first) return start;
+  if (first === "{") return findMatchingBrace(text, start) + 1;
+  if (first === "[") return findMatchingBracket(text, start) + 1;
+  if (first === '"' || first === "'") return findStringEnd(text, start) + 1;
+  let i = start;
+  while (i < text.length && ![",", "}", "]", "\n"].includes(text[i] ?? "")) {
+    i++;
+  }
+  return i;
+}
+
+function findMatchingBracket(text: string, openIndex: number): number {
+  let depth = 0;
+  let inString = false;
+  let quote = "";
+  for (let i = openIndex; i < text.length; i++) {
+    const ch = text[i] ?? "";
+    if (inString) {
+      if (ch === "\\") {
+        i++;
+        continue;
+      }
+      if (ch === quote) inString = false;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inString = true;
+      quote = ch;
+      continue;
+    }
+    if (ch === "[") depth++;
+    if (ch === "]") {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+function findStringEnd(text: string, start: number): number {
+  const quote = text[start] ?? '"';
+  for (let i = start + 1; i < text.length; i++) {
+    const ch = text[i] ?? "";
+    if (ch === "\\") {
+      i++;
+      continue;
+    }
+    if (ch === quote) return i;
+  }
+  return start;
+}
+
+function skipWhitespace(text: string, index: number): number {
+  let i = index;
+  while (i < text.length && /\s/.test(text[i] ?? "")) i++;
+  return i;
+}
+
+function findLeadingComma(text: string, index: number, min: number): number {
+  for (let i = index - 1; i >= min; i--) {
+    const ch = text[i] ?? "";
+    if (ch === ",") return i;
+    if (!/\s/.test(ch)) break;
+  }
+  return -1;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function ensureTrailingNewline(text: string): string {
