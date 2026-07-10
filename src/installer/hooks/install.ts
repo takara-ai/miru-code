@@ -5,6 +5,8 @@ import { stripJsonComments } from "../config.ts";
 
 const HOOK_GUARD_MARKER = "hook-guard";
 const MIRU_HOOK_MARKER = "miru-search";
+const VSCODE_OWNERS_KEY = "miruOwners";
+const SHARED_VSCODE_HOOK_OWNERS = ["copilot", "vscode", "visualstudio"] as const;
 
 const MATCHERS = {
   cursor: "Grep|Glob|Shell|SemanticSearch",
@@ -304,37 +306,121 @@ export async function removeGeminiHooks(path: string): Promise<InstallAction> {
   return removeHooksSection(path, ["BeforeTool"], (entry) => hookCommandMatches(entry.command));
 }
 
-export async function mergeVscodeHooks(path: string): Promise<InstallAction> {
+export async function mergeVscodeHooks(path: string, owner?: string): Promise<InstallAction> {
   const command = resolveHookCommand();
-  const content = {
-    hooks: {
-      PreToolUse: [
-        {
-          type: "command",
-          command,
-          matcher: MATCHERS.claude,
-          statusMessage: "Miru search policy",
-        },
-      ],
-    },
-  };
   const existed = await Bun.file(path).exists();
-  if (existed) {
-    const current = await Bun.file(path).text();
-    const next = `${JSON.stringify(content, null, 2)}\n`;
-    if (current === next) {
-      return "unchanged";
-    }
+  const text = existed ? await Bun.file(path).text() : "";
+  const parsed = parseJsonObject(text);
+  if (parsed === "error") {
+    return "error";
   }
-  await Bun.write(path, `${JSON.stringify(content, null, 2)}\n`);
+
+  const hooksRoot =
+    parsed.hooks && typeof parsed.hooks === "object" && !Array.isArray(parsed.hooks)
+      ? (parsed.hooks as Record<string, unknown>)
+      : {};
+
+  const nextEntry = {
+    type: "command",
+    command,
+    matcher: MATCHERS.claude,
+    statusMessage: "Miru search policy",
+  };
+
+  const existingPreToolUse = Array.isArray(hooksRoot.PreToolUse)
+    ? (hooksRoot.PreToolUse as unknown[])
+    : [];
+  const mergedPreToolUse =
+    existingPreToolUse.length > 0 &&
+    existingPreToolUse.some((entry) => hookCommandMatches((entry as Record<string, unknown>).command))
+      ? existingPreToolUse.map((entry) => {
+          const hookEntry = entry as Record<string, unknown>;
+          if (!hookCommandMatches(hookEntry.command)) {
+            return hookEntry;
+          }
+          return nextEntry;
+        })
+      : [...existingPreToolUse, nextEntry];
+
+  const currentOwners = Array.isArray(parsed[VSCODE_OWNERS_KEY])
+    ? (parsed[VSCODE_OWNERS_KEY] as unknown[]).filter((item): item is string =>
+        typeof item === "string" && SHARED_VSCODE_HOOK_OWNERS.includes(item as (typeof SHARED_VSCODE_HOOK_OWNERS)[number]),
+      )
+    : [];
+  const nextOwners = owner
+    ? Array.from(
+        new Set([
+          ...currentOwners,
+          ...(SHARED_VSCODE_HOOK_OWNERS.includes(
+            owner as (typeof SHARED_VSCODE_HOOK_OWNERS)[number],
+          )
+            ? [owner]
+            : []),
+        ]),
+      )
+    : currentOwners;
+
+  const next = {
+    ...parsed,
+    hooks: { ...hooksRoot, PreToolUse: mergedPreToolUse },
+    ...(nextOwners.length > 0 ? { [VSCODE_OWNERS_KEY]: nextOwners } : {}),
+  };
+  const nextJson = `${JSON.stringify(next, null, 2)}\n`;
+  if (nextJson === `${text.endsWith("\n") ? text : `${text}\n`}`) {
+    return "unchanged";
+  }
+  await Bun.write(path, nextJson);
   return existed ? "updated" : "created";
 }
 
-export async function removeVscodeHooks(path: string): Promise<InstallAction> {
+export async function removeVscodeHooks(path: string, owner?: string): Promise<InstallAction> {
   if (!(await Bun.file(path).exists())) {
     return "not-found";
   }
   const text = await Bun.file(path).text();
+  const parsed = parseJsonObject(text);
+  if (parsed === "error") {
+    return "error";
+  }
+
+  const owners = Array.isArray(parsed[VSCODE_OWNERS_KEY])
+    ? (parsed[VSCODE_OWNERS_KEY] as unknown[]).filter((item): item is string => typeof item === "string")
+    : null;
+  if (owners && owner) {
+    const remainingOwners = owners.filter((value) => value !== owner);
+    if (remainingOwners.length > 0) {
+      parsed[VSCODE_OWNERS_KEY] = remainingOwners;
+      await Bun.write(path, `${JSON.stringify(parsed, null, 2)}\n`);
+      return "updated";
+    }
+    delete parsed[VSCODE_OWNERS_KEY];
+    const hooksRoot =
+      parsed.hooks && typeof parsed.hooks === "object" && !Array.isArray(parsed.hooks)
+        ? (parsed.hooks as Record<string, unknown>)
+        : {};
+    const filtered = Array.isArray(hooksRoot.PreToolUse)
+      ? (hooksRoot.PreToolUse as Record<string, unknown>[]).filter(
+          (entry) => !hookCommandMatches(entry.command),
+        )
+      : [];
+    if (filtered.length === 0) {
+      delete hooksRoot.PreToolUse;
+    } else {
+      hooksRoot.PreToolUse = filtered;
+    }
+    if (Object.keys(hooksRoot).length === 0) {
+      delete parsed.hooks;
+    } else {
+      parsed.hooks = hooksRoot;
+    }
+    if (isEmptyHookConfig(parsed)) {
+      await unlink(path);
+      return "removed";
+    }
+    await Bun.write(path, `${JSON.stringify(parsed, null, 2)}\n`);
+    return "removed";
+  }
+
   if (!text.includes(HOOK_GUARD_MARKER) && !text.includes(MIRU_HOOK_MARKER)) {
     return "not-found";
   }
@@ -413,7 +499,11 @@ export async function removeOpenCodePlugin(pluginPath: string): Promise<InstallA
   return "removed";
 }
 
-export async function mergeHooks(format: HooksFormat, path: string): Promise<InstallAction> {
+export async function mergeHooks(
+  format: HooksFormat,
+  path: string,
+  owner?: string,
+): Promise<InstallAction> {
   switch (format) {
     case "cursor":
       return mergeCursorHooks(path);
@@ -422,7 +512,7 @@ export async function mergeHooks(format: HooksFormat, path: string): Promise<Ins
     case "gemini":
       return mergeGeminiHooks(path);
     case "vscode":
-      return mergeVscodeHooks(path);
+      return mergeVscodeHooks(path, owner);
     case "kiro":
       return mergeKiroHooks(path);
     case "windsurf":
@@ -436,7 +526,11 @@ export async function mergeHooks(format: HooksFormat, path: string): Promise<Ins
   }
 }
 
-export async function removeHooks(format: HooksFormat, path: string): Promise<InstallAction> {
+export async function removeHooks(
+  format: HooksFormat,
+  path: string,
+  owner?: string,
+): Promise<InstallAction> {
   switch (format) {
     case "cursor":
       return removeCursorHooks(path);
@@ -445,7 +539,7 @@ export async function removeHooks(format: HooksFormat, path: string): Promise<In
     case "gemini":
       return removeGeminiHooks(path);
     case "vscode":
-      return removeVscodeHooks(path);
+      return removeVscodeHooks(path, owner);
     case "kiro":
       return removeKiroHooks(path);
     case "windsurf":
