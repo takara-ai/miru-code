@@ -58,6 +58,7 @@ type IndexCacheTestAccess = {
   ensureEntry(cacheKey: string, source?: string): CacheEntryInternal;
   noteFileChange(source: string, filename: string | null | undefined): void;
   checkAndQueueStaleFiles(source: string, index: MiruIndex, cacheKey: string): Promise<void>;
+  flushFileUpdates(cacheKey: string, source: string, knownIndex?: MiruIndex): Promise<void>;
 };
 
 function cacheInternals(cache: IndexCache): IndexCacheTestAccess {
@@ -345,6 +346,75 @@ describe("incremental integration", () => {
       });
       expect(hit[0]?.chunk.file_path).toBe("src/auth.ts");
       expect(hit[0]?.chunk.content).toContain("miruRaceFixToken");
+
+      cache.close();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("stale reconciliation during an in-flight build does not deadlock on entry.task", async () => {
+    const root = await buildTempRepo();
+    const resolvedRoot = resolve(root);
+    try {
+      const embeddings = trackingEmbeddings();
+      const built = await createIndexFromPath(resolvedRoot, embeddings, ["code"], resolvedRoot);
+
+      const storedFileMtimes: Record<string, number> = {};
+      for (const rel of ["src/auth.ts", "src/utils.ts"]) {
+        const stat = await Bun.file(join(resolvedRoot, rel)).stat();
+        storedFileMtimes[rel] = Math.floor(stat.mtime?.getTime() ?? 0);
+      }
+
+      const index = new MiruIndex({
+        embeddings,
+        bm25Index: built.bm25,
+        semanticIndex: built.semantic,
+        chunks: built.chunks,
+        embeddingModel: embeddings.model,
+        root: resolvedRoot,
+        content: ["code"],
+        loadedFromDisk: true,
+        storedFileMtimes,
+      });
+
+      await new Promise((r) => setTimeout(r, 20));
+      await Bun.write(
+        join(resolvedRoot, "src/auth.ts"),
+        "export function authenticateUser() {\n  return 'miruDeadlockFixToken';\n}\n",
+      );
+
+      const cache = new IndexCache(["code"]);
+      const cacheKey = computeSourceCacheKey(resolvedRoot);
+      const internals = cacheInternals(cache);
+      const entry = internals.ensureEntry(cacheKey, resolvedRoot);
+
+      // Mirror startBuild: the build task awaits stale reconciliation. Publishing
+      // entry.index first (and passing knownIndex into flush) must complete; if
+      // flush awaited this same task instead, Promise.race would time out.
+      entry.task = (async () => {
+        entry.index = index;
+        await internals.checkAndQueueStaleFiles(resolvedRoot, index, cacheKey);
+        return index;
+      })();
+
+      const result = await Promise.race([
+        entry.task,
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error("IndexCache stale reconciliation deadlocked")), 3000);
+        }),
+      ]);
+
+      expect(result).toBe(index);
+      expect(entry.pendingPaths.size).toBe(0);
+
+      const hit = await index.search({
+        query: "miruDeadlockFixToken",
+        topK: 1,
+        alpha: 0,
+        rerank: false,
+      });
+      expect(hit[0]?.chunk.content).toContain("miruDeadlockFixToken");
 
       cache.close();
     } finally {
