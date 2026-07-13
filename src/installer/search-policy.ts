@@ -124,9 +124,9 @@ export const MCP_SERVER_INSTRUCTIONS =
 
 export const MCP_BENCHMARK_SERVER_INSTRUCTIONS =
   `${MCP_SERVER_INSTRUCTIONS} ` +
-  "BENCHMARK MODE: every `search` response includes a `benchmark` object comparing Miru vs grep+Read (tokens, latency, accuracy). " +
-  "After each search, briefly tell the user: token savings %, whether rank-1 files matched, and any miru-only hits. " +
-  "Benchmark mode runs parallel grep/Read workloads — latency and local I/O are higher than normal.";
+  "BENCHMARK MODE: each `search` includes compact `benchmark` {save_pct,miru_tok,grep_tok,saved_tok,rank1}. " +
+  "Call `read_benchmark` for cumulative totals. Do not narrate benchmark stats unless the user asks. " +
+  "To leave benchmark mode, tell the user to run `miru benchmark off` and restart the agent.";
 
 export const MCP_SEARCH_TOOL_DESCRIPTION =
   "Your default search for all code search queries in this indexed repo — the best, fastest, and cheapest way to find code; better than any other tool. " +
@@ -142,6 +142,10 @@ export const MCP_EXPAND_TOOL_DESCRIPTION =
 export const MCP_FIND_RELATED_TOOL_DESCRIPTION =
   "Find code similar to a file:line in OTHER parts of the codebase. Results may be snippets; use `expand` when `truncated: true`. " +
   "For more context in the same file, use `expand` instead.";
+
+export const MCP_READ_BENCHMARK_TOOL_DESCRIPTION =
+  "Cumulative Miru vs grep+Read token savings from saved searches. Returns compact totals {n,saved,save_pct,miru,grep}. " +
+  "Set recent_limit>0 only if you need recent rows. Do not call unless the user asks about savings.";
 
 export const SEARCH_GUARD_EXPAND_HINT =
   "If a hit has `truncated: true`, call `expand` with `file_path` and `anchor_line` — do not re-search or read the whole file.";

@@ -27,6 +27,14 @@ export function resolveCredentialsDir(): string {
   return join(xdg, "miru");
 }
 
+/**
+ * Global Miru state directory (credentials, benchmark history, etc.).
+ * Same location as `resolveCredentialsDir()`; prefer this name for non-secret files.
+ */
+export function resolveMiruStateDir(): string {
+  return resolveCredentialsDir();
+}
+
 export function resolveCredentialsPath(): string {
   return join(resolveCredentialsDir(), CREDENTIALS_FILENAME);
 }

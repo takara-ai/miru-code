@@ -1,6 +1,7 @@
 import { unlink } from "node:fs/promises";
 import { loadAgentTemplate } from "../agents.ts";
-import { brandTitle, dim, divider, green, hint, success, writeStdout } from "../cli-ui.ts";
+import { clearBenchmarkHistory } from "../benchmark/history.ts";
+import { brandTitle, dim, divider, green, hint, info, success, writeStdout } from "../cli-ui.ts";
 import { ensureCredentials } from "../setup.ts";
 import {
   AGENT_TARGETS,
@@ -233,6 +234,18 @@ async function apply(
   writeStdout("");
 }
 
+/** Local Miru state cleaned up during uninstall (global, not per-agent). */
+export async function removeUninstallLocalData(): Promise<{
+  benchmarkHistoryCleared: boolean;
+  benchmarkHistoryPath: string;
+}> {
+  const result = await clearBenchmarkHistory();
+  return {
+    benchmarkHistoryCleared: result.cleared,
+    benchmarkHistoryPath: result.path,
+  };
+}
+
 export async function runInstaller(mode: InstallMode): Promise<void> {
   const install = mode === "install";
   requireInteractiveTerminal(`miru ${mode}`);
@@ -294,6 +307,13 @@ export async function runInstaller(mode: InstallMode): Promise<void> {
   }
 
   await apply(mode, chosenAgents, chosenIntegrations);
+
+  if (!install) {
+    const local = await removeUninstallLocalData();
+    if (local.benchmarkHistoryCleared) {
+      info(`Removed benchmark report ${local.benchmarkHistoryPath}`);
+    }
+  }
 
   success(install ? "Done. Restart agents to apply changes." : "Done. Configuration removed.");
   writeStdout("");

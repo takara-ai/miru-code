@@ -5,8 +5,8 @@ import { applySnippetsToResults, estimateResultTokens } from "../snippet.ts";
 import { countTokens, tokenCountMethod, tokenizerJsonPath } from "../token-count.ts";
 import type { SearchResult } from "../types.ts";
 import { dedupeResultsByFile, expandChunksAtLine } from "../utils.ts";
-import { grepSearch, type GrepFileHit } from "./grep.ts";
-import type { SearchBenchmarkBlock } from "./types.ts";
+import { type GrepFileHit, grepSearch } from "./grep.ts";
+import type { AgentBenchmarkSummary, SearchBenchmarkBlock } from "./types.ts";
 
 const EXPAND_BEFORE = 1;
 const EXPAND_AFTER = 1;
@@ -176,11 +176,7 @@ export async function benchmarkSearchComparison(options: {
   })();
 
   const [miruOutcome, grepSearchOutcome] = await Promise.all([miruPromise, grepSearchPromise]);
-  const grepReads = await grepReadEstimates(
-    repoPath,
-    grepSearchOutcome.grep,
-    miruOutcome.lineSpan,
-  );
+  const grepReads = await grepReadEstimates(repoPath, grepSearchOutcome.grep, miruOutcome.lineSpan);
 
   const parallelTotalMs = performance.now() - parallelStart;
   const grepOutcome = {
@@ -196,9 +192,7 @@ export async function benchmarkSearchComparison(options: {
   const workflowFull = grepOutcome.grep.tokens + grepOutcome.readFull;
   const workflowWindow = grepOutcome.grep.tokens + grepOutcome.readWindow;
   const tokenSavings =
-    workflowFull > 0
-      ? Math.round((1 - miruOutcome.workflowTokens / workflowFull) * 100)
-      : 0;
+    workflowFull > 0 ? Math.round((1 - miruOutcome.workflowTokens / workflowFull) * 100) : 0;
 
   const block: SearchBenchmarkBlock = {
     mode: true,
@@ -250,9 +244,28 @@ export async function benchmarkSearchComparison(options: {
   return { benchmark: block, results: miruOutcome.results };
 }
 
+const MAX_AGENT_MIRU_ONLY = 3;
+
+/** Strip internal/debug fields down to the compact MCP agent payload. */
+export function toAgentBenchmarkSummary(block: SearchBenchmarkBlock): AgentBenchmarkSummary {
+  const miruTok = block.miru.workflow_tokens;
+  const grepTok = block.grep_read.workflow_full_tokens;
+  const summary: AgentBenchmarkSummary = {
+    save_pct: block.efficiency.token_savings_pct,
+    miru_tok: miruTok,
+    grep_tok: grepTok,
+    saved_tok: Math.max(0, grepTok - miruTok),
+    rank1: block.accuracy.rank1_match,
+  };
+  if (block.accuracy.miru_only.length > 0) {
+    summary.miru_only = block.accuracy.miru_only.slice(0, MAX_AGENT_MIRU_ONLY);
+  }
+  return summary;
+}
+
 export function attachSearchBenchmark<T extends Record<string, unknown>>(
   payload: T,
   benchmark: SearchBenchmarkBlock,
-): T & { benchmark: SearchBenchmarkBlock } {
-  return { ...payload, benchmark };
+): T & { benchmark: AgentBenchmarkSummary } {
+  return { ...payload, benchmark: toAgentBenchmarkSummary(benchmark) };
 }

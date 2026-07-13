@@ -75,6 +75,39 @@ describe("native MCP server matches official 2025-11-25 schema", () => {
     }
   });
 
+  test("benchmark mode lists read_benchmark with schema-valid Tool", async () => {
+    const server = createMcpServer(new IndexCache(), { benchmark: true });
+    const transport = new MemoryTransport([
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-11-25",
+          capabilities: {},
+          clientInfo: { name: "schema-test", version: "1.0.0" },
+        },
+      },
+      { jsonrpc: "2.0", method: "notifications/initialized" },
+      { jsonrpc: "2.0", id: 2, method: "tools/list" },
+    ]);
+    await server.connect(transport);
+    const list = transport.responseFor(2);
+    if (!list || !("result" in list)) {
+      throw new Error("missing tools/list response");
+    }
+    const tools = (list.result as { tools: Array<{ name: string }> }).tools;
+    expect(tools.map((tool) => tool.name)).toEqual([
+      "search",
+      "expand",
+      "find_related",
+      "read_benchmark",
+    ]);
+    for (const tool of tools) {
+      assertMatchesOfficialMcpSchema("Tool", tool);
+    }
+  });
+
   test("negotiates every supported protocol version", async () => {
     for (const protocolVersion of SUPPORTED_PROTOCOL_VERSIONS) {
       const server = createMcpServer(new IndexCache());

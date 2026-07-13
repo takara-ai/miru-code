@@ -6,6 +6,8 @@ import {
   clearStoredCredentials,
   loadStoredCredentials,
   readStoredCredentials,
+  resolveCredentialsDir,
+  resolveMiruStateDir,
   saveStoredCredentials,
 } from "../src/credentials.ts";
 import { TAKARA_API_KEY_ENV } from "../src/env.ts";
@@ -64,6 +66,13 @@ describe("credentials", () => {
     if (process.platform !== "win32") {
       expect(fileStat.mode & 0o777).toBe(0o600);
     }
+  });
+
+  test("resolveMiruStateDir matches credentials dir for global Miru files", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-cred-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    expect(resolveMiruStateDir()).toBe(resolveCredentialsDir());
+    expect(resolveMiruStateDir()).toBe(credDir);
   });
 
   test("loadStoredCredentials sets env when unset", async () => {

@@ -41,3 +41,27 @@ export interface SearchBenchmarkBlock {
     grep_share_ms: number;
   };
 }
+
+/** Compact per-search stats attached to MCP `search` responses (agent-facing). */
+export interface AgentBenchmarkSummary {
+  save_pct: number;
+  miru_tok: number;
+  grep_tok: number;
+  saved_tok: number;
+  rank1: boolean;
+  /** Present only when non-empty; capped at 3 paths. */
+  miru_only?: string[];
+}
+
+/** Compact cumulative rollup for MCP `read_benchmark` (agent-facing). */
+export interface AgentBenchmarkRollup {
+  n: number;
+  saved: number;
+  save_pct: number;
+  miru: number;
+  grep: number;
+  /** Only when more than one repo is present. */
+  repos?: Array<{ r: string; n: number; saved: number; save_pct: number }>;
+  /** Only when recent_limit > 0. */
+  recent?: Array<{ q: string; saved: number; pct: number }>;
+}

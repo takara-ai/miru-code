@@ -7,8 +7,10 @@ import {
   formatSearchErrorPretty,
   formatSearchResultsPretty,
   hint,
+  info,
   prefersJsonOutput,
   success,
+  writeStdout,
 } from "./cli-ui.ts";
 import { loadStoredCredentials } from "./credentials.ts";
 import { normalizeTakaraApiKeyEnv } from "./env.ts";
@@ -20,6 +22,7 @@ import {
   printFullHelp,
   printMainHelp,
 } from "./help.ts";
+import { getBenchmarkModeStatus, setBenchmarkMode } from "./installer/benchmark-mode.ts";
 import { runSearchGuardFromStdin } from "./installer/hooks/search-guard.ts";
 import { runInstaller } from "./installer/installer.ts";
 import { promptConfirm } from "./installer/prompt.ts";
@@ -57,6 +60,7 @@ const CLI_COMMANDS = new Set([
   "uninstall",
   "setup",
   "clear",
+  "benchmark",
   "hook-guard",
   "help",
   "-h",
@@ -265,6 +269,64 @@ async function runClear(path: string): Promise<void> {
   success(`Cleared cached index for ${path}`);
 }
 
+async function runBenchmarkCommand(rest: string[]): Promise<void> {
+  const action = rest[0];
+  if (!action || action === "-h" || action === "--help") {
+    printCommandHelp("benchmark");
+    return;
+  }
+
+  if (action === "status") {
+    const rows = await getBenchmarkModeStatus();
+    const installed = rows.filter((row) => row.action !== "missing");
+    if (installed.length === 0) {
+      info("No Miru MCP installs found. Run `miru install` first.");
+      return;
+    }
+    for (const row of installed) {
+      writeStdout(`  ${row.enabled ? "on " : "off"}  ${row.agent.padEnd(16)} ${row.path}`);
+    }
+    const onCount = installed.filter((row) => row.enabled).length;
+    writeStdout("");
+    if (onCount > 0) {
+      hint(
+        `Benchmark mode on for ${onCount}/${installed.length}. Run \`miru benchmark off\` to leave.`,
+      );
+    } else {
+      hint("Benchmark mode is off for all installed agents.");
+    }
+    return;
+  }
+
+  if (action === "on" || action === "off") {
+    const enabled = action === "on";
+    const rows = await setBenchmarkMode(enabled);
+    const touched = rows.filter((row) => row.action === "updated" || row.action === "unchanged");
+    if (touched.length === 0) {
+      info("No Miru MCP installs found. Run `miru install` first.");
+      return;
+    }
+    for (const row of touched) {
+      const label = row.action === "updated" ? (enabled ? "enabled" : "disabled") : "unchanged";
+      writeStdout(`  ${label.padEnd(9)} ${row.agent.padEnd(16)} ${row.path}`);
+    }
+    writeStdout("");
+    success(
+      enabled
+        ? "Benchmark mode on. Restart agents to apply."
+        : "Benchmark mode off. Restart agents to apply.",
+    );
+    if (enabled) {
+      hint("Leave anytime with `miru benchmark off`.");
+    }
+    return;
+  }
+
+  fail(`Unknown benchmark action "${action}". Use on, off, or status.`);
+  printCommandHelp("benchmark");
+  process.exit(1);
+}
+
 async function runCli(argv: string[]): Promise<void> {
   const [command, ...rest] = argv;
 
@@ -299,6 +361,11 @@ async function runCli(argv: string[]): Promise<void> {
 
   if (command === "install" || command === "uninstall") {
     await runInstaller(command);
+    return;
+  }
+
+  if (command === "benchmark") {
+    await runBenchmarkCommand(rest);
     return;
   }
 

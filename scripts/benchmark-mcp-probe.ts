@@ -72,6 +72,7 @@ for (const spec of QUERIES) {
     category: spec.category,
     tool_response: {
       ...payload,
+      _full_benchmark: comparison.benchmark,
       _probe: { tool_wall_ms: toolMs, category: spec.category },
     },
     index_ms_first_run: indexMs,
@@ -83,16 +84,32 @@ if (jsonOnly) {
 } else {
   for (const entry of responses) {
     const b = entry.tool_response.benchmark as {
-      miru: { workflow_tokens: number; latency_ms: number; top_file: string | null };
-      grep_read: { workflow_full_tokens: number; latency_ms: number; top_file: string | null };
-      efficiency: { token_savings_pct: number };
-      accuracy: {
-        rank1_match: boolean;
-        top_k_overlap_pct: number;
-        labeled_recall?: { miru: boolean; grep: boolean };
-      };
-      overhead: { parallel_total_ms: number };
+      save_pct: number;
+      miru_tok: number;
+      grep_tok: number;
+      saved_tok: number;
+      rank1: boolean;
+      miru_only?: string[];
     };
+    const full = (
+      entry.tool_response as {
+        _full_benchmark: {
+          miru: { workflow_tokens: number; latency_ms: number; top_file: string | null };
+          grep_read: {
+            workflow_full_tokens: number;
+            latency_ms: number;
+            top_file: string | null;
+          };
+          efficiency: { token_savings_pct: number };
+          accuracy: {
+            rank1_match: boolean;
+            top_k_overlap_pct: number;
+            labeled_recall?: { miru: boolean; grep: boolean };
+          };
+          overhead: { parallel_total_ms: number };
+        };
+      }
+    )._full_benchmark;
     const probe = entry.tool_response._probe as { tool_wall_ms: number; category: string };
 
     console.log(`=== ${probe.category}: ${entry.tool_response.query} ===\n`);
@@ -101,7 +118,7 @@ if (jsonOnly) {
         {
           query: entry.tool_response.query,
           result_count: (entry.tool_response.results as unknown[]).length,
-          benchmark: entry.tool_response.benchmark,
+          benchmark: b,
           first_hit: (entry.tool_response.results as Array<{ chunk: { file_path: string } }>)[0]
             ?.chunk,
         },
@@ -112,18 +129,21 @@ if (jsonOnly) {
     console.log("");
     console.log("Summary:");
     console.log(
-      `  miru workflow: ${b.miru.workflow_tokens} tok / ${b.miru.latency_ms}ms → ${b.miru.top_file}`,
+      `  miru workflow: ${full.miru.workflow_tokens} tok / ${full.miru.latency_ms}ms → ${full.miru.top_file}`,
     );
     console.log(
-      `  grep+Read:     ${b.grep_read.workflow_full_tokens} tok / ${b.grep_read.latency_ms}ms → ${b.grep_read.top_file}`,
-    );
-    console.log(`  savings:       ${b.efficiency.token_savings_pct}% fewer tokens vs grep+Read(full)`);
-    console.log(
-      `  accuracy:      rank1_match=${b.accuracy.rank1_match}  overlap=${b.accuracy.top_k_overlap_pct}%  labeled miru=${b.accuracy.labeled_recall?.miru} grep=${b.accuracy.labeled_recall?.grep}`,
+      `  grep+Read:     ${full.grep_read.workflow_full_tokens} tok / ${full.grep_read.latency_ms}ms → ${full.grep_read.top_file}`,
     );
     console.log(
-      `  overhead:      parallel=${b.overhead.parallel_total_ms}ms  tool_wall=${probe.tool_wall_ms}ms`,
+      `  savings:       ${full.efficiency.token_savings_pct}% fewer tokens vs grep+Read(full)`,
     );
+    console.log(
+      `  accuracy:      rank1_match=${full.accuracy.rank1_match}  overlap=${full.accuracy.top_k_overlap_pct}%  labeled miru=${full.accuracy.labeled_recall?.miru} grep=${full.accuracy.labeled_recall?.grep}`,
+    );
+    console.log(
+      `  overhead:      parallel=${full.overhead.parallel_total_ms}ms  tool_wall=${probe.tool_wall_ms}ms`,
+    );
+    console.log(`  agent payload: ${JSON.stringify(b)}`);
     console.log("");
   }
 
@@ -132,17 +152,19 @@ if (jsonOnly) {
 
   console.log("=== AGGREGATE (3 queries) ===");
   console.log(`  index (first run):     ${indexMs}ms`);
-  console.log(`  miru workflow tokens:  ${mean((r) => (r.tool_response.benchmark as { miru: { workflow_tokens: number } }).miru.workflow_tokens).toFixed(0)} avg`);
   console.log(
-    `  grep+Read tokens:      ${mean((r) => (r.tool_response.benchmark as { grep_read: { workflow_full_tokens: number } }).grep_read.workflow_full_tokens).toFixed(0)} avg`,
+    `  miru workflow tokens:  ${mean((r) => (r.tool_response.benchmark as { miru_tok: number }).miru_tok).toFixed(0)} avg`,
   );
   console.log(
-    `  token savings:         ${mean((r) => (r.tool_response.benchmark as { efficiency: { token_savings_pct: number } }).efficiency.token_savings_pct).toFixed(0)}% avg`,
+    `  grep+Read tokens:      ${mean((r) => (r.tool_response.benchmark as { grep_tok: number }).grep_tok).toFixed(0)} avg`,
   );
   console.log(
-    `  labeled recall:        miru ${responses.filter((r) => (r.tool_response.benchmark as { accuracy: { labeled_recall?: { miru: boolean } } }).accuracy.labeled_recall?.miru).length}/${responses.length}  grep ${responses.filter((r) => (r.tool_response.benchmark as { accuracy: { labeled_recall?: { grep: boolean } } }).accuracy.labeled_recall?.grep).length}/${responses.length}`,
+    `  token savings:         ${mean((r) => (r.tool_response.benchmark as { save_pct: number }).save_pct).toFixed(0)}% avg`,
   );
   console.log(
-    `  parallel overhead:     ${mean((r) => (r.tool_response.benchmark as { overhead: { parallel_total_ms: number } }).overhead.parallel_total_ms).toFixed(0)}ms avg`,
+    `  labeled recall:        miru ${responses.filter((r) => (r.tool_response as { _full_benchmark: { accuracy: { labeled_recall?: { miru: boolean } } } })._full_benchmark.accuracy.labeled_recall?.miru).length}/${responses.length}  grep ${responses.filter((r) => (r.tool_response as { _full_benchmark: { accuracy: { labeled_recall?: { grep: boolean } } } })._full_benchmark.accuracy.labeled_recall?.grep).length}/${responses.length}`,
+  );
+  console.log(
+    `  parallel overhead:     ${mean((r) => (r.tool_response as { _full_benchmark: { overhead: { parallel_total_ms: number } } })._full_benchmark.overhead.parallel_total_ms).toFixed(0)}ms avg`,
   );
 }

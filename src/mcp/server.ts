@@ -2,9 +2,15 @@ import * as z from "zod";
 import packageJson from "../../package.json";
 import { attachSearchBenchmark, benchmarkSearchComparison } from "../benchmark/compare.ts";
 import {
+  appendBenchmarkQuery,
+  readBenchmarkRollup,
+  recordFromBenchmark,
+} from "../benchmark/history.ts";
+import {
   MCP_BENCHMARK_SERVER_INSTRUCTIONS,
   MCP_EXPAND_TOOL_DESCRIPTION,
   MCP_FIND_RELATED_TOOL_DESCRIPTION,
+  MCP_READ_BENCHMARK_TOOL_DESCRIPTION,
   MCP_SEARCH_TOOL_DESCRIPTION,
   MCP_SERVER_INSTRUCTIONS,
 } from "../installer/search-policy.ts";
@@ -87,6 +93,11 @@ export function createMcpServer(
           if (results.length === 0) {
             return toolText(JSON.stringify({ error: "No results found." }));
           }
+          try {
+            await appendBenchmarkQuery(recordFromBenchmark(query, repoRoot, comparison.benchmark));
+          } catch {
+            // History is best-effort; never fail the search on persist errors.
+          }
           return toolText(
             JSON.stringify(
               attachSearchBenchmark(
@@ -104,9 +115,7 @@ export function createMcpServer(
         if (results.length === 0) {
           return toolText(JSON.stringify({ error: "No results found." }));
         }
-        return toolText(
-          JSON.stringify(formatResults(query, results, { repoRoot, snippet: true })),
-        );
+        return toolText(JSON.stringify(formatResults(query, results, { repoRoot, snippet: true })));
       } catch (err) {
         return toolText(err instanceof Error ? err.message : String(err));
       }
@@ -227,6 +236,41 @@ export function createMcpServer(
       }
     },
   );
+
+  if (benchmark) {
+    server.registerTool(
+      "read_benchmark",
+      {
+        description: MCP_READ_BENCHMARK_TOOL_DESCRIPTION,
+        inputSchema: {
+          repo: z
+            .string()
+            .optional()
+            .describe(
+              "Optional local repo path or git URL to filter the rollup. Omit for all saved queries.",
+            ),
+          recent_limit: z
+            .number()
+            .int()
+            .min(0)
+            .max(20)
+            .optional()
+            .describe("Include this many recent rows (default 0). Keep 0 unless needed."),
+        },
+      },
+      async ({ repo, recent_limit: recentLimit }) => {
+        try {
+          const rollup = await readBenchmarkRollup({
+            repo,
+            recentLimit: recentLimit ?? 0,
+          });
+          return toolText(JSON.stringify(rollup));
+        } catch (err) {
+          return toolText(err instanceof Error ? err.message : String(err));
+        }
+      },
+    );
+  }
 
   return server;
 }

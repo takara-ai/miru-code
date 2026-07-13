@@ -39,6 +39,7 @@ export function printMainHelp(): void {
   commandRow("setup", "Save your Takara API key locally");
   commandRow("install", "Configure miru across coding agents");
   commandRow("uninstall", "Remove miru agent configuration");
+  commandRow("benchmark", "Turn MCP benchmark mode on or off");
   commandRow("init", "Write a project-local sub-agent file");
   commandRow("clear", "Remove cached index for a path");
   commandRow("help", "Show help for a command");
@@ -123,6 +124,19 @@ export function printCommandHelp(command: string): void {
     case "uninstall":
       commandHeader("uninstall", "Remove miru configuration from agents.");
       writeStdout("Removes MCP entries, marked instruction blocks, and global sub-agents.");
+      writeStdout("Also deletes the global benchmark report from Miru's state directory.");
+      writeStdout("");
+      return;
+    case "benchmark":
+      commandHeader("benchmark", "Toggle MCP benchmark mode on installed agents.");
+      section("Usage");
+      writeStdout("  miru benchmark on");
+      writeStdout("  miru benchmark off");
+      writeStdout("  miru benchmark status");
+      writeStdout("");
+      writeStdout("Adds or removes `--benchmark` from Miru MCP args in agent configs.");
+      writeStdout("If `--benchmark` is present, benchmark mode is on — no env overrides.");
+      writeStdout("Restart agents after changing mode. Prefer `off` when finished measuring.");
       writeStdout("");
       return;
     case "init":
@@ -147,9 +161,11 @@ export function printCommandHelp(command: string): void {
     case "mcp":
       commandHeader("mcp", "Stdio MCP server (default with no subcommand).");
       section("Usage");
-      writeStdout("  miru [--ref BRANCH] [--content TYPE ...]");
+      writeStdout("  miru [--ref BRANCH] [--content TYPE ...] [--benchmark]");
       writeStdout("");
       writeStdout("Indexes on the first search/expand/find_related tool call (repo argument).");
+      writeStdout("Use --benchmark (or `miru benchmark on`) for token-savings comparisons.");
+      writeStdout("Leave with `miru benchmark off` and restart the agent.");
       writeStdout("");
       return;
     default:
