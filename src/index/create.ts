@@ -6,7 +6,7 @@ import type { EmbeddingBackend } from "../embeddings/openai.ts";
 import { envOptionalInt } from "../env.ts";
 import { searchImprovementsEnabled } from "../ranking/features.ts";
 import { tokenize } from "../tokens.ts";
-import type { Chunk, ContentType } from "../types.ts";
+import { type Chunk, type ContentType, defaultContentTypes } from "../types.ts";
 import { BM25Index } from "./bm25.ts";
 import { loadRootEntryChunks } from "./entry-chunks.ts";
 import { walkFiles } from "./file-walker.ts";
@@ -33,7 +33,7 @@ function resolveMaxIndexFiles(): number | undefined {
 export async function createIndexFromPath(
   path: string,
   embeddings: EmbeddingBackend,
-  content: ContentType[] = ["code"],
+  content: ContentType[] = defaultContentTypes(),
   displayRoot?: string,
 ): Promise<{ bm25: BM25Index; semantic: SemanticIndex; chunks: Chunk[] }> {
   const profile = process.env.MIRU_PROFILE === "1";

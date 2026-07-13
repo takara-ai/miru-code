@@ -1,5 +1,9 @@
 import { readFileSync } from "node:fs";
-import { type BertWordPieceTokenizer, createBertWordPieceTokenizer, type TokenizerJson } from "./bert-wordpiece.ts";
+import {
+  type BertWordPieceTokenizer,
+  createBertWordPieceTokenizer,
+  type TokenizerJson,
+} from "./bert-wordpiece.ts";
 
 export function loadTokenizerFromFile(path: string): BertWordPieceTokenizer {
   const json = JSON.parse(readFileSync(path, "utf-8")) as TokenizerJson;

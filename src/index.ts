@@ -18,8 +18,10 @@ export { MiruIndex } from "./miru-index.ts";
 export type {
   /** A searchable text span from a source file (path, line range, content). */
   Chunk,
-  /** What to index: source code, markdown docs, or both. */
+  /** What to index: source code, docs, and/or config. */
   ContentType,
   /** Ranked hit returned by `search` or `findRelated`. */
   SearchResult,
 } from "./types.ts";
+
+export { DEFAULT_CONTENT_TYPES, defaultContentTypes } from "./types.ts";

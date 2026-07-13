@@ -86,9 +86,7 @@ function tokenizeChineseChars(text: string): string {
 }
 
 function removeAccents(text: string): string {
-  return text
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "");
+  return text.normalize("NFD").replace(/\p{M}/gu, "");
 }
 
 function whitespaceTokenize(text: string): string[] {

@@ -58,6 +58,7 @@
     "benchmark:recall": "bun run scripts/benchmark-recall-tokens.ts",
     "benchmark:vs-grep": "bun run scripts/benchmark-miru-vs-grep.ts",
     "benchmark:workflow": "bun run scripts/benchmark-workflow-tokens.ts",
+    "benchmark:literal": "bun run scripts/benchmark-literal-tokens.ts",
     "benchmark:quality": "bun run scripts/benchmark-quality.ts",
     "benchmark:quantization": "bun run scripts/benchmark-quantization.ts",
     "benchmark:tokenizer-ab": "bun run scripts/tokenizer-ab.ts"

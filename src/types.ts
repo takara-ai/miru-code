@@ -1,5 +1,13 @@
 export type ContentType = "code" | "docs" | "config";
 
+/** Default index corpus: source code plus config (json/yaml/toml/…). */
+export const DEFAULT_CONTENT_TYPES: readonly ContentType[] = ["code", "config"];
+
+/** Mutable copy of {@link DEFAULT_CONTENT_TYPES} for API defaults. */
+export function defaultContentTypes(): ContentType[] {
+  return [...DEFAULT_CONTENT_TYPES];
+}
+
 export interface Chunk {
   content: string;
   file_path: string;

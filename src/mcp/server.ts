@@ -4,16 +4,20 @@ import { attachSearchBenchmark, benchmarkSearchComparison } from "../benchmark/c
 import {
   appendBenchmarkQuery,
   readBenchmarkRollup,
+  recordFromAgentSummary,
   recordFromBenchmark,
 } from "../benchmark/history.ts";
+import { attachLocateBenchmark, benchmarkLocateComparison } from "../benchmark/locate-compare.ts";
 import {
   MCP_BENCHMARK_SERVER_INSTRUCTIONS,
   MCP_EXPAND_TOOL_DESCRIPTION,
   MCP_FIND_RELATED_TOOL_DESCRIPTION,
+  MCP_LOCATE_TOOL_DESCRIPTION,
   MCP_READ_BENCHMARK_TOOL_DESCRIPTION,
   MCP_SEARCH_TOOL_DESCRIPTION,
   MCP_SERVER_INSTRUCTIONS,
 } from "../installer/search-policy.ts";
+import { formatLiteralLocate, type LiteralMode } from "../literal.ts";
 import type { ContentType } from "../types.ts";
 import {
   clampMcpTopK,
@@ -116,6 +120,72 @@ export function createMcpServer(
           return toolText(JSON.stringify({ error: "No results found." }));
         }
         return toolText(JSON.stringify(formatResults(query, results, { repoRoot, snippet: true })));
+      } catch (err) {
+        return toolText(err instanceof Error ? err.message : String(err));
+      }
+    },
+  );
+
+  server.registerTool(
+    "locate",
+    {
+      description: MCP_LOCATE_TOOL_DESCRIPTION,
+      inputSchema: {
+        literal: z
+          .string()
+          .min(1)
+          .describe("Exact substring to find (env var, symbol, error code, quoted text)."),
+        repo: z.string().describe(REPO_DESCRIPTION),
+        mode: z
+          .enum(["count", "locations", "lines"])
+          .optional()
+          .describe(
+            "count=totals only; locations=path:line; lines=path:line+text (default). Prefer count/locations when possible.",
+          ),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe(
+            "Optional cap on returned hits. Omit to return ALL matches (recommended). Do not fall back to Grep if n is large — use mode=count or locations instead.",
+          ),
+        ignore_case: z.boolean().optional().describe("Case-insensitive match (default false)."),
+      },
+    },
+    async ({ literal, repo, mode, limit, ignore_case: ignoreCase }) => {
+      try {
+        const index = await getIndexForRepo(repo, cache);
+        const locateOpts = {
+          mode: (mode as LiteralMode | undefined) ?? "lines",
+          ...(limit != null ? { limit } : {}),
+          ignore_case: ignoreCase,
+        };
+
+        if (benchmark) {
+          const repoRoot = localRepoRoot(repo);
+          if (repoRoot) {
+            const comparison = await benchmarkLocateComparison({
+              literal,
+              repoPath: repoRoot,
+              index,
+              locate: locateOpts,
+            });
+            try {
+              await appendBenchmarkQuery(
+                recordFromAgentSummary(literal, repoRoot, comparison.benchmark),
+              );
+            } catch {
+              // History is best-effort; never fail locate on persist errors.
+            }
+            return toolText(
+              JSON.stringify(attachLocateBenchmark(comparison.payload, comparison.benchmark)),
+            );
+          }
+        }
+
+        const result = index.locateLiteral(literal, locateOpts);
+        return toolText(JSON.stringify(formatLiteralLocate(result)));
       } catch (err) {
         return toolText(err instanceof Error ? err.message : String(err));
       }

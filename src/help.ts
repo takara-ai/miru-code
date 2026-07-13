@@ -34,6 +34,7 @@ export function printMainHelp(): void {
 
   section("Commands");
   commandRow("search", "Hybrid search over a codebase");
+  commandRow("locate", "Exact substring location in the index");
   commandRow("expand", "Adjacent chunks in the same file as a hit");
   commandRow("find-related", "Find chunks related to a file:line");
   commandRow("setup", "Save your Takara API key locally");
@@ -81,10 +82,24 @@ export function printCommandHelp(command: string): void {
       writeStdout("  miru search <query> [path] [options]");
       section("Options");
       writeStdout("  -k, --top-k N       Number of results (default: 5)");
-      writeStdout("  --content TYPE      code | docs | config | all");
+      writeStdout("  --content TYPE      code | docs | config | all (default: code config)");
       writeStdout("  --json              JSON output (default when piped)");
       section("Example");
       writeStdout('  miru search "where is auth" ./src -k 10 --content code docs');
+      writeStdout("");
+      return;
+    case "locate":
+      commandHeader("locate", "Exact substring location over the Miru index.");
+      section("Usage");
+      writeStdout("  miru locate <literal> [path] [options]");
+      section("Options");
+      writeStdout("  --mode MODE         count | locations | lines (default: lines)");
+      writeStdout("  --limit N           Optional hit cap (default: all matches)");
+      writeStdout("  --ignore-case       Case-insensitive match");
+      writeStdout("  --content TYPE      code | docs | config | all (default: code config)");
+      writeStdout("  --json              JSON output (default when piped)");
+      section("Example");
+      writeStdout("  miru locate MIRU_BENCHMARK_HISTORY_PATH . --mode locations");
       writeStdout("");
       return;
     case "expand":
@@ -162,6 +177,7 @@ export function printCommandHelp(command: string): void {
       commandHeader("mcp", "Stdio MCP server (default with no subcommand).");
       section("Usage");
       writeStdout("  miru [--ref BRANCH] [--content TYPE ...] [--benchmark]");
+      writeStdout("  Default content: code config");
       writeStdout("");
       writeStdout("Indexes on the first search/expand/find_related tool call (repo argument).");
       writeStdout("Use --benchmark (or `miru benchmark on`) for token-savings comparisons.");

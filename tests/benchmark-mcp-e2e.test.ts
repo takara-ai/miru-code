@@ -285,6 +285,104 @@ describe("benchmark MCP end-to-end", () => {
     }
   });
 
+  test("MCP locate in benchmark mode attaches savings and rolls into read_benchmark", async () => {
+    const root = await buildTempRepo();
+    const historyDir = await mkdtemp(join(tmpdir(), "miru-locate-bench-hist-"));
+    const historyPath = join(historyDir, "benchmark-history.json");
+
+    try {
+      await runWithBenchmarkHistoryPath(historyPath, async () => {
+        const index = await buildIndex(root);
+        const cache = new IndexCache(["code"]);
+        preloadCache(cache, root, index);
+        const server = createMcpServer(cache, { benchmark: true });
+
+        const transport = new MemoryTransport([
+          {
+            jsonrpc: "2.0",
+            id: 1,
+            method: "initialize",
+            params: {
+              protocolVersion: "2025-03-26",
+              capabilities: {},
+              clientInfo: { name: "locate-bench-e2e", version: "1.0.0" },
+            },
+          },
+          { jsonrpc: "2.0", method: "notifications/initialized" },
+          {
+            jsonrpc: "2.0",
+            id: 2,
+            method: "tools/call",
+            params: {
+              name: "locate",
+              arguments: {
+                literal: "miruAuthSecretToken",
+                repo: root,
+                mode: "locations",
+              },
+            },
+          },
+          {
+            jsonrpc: "2.0",
+            id: 3,
+            method: "tools/call",
+            params: {
+              name: "read_benchmark",
+              arguments: { recent_limit: 1 },
+            },
+          },
+        ]);
+
+        await server.connect(transport);
+
+        const locatePayload = parseToolJson(transport.responseFor(2)) as {
+          literal: string;
+          n: number;
+          hits: Array<{ f: string; l: number }>;
+          benchmark: {
+            save_pct: number;
+            miru_tok: number;
+            grep_tok: number;
+            saved_tok: number;
+            rank1: boolean;
+          };
+        };
+        expect(locatePayload.literal).toBe("miruAuthSecretToken");
+        expect(locatePayload.n).toBeGreaterThan(0);
+        expect(locatePayload.hits.length).toBeGreaterThan(0);
+        expect(locatePayload.benchmark.grep_tok).toBeGreaterThan(locatePayload.benchmark.miru_tok);
+        expect(locatePayload.benchmark.saved_tok).toBe(
+          locatePayload.benchmark.grep_tok - locatePayload.benchmark.miru_tok,
+        );
+        expect(Object.keys(locatePayload.benchmark).sort()).toEqual([
+          "grep_tok",
+          "miru_tok",
+          "rank1",
+          "save_pct",
+          "saved_tok",
+        ]);
+
+        const rollup = parseToolJson(transport.responseFor(3)) as {
+          n: number;
+          saved: number;
+          miru: number;
+          grep: number;
+          recent: Array<{ q: string }>;
+        };
+        expect(rollup.n).toBe(1);
+        expect(rollup.saved).toBe(locatePayload.benchmark.saved_tok);
+        expect(rollup.miru).toBe(locatePayload.benchmark.miru_tok);
+        expect(rollup.grep).toBe(locatePayload.benchmark.grep_tok);
+        expect(rollup.recent[0]?.q).toBe("miruAuthSecretToken");
+
+        cache.close();
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      await rm(historyDir, { recursive: true, force: true });
+    }
+  });
+
   test("normal MCP mode does not expose read_benchmark", async () => {
     const server = createMcpServer(new IndexCache(), { benchmark: false });
     const transport = new MemoryTransport([
@@ -309,6 +407,6 @@ describe("benchmark MCP end-to-end", () => {
     const names = ((list.result as { tools: Array<{ name: string }> }).tools ?? []).map(
       (tool) => tool.name,
     );
-    expect(names).toEqual(["search", "expand", "find_related"]);
+    expect(names).toEqual(["search", "locate", "expand", "find_related"]);
   });
 });

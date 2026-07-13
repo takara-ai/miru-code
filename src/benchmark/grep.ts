@@ -12,6 +12,18 @@ const STOPWORDS = new Set(
 export const GREP_LINES_PER_FILE = 3;
 export const GREP_CONTEXT = 2;
 
+/** Shared `-g` excludes for ripgrep baselines (search + locate). */
+export const RG_EXCLUDE_ARGS = [
+  "-g",
+  "!node_modules",
+  "-g",
+  "!.git",
+  "-g",
+  "!tokenizer",
+  "-g",
+  "!tokenizer/**",
+] as const;
+
 export interface GrepFileHit {
   file: string;
   matchCount: number;
@@ -63,21 +75,7 @@ export async function grepSearch(
   }
 
   const countProc = Bun.spawn(
-    [
-      "rg",
-      "-i",
-      "--count-matches",
-      pattern,
-      repoRoot,
-      "-g",
-      "!node_modules",
-      "-g",
-      "!.git",
-      "-g",
-      "!tokenizer",
-      "-g",
-      "!tokenizer/**",
-    ],
+    ["rg", "-i", "--count-matches", pattern, repoRoot, ...RG_EXCLUDE_ARGS],
     { stdout: "pipe", stderr: "pipe" },
   );
   const countText = await new Response(countProc.stdout).text();

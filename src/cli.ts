@@ -26,6 +26,7 @@ import { getBenchmarkModeStatus, setBenchmarkMode } from "./installer/benchmark-
 import { runSearchGuardFromStdin } from "./installer/hooks/search-guard.ts";
 import { runInstaller } from "./installer/installer.ts";
 import { promptConfirm } from "./installer/prompt.ts";
+import { formatLiteralLocate, type LiteralMode } from "./literal.ts";
 import { serveMcp } from "./mcp/serve.ts";
 import { MiruIndex } from "./miru-index.ts";
 import {
@@ -53,6 +54,7 @@ await loadStoredCredentials();
 
 const CLI_COMMANDS = new Set([
   "search",
+  "locate",
   "expand",
   "find-related",
   "init",
@@ -106,7 +108,7 @@ function parseContentArgv(argv: string[]): { content: ContentType[]; rest: strin
       rest.push(arg);
     }
   }
-  return { content: resolveContent(content.length > 0 ? content : ["code"]), rest };
+  return { content: resolveContent(content), rest };
 }
 
 function parseTopK(argv: string[]): { topK: number; rest: string[] } {
@@ -250,6 +252,53 @@ class RelatedChunkNotFoundError extends Error {
     super(`No chunk found at ${filePath}:${line}.`);
     this.name = "RelatedChunkNotFoundError";
   }
+}
+
+async function runLocate(
+  path: string,
+  literal: string,
+  content: ContentType[],
+  jsonFlag: boolean,
+  mode: LiteralMode,
+  limit: number | undefined,
+  ignoreCase: boolean,
+): Promise<void> {
+  await ensureCredentials({ interactive: true });
+
+  const payload = await withSpinner("Locating literal", async () => {
+    const built = await MiruIndex.fromSource(path, content);
+    await built.saveToCache(path);
+    return formatLiteralLocate(
+      built.locateLiteral(literal, {
+        mode,
+        ignore_case: ignoreCase,
+        ...(limit != null ? { limit } : {}),
+      }),
+    );
+  });
+
+  if (prefersJsonOutput(jsonFlag)) {
+    console.log(JSON.stringify(payload));
+    return;
+  }
+
+  const n = Number(payload.n ?? 0);
+  const files = Number(payload.files ?? 0);
+  writeStdout(`literal=${literal}  n=${n}  files=${files}  mode=${mode}`);
+  const hits = payload.hits as Array<{ f: string; l: number; t?: string }> | undefined;
+  if (hits) {
+    for (const hit of hits) {
+      if (hit.t !== undefined) {
+        writeStdout(`  ${hit.f}:${hit.l}: ${hit.t}`);
+      } else {
+        writeStdout(`  ${hit.f}:${hit.l}`);
+      }
+    }
+    if (payload.truncated) {
+      writeStdout(`  … truncated (showing ${hits.length} of ${n})`);
+    }
+  }
+  writeStdout("");
 }
 
 async function runInit(agent: AgentId, force: boolean): Promise<void> {
@@ -457,6 +506,49 @@ async function runCli(argv: string[]): Promise<void> {
     return;
   }
 
+  if (command === "locate") {
+    const literal = sizedRest[0];
+    if (!literal) {
+      printCommandHelp("locate");
+      process.exit(1);
+    }
+    let mode: LiteralMode = "lines";
+    let limit: number | undefined;
+    let ignoreCase = false;
+    const pathArgs: string[] = [];
+    for (let i = 1; i < sizedRest.length; i++) {
+      const arg = sizedRest[i];
+      if (arg === "--mode" && sizedRest[i + 1]) {
+        const value = sizedRest[++i];
+        if (value !== "count" && value !== "locations" && value !== "lines") {
+          fail(`Unknown locate mode "${value}". Use count, locations, or lines.`);
+          process.exit(1);
+        }
+        mode = value;
+        continue;
+      }
+      if (arg === "--limit" && sizedRest[i + 1]) {
+        const raw = Number(sizedRest[++i]);
+        if (!Number.isFinite(raw) || raw < 1) {
+          fail("locate --limit must be a positive integer.");
+          process.exit(1);
+        }
+        limit = Math.floor(raw);
+        continue;
+      }
+      if (arg === "--ignore-case") {
+        ignoreCase = true;
+        continue;
+      }
+      if (arg !== undefined) {
+        pathArgs.push(arg);
+      }
+    }
+    const path = resolveSearchPath(pathArgs[0] ?? process.cwd());
+    await runLocate(path, literal, content, jsonFlag, mode, limit, ignoreCase);
+    return;
+  }
+
   if (command === "expand") {
     const filePath = sizedRest[0];
     const lineRaw = sizedRest[1];
@@ -529,7 +621,7 @@ async function runMcp(argv: string[]): Promise<void> {
 
   await serveMcp({
     ref,
-    content: resolveContent(contentTokens.length > 0 ? contentTokens : ["code"]),
+    content: resolveContent(contentTokens),
     benchmark,
   });
 }

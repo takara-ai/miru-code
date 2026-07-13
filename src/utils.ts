@@ -1,7 +1,7 @@
 import { join, relative, resolve, sep } from "node:path";
 import { applySnippetsToResults, searchSnippetsEnabled } from "./snippet.ts";
 import type { Chunk, ContentType, SearchResult } from "./types.ts";
-import { chunkToDict } from "./types.ts";
+import { chunkToDict, defaultContentTypes } from "./types.ts";
 
 const GIT_URL_SCHEMES = [
   "https://",
@@ -246,6 +246,9 @@ export function formatExpandResults(
 }
 
 export function resolveContent(raw: string[]): ContentType[] {
+  if (raw.length === 0) {
+    return defaultContentTypes();
+  }
   if (raw.includes("all")) {
     return ["code", "docs", "config"];
   }

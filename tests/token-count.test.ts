@@ -72,7 +72,9 @@ describe("token-count", () => {
 
   test("createBertWordPieceTokenizer accepts parsed json", () => {
     const tokenizer = createBertWordPieceTokenizer(
-      JSON.parse(readFileSync(BUNDLED, "utf-8")) as Parameters<typeof createBertWordPieceTokenizer>[0],
+      JSON.parse(readFileSync(BUNDLED, "utf-8")) as Parameters<
+        typeof createBertWordPieceTokenizer
+      >[0],
     );
     expect(tokenizer.encode("Hello world")).toEqual(["hello", "world"]);
     expect(tokenizer.encode("#!/usr/bin/env bun\nimport { x }")).toContain("import");

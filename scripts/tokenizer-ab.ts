@@ -9,15 +9,15 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Tokenizer as HfTokenizer } from "@huggingface/tokenizers";
-import { countTokens, resetTokenizerCache } from "../src/token-count.ts";
-import { createBertWordPieceTokenizer } from "../src/tokenizer/bert-wordpiece.ts";
-import { loadTokenizerFromFile } from "../src/tokenizer/load.ts";
-import { applySnippetsToResults } from "../src/snippet.ts";
-import { MiruIndex } from "../src/miru-index.ts";
-import { dedupeResultsByFile } from "../src/utils.ts";
 import { loadStoredCredentials } from "../src/credentials.ts";
 import { normalizeTakaraApiKeyEnv } from "../src/env.ts";
 import { loadEnvFiles } from "../src/env-files.ts";
+import { MiruIndex } from "../src/miru-index.ts";
+import { applySnippetsToResults } from "../src/snippet.ts";
+import { countTokens, resetTokenizerCache } from "../src/token-count.ts";
+import type { createBertWordPieceTokenizer } from "../src/tokenizer/bert-wordpiece.ts";
+import { loadTokenizerFromFile } from "../src/tokenizer/load.ts";
+import { dedupeResultsByFile } from "../src/utils.ts";
 
 await loadEnvFiles();
 normalizeTakaraApiKeyEnv();
@@ -72,7 +72,12 @@ function loadHfTokenizer(): HfTokenizer {
   return new HfTokenizer(json, {});
 }
 
-function compare(label: string, text: string, native: ReturnType<typeof createBertWordPieceTokenizer>, hf: HfTokenizer): AbRow {
+function compare(
+  label: string,
+  text: string,
+  native: ReturnType<typeof createBertWordPieceTokenizer>,
+  hf: HfTokenizer,
+): AbRow {
   const nativeTokens = native.encode(text);
   const hfEncoded = hf.encode(text);
   const hfTokens = hfEncoded.tokens ?? [];
@@ -110,7 +115,10 @@ for (const query of BENCH_QUERIES) {
 console.error(`Loading index for snippet samples (${REPO_ROOT})...`);
 const index = await MiruIndex.fromPath(REPO_ROOT, ["code"]);
 for (const query of BENCH_QUERIES) {
-  const results = dedupeResultsByFile(await index.search({ query, topK: 5, rerank: true })).slice(0, 5);
+  const results = dedupeResultsByFile(await index.search({ query, topK: 5, rerank: true })).slice(
+    0,
+    5,
+  );
   const snippets = applySnippetsToResults(results, query);
   for (const [i, entry] of snippets.entries()) {
     const content = entry.result.chunk.content;
@@ -141,7 +149,9 @@ if (jsonFlag) {
   console.log("");
   console.log("=== TOKENIZER A/B: native WordPiece vs @huggingface/tokenizers ===");
   console.log(`file: ${TOKENIZER_JSON}`);
-  console.log(`samples: ${rows.length}  matched: ${summary.matched}  mismatched: ${summary.mismatched}`);
+  console.log(
+    `samples: ${rows.length}  matched: ${summary.matched}  mismatched: ${summary.mismatched}`,
+  );
   console.log("");
 
   if (mismatches.length === 0) {

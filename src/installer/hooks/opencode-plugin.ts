@@ -3,27 +3,11 @@
  * Installed to ~/.config/opencode/plugins/miru-search-guard.ts
  */
 
-const REDIRECT = "Use Miru MCP search (repo = project root) instead of grep/glob/bash exploration.";
+const REDIRECT =
+  "Use Miru MCP (repo = project root): `locate` for exact literals, `search` for meaning-based questions — not grep/glob/bash exploration.";
 
 const GREP_TOOLS = new Set(["grep", "glob", "codesearch", "codebase_search", "search"]);
 const SHELL_TOOLS = new Set(["bash", "shell", "sh"]);
-
-function isLiteral(pattern: string): boolean {
-  const trimmed = pattern.trim();
-  if (!trimmed) {
-    return false;
-  }
-  if (/^[`'"][^`'"]+[`'"]$/.test(trimmed)) {
-    return true;
-  }
-  if (/^[A-Z][A-Z0-9_]{2,}$/.test(trimmed)) {
-    return true;
-  }
-  if (/^[a-zA-Z_][a-zA-Z0-9_.]*$/.test(trimmed) && trimmed.length <= 48) {
-    return true;
-  }
-  return false;
-}
 
 function isExplorationShell(command: string): boolean {
   const cmd = command.trim();
@@ -43,9 +27,11 @@ function shouldBlock(tool: string, args: Record<string, unknown>): boolean {
   if (name.includes("miru")) {
     return false;
   }
+  if (name === "glob") {
+    return true;
+  }
   if (GREP_TOOLS.has(name)) {
-    const pattern = String(args.pattern ?? args.query ?? args.regex ?? args.needle ?? "");
-    return !isLiteral(pattern);
+    return true;
   }
   if (SHELL_TOOLS.has(name)) {
     const command = String(args.command ?? args.cmd ?? "");

@@ -6,6 +6,7 @@ import { countTokens, tokenCountMethod, tokenizerJsonPath } from "../token-count
 import type { SearchResult } from "../types.ts";
 import { dedupeResultsByFile, expandChunksAtLine } from "../utils.ts";
 import { type GrepFileHit, grepSearch } from "./grep.ts";
+import { agentBenchmarkFromTokens, attachAgentBenchmark, tokenSavingsPct } from "./summary.ts";
 import type { AgentBenchmarkSummary, SearchBenchmarkBlock } from "./types.ts";
 
 const EXPAND_BEFORE = 1;
@@ -191,8 +192,7 @@ export async function benchmarkSearchComparison(options: {
   const grepTop = grepFiles[0] ?? null;
   const workflowFull = grepOutcome.grep.tokens + grepOutcome.readFull;
   const workflowWindow = grepOutcome.grep.tokens + grepOutcome.readWindow;
-  const tokenSavings =
-    workflowFull > 0 ? Math.round((1 - miruOutcome.workflowTokens / workflowFull) * 100) : 0;
+  const tokenSavings = tokenSavingsPct(miruOutcome.workflowTokens, workflowFull);
 
   const block: SearchBenchmarkBlock = {
     mode: true,
@@ -248,15 +248,12 @@ const MAX_AGENT_MIRU_ONLY = 3;
 
 /** Strip internal/debug fields down to the compact MCP agent payload. */
 export function toAgentBenchmarkSummary(block: SearchBenchmarkBlock): AgentBenchmarkSummary {
-  const miruTok = block.miru.workflow_tokens;
-  const grepTok = block.grep_read.workflow_full_tokens;
-  const summary: AgentBenchmarkSummary = {
-    save_pct: block.efficiency.token_savings_pct,
-    miru_tok: miruTok,
-    grep_tok: grepTok,
-    saved_tok: Math.max(0, grepTok - miruTok),
-    rank1: block.accuracy.rank1_match,
-  };
+  const summary = agentBenchmarkFromTokens(
+    block.miru.workflow_tokens,
+    block.grep_read.workflow_full_tokens,
+    block.accuracy.rank1_match,
+  );
+  summary.save_pct = block.efficiency.token_savings_pct;
   if (block.accuracy.miru_only.length > 0) {
     summary.miru_only = block.accuracy.miru_only.slice(0, MAX_AGENT_MIRU_ONLY);
   }
@@ -267,5 +264,5 @@ export function attachSearchBenchmark<T extends Record<string, unknown>>(
   payload: T,
   benchmark: SearchBenchmarkBlock,
 ): T & { benchmark: AgentBenchmarkSummary } {
-  return { ...payload, benchmark: toAgentBenchmarkSummary(benchmark) };
+  return attachAgentBenchmark(payload, toAgentBenchmarkSummary(benchmark));
 }

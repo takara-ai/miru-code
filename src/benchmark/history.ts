@@ -2,7 +2,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { resolveMiruStateDir } from "../credentials.ts";
-import type { AgentBenchmarkRollup, SearchBenchmarkBlock } from "./types.ts";
+import { agentBenchmarkFromTokens } from "./summary.ts";
+import type { AgentBenchmarkRollup, AgentBenchmarkSummary, SearchBenchmarkBlock } from "./types.ts";
 
 /**
  * Global rolled-up benchmark report filename under Miru's state directory
@@ -80,16 +81,31 @@ export function recordFromBenchmark(
   benchmark: SearchBenchmarkBlock,
   recordedAt: Date = new Date(),
 ): BenchmarkQueryRecord {
-  const miru = benchmark.miru.workflow_tokens;
-  const grep = benchmark.grep_read.workflow_full_tokens;
+  const summary = agentBenchmarkFromTokens(
+    benchmark.miru.workflow_tokens,
+    benchmark.grep_read.workflow_full_tokens,
+    benchmark.accuracy.rank1_match,
+  );
+  // Keep the search block's precomputed savings pct (authoritative for history).
+  summary.save_pct = benchmark.efficiency.token_savings_pct;
+  return recordFromAgentSummary(query, repo, summary, recordedAt);
+}
+
+/** Persist compact agent-facing savings (search or locate). */
+export function recordFromAgentSummary(
+  query: string,
+  repo: string,
+  summary: Pick<AgentBenchmarkSummary, "miru_tok" | "grep_tok" | "save_pct" | "saved_tok">,
+  recordedAt: Date = new Date(),
+): BenchmarkQueryRecord {
   return {
     at: recordedAt.toISOString(),
     q: query,
     r: repo,
-    m: miru,
-    g: grep,
-    s: Math.max(0, grep - miru),
-    p: benchmark.efficiency.token_savings_pct,
+    m: summary.miru_tok,
+    g: summary.grep_tok,
+    s: summary.saved_tok,
+    p: summary.save_pct,
   };
 }
 

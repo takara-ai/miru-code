@@ -149,4 +149,9 @@ export function applySnippetsToResults(
   });
 }
 
-export { countTokens, estimateResultTokens, tokenCountMethod, tokenizerJsonPath } from "./token-count.ts";
+export {
+  countTokens,
+  estimateResultTokens,
+  tokenCountMethod,
+  tokenizerJsonPath,
+} from "./token-count.ts";

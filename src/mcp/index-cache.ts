@@ -4,7 +4,7 @@ import { walkFiles } from "../index/file-walker.ts";
 import { getExtensions } from "../index/files.ts";
 import { normalizeRelativePath, relativePathFromRoot } from "../index/incremental.ts";
 import { MiruIndex } from "../miru-index.ts";
-import type { ContentType } from "../types.ts";
+import { type ContentType, defaultContentTypes } from "../types.ts";
 import {
   computeSourceCacheKey,
   isAllowedRepoSource,
@@ -71,7 +71,7 @@ export class IndexCache {
   private readonly entries = new Map<string, CacheEntry>();
   readonly watchers = new Map<string, WatcherHandle>();
 
-  constructor(content: ContentType[] = ["code"], defaultRef: string | null = null) {
+  constructor(content: ContentType[] = defaultContentTypes(), defaultRef: string | null = null) {
     this.content = content;
     this.defaultRef = defaultRef;
   }
