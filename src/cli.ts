@@ -48,6 +48,8 @@ import {
 } from "./utils.ts";
 import { maybeNotifyUpdate, miruVersion } from "./version.ts";
 
+process.title = "miru";
+
 await loadEnvFiles();
 normalizeTakaraApiKeyEnv();
 await loadStoredCredentials();

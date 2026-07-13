@@ -96,7 +96,9 @@ async function applyHooks(agent: AgentTarget, mode: InstallMode): Promise<WriteR
   }
 
   const action =
-    mode === "install" ? await mergeHooks(format, path) : await removeHooks(format, path);
+    mode === "install"
+      ? await mergeHooks(format, path, agent.id)
+      : await removeHooks(format, path, agent.id);
 
   return { path, action };
 }
@@ -182,7 +184,7 @@ const INTEGRATIONS: Integration[] = [
     label: "Search hooks",
     description: "blocks built-in search; routes to Miru MCP",
     experimental: true,
-    defaultChecked: false,
+    defaultChecked: true,
     planPath: (agent) => agent.hooksPath,
     apply: applyHooks,
   },

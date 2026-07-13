@@ -176,11 +176,26 @@ describe("hook install", () => {
 
   test("mergeVscodeHooks writes standalone copilot hook file", async () => {
     const path = join(root, "hooks", "miru-search.json");
-    expect(await mergeVscodeHooks(path)).toBe("created");
+    expect(await mergeVscodeHooks(path, "vscode")).toBe("created");
     const data = JSON.parse(await Bun.file(path).text()) as {
+      miruOwners: string[];
       hooks: { PreToolUse: Array<{ command: string }> };
     };
     expect(data.hooks.PreToolUse[0]?.command).toContain("hook-guard");
+    expect(data.miruOwners).toContain("vscode");
+  });
+
+  test("shared VS Code hooks honor ownership on uninstall", async () => {
+    const path = join(root, "hooks", "miru-search.json");
+    expect(await mergeVscodeHooks(path, "vscode")).toBe("created");
+    expect(await mergeVscodeHooks(path, "copilot")).toBe("updated");
+
+    expect(await removeHooks("vscode", path, "vscode")).toBe("updated");
+    const retained = JSON.parse(await Bun.file(path).text()) as { miruOwners: string[] };
+    expect(retained.miruOwners).toEqual(["copilot"]);
+
+    expect(await removeHooks("vscode", path, "copilot")).toBe("removed");
+    expect(await Bun.file(path).exists()).toBe(false);
   });
 
   test("mergeKiroHooks adds preToolUse matchers", async () => {

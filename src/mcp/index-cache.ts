@@ -117,11 +117,15 @@ export class IndexCache {
     ref: string | null | undefined,
     cacheKey: string,
   ): Promise<MiruIndex> {
+    const entry = this.ensureEntry(cacheKey, source);
     const task = (async () => {
       const index = await MiruIndex.fromSource(source, this.content, undefined, ref);
       if (!isGitUrl(source)) {
         await index.saveToCache(resolve(source));
       }
+      // Publish before stale reconciliation so flushFileUpdates can use
+      // entry.index instead of awaiting this same task (self-deadlock).
+      entry.index = index;
       if (index.loadedFromDisk) {
         // Await reconciliation here (not fire-and-forget) so callers of `get()`
         // never observe an index that's stale relative to what's on disk.
@@ -130,7 +134,6 @@ export class IndexCache {
       return index;
     })();
 
-    const entry = this.ensureEntry(cacheKey, source);
     entry.task = task;
     void task
       .then((index) => {
@@ -141,6 +144,7 @@ export class IndexCache {
       .catch(() => {
         if (entry.task === task) {
           entry.task = null;
+          entry.index = null;
         }
       });
 
@@ -225,7 +229,11 @@ export class IndexCache {
     this.scheduleFlush(cacheKey, source, entry);
   }
 
-  private flushFileUpdates(cacheKey: string, source: string): Promise<void> {
+  private flushFileUpdates(
+    cacheKey: string,
+    source: string,
+    knownIndex?: MiruIndex,
+  ): Promise<void> {
     const entry = this.entries.get(cacheKey);
     if (!entry) {
       return Promise.resolve();
@@ -239,7 +247,9 @@ export class IndexCache {
         return;
       }
 
-      let index = entry.index;
+      // Prefer an index already in hand (or published on the entry). Never await
+      // entry.task while that task is itself waiting on this flush — that deadlocks.
+      let index = knownIndex ?? entry.index;
       if (!index && entry.task) {
         try {
           index = await entry.task;
@@ -318,7 +328,7 @@ export class IndexCache {
       }
 
       if (entry.pendingPaths.size > 0) {
-        await this.flushFileUpdates(cacheKey, source);
+        await this.flushFileUpdates(cacheKey, source, index);
       }
     } catch {}
   }

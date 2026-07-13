@@ -29,6 +29,7 @@ import {
   applyHooks,
   applyMcp,
   applySubagent,
+  INTEGRATIONS,
   removeUninstallLocalData,
 } from "../src/installer/installer.ts";
 
@@ -87,6 +88,11 @@ describe("installer config", () => {
     expect(byId.opencode?.hooksFormat).toBe("opencode");
     expect(byId.windsurf?.hooksFormat).toBe("windsurf");
   });
+
+  test("search hooks are enabled by default in installer choices", () => {
+    const hooksIntegration = INTEGRATIONS.find((entry) => entry.id === "hooks");
+    expect(hooksIntegration?.defaultChecked).toBe(true);
+  });
   let root = "";
 
   beforeEach(async () => {
@@ -115,6 +121,27 @@ describe("installer config", () => {
     expect(data.mcpServers?.miru).toEqual({ command: "bunx" });
   });
 
+  test("mergeJsonMember preserves JSONC comments and unrelated keys", async () => {
+    const path = join(root, "opencode.jsonc");
+    await Bun.write(
+      path,
+      `{
+  // keep this comment
+  "mcp": {
+    "existing": { "enabled": true }
+  }
+}
+`,
+    );
+    expect(
+      await mergeJsonMember(path, "mcp", "miru", { command: ["bunx", "@takara-ai/miru-code"] }),
+    ).toBe("updated");
+    const updated = await Bun.file(path).text();
+    expect(updated).toContain("// keep this comment");
+    expect(updated).toContain('"existing"');
+    expect(updated).toContain('"miru"');
+  });
+
   test("mergeJsonMember is idempotent", async () => {
     const path = join(root, "mcp.json");
     const value = { command: "bunx", args: ["@takara-ai/miru-code"] };
@@ -136,6 +163,26 @@ describe("installer config", () => {
     const data = JSON.parse(await Bun.file(path).text()) as Record<string, Record<string, unknown>>;
     expect(data.mcpServers?.miru).toBeUndefined();
     expect(data.mcpServers?.other).toEqual({ command: "x" });
+  });
+
+  test("removeJsonMember from JSONC keeps comments and unrelated members", async () => {
+    const path = join(root, "opencode.jsonc");
+    await Bun.write(
+      path,
+      `{
+  // keep this comment
+  "mcp": {
+    "miru": { "command": ["bunx", "@takara-ai/miru-code"] },
+    "existing": { "enabled": true }
+  }
+}
+`,
+    );
+    expect(await removeJsonMember(path, "mcp", "miru")).toBe("removed");
+    const updated = await Bun.file(path).text();
+    expect(updated).toContain("// keep this comment");
+    expect(updated).toContain('"existing"');
+    expect(updated).not.toContain('"miru"');
   });
 
   test("replaceOrAppendMarked creates and replaces blocks", async () => {

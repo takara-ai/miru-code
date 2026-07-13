@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.1.2](https://github.com/takara-ai/miru-code/compare/v1.1.1...v1.1.2) (2026-07-13)
+
+
+### Bug Fixes
+
+* **mcp:** avoid IndexCache deadlock when reconciling stale files on first search
+
+
+## [1.1.1](https://github.com/takara-ai/miru-code/compare/v1.1.0...v1.1.1) (2026-07-09)
+
+
+### Bug Fixes
+
+* **installer:** support Windows arrow key sequences in interactive prompts
+
 ## [1.1.0](https://github.com/takara-ai/miru-code/compare/v1.0.5...v1.1.0) (2026-07-01)
 
 
