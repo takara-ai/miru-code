@@ -332,7 +332,9 @@ export async function mergeVscodeHooks(path: string, owner?: string): Promise<In
     : [];
   const mergedPreToolUse =
     existingPreToolUse.length > 0 &&
-    existingPreToolUse.some((entry) => hookCommandMatches((entry as Record<string, unknown>).command))
+    existingPreToolUse.some((entry) =>
+      hookCommandMatches((entry as Record<string, unknown>).command),
+    )
       ? existingPreToolUse.map((entry) => {
           const hookEntry = entry as Record<string, unknown>;
           if (!hookCommandMatches(hookEntry.command)) {
@@ -343,8 +345,10 @@ export async function mergeVscodeHooks(path: string, owner?: string): Promise<In
       : [...existingPreToolUse, nextEntry];
 
   const currentOwners = Array.isArray(parsed[VSCODE_OWNERS_KEY])
-    ? (parsed[VSCODE_OWNERS_KEY] as unknown[]).filter((item): item is string =>
-        typeof item === "string" && SHARED_VSCODE_HOOK_OWNERS.includes(item as (typeof SHARED_VSCODE_HOOK_OWNERS)[number]),
+    ? (parsed[VSCODE_OWNERS_KEY] as unknown[]).filter(
+        (item): item is string =>
+          typeof item === "string" &&
+          SHARED_VSCODE_HOOK_OWNERS.includes(item as (typeof SHARED_VSCODE_HOOK_OWNERS)[number]),
       )
     : [];
   const nextOwners = owner
@@ -384,7 +388,9 @@ export async function removeVscodeHooks(path: string, owner?: string): Promise<I
   }
 
   const owners = Array.isArray(parsed[VSCODE_OWNERS_KEY])
-    ? (parsed[VSCODE_OWNERS_KEY] as unknown[]).filter((item): item is string => typeof item === "string")
+    ? (parsed[VSCODE_OWNERS_KEY] as unknown[]).filter(
+        (item): item is string => typeof item === "string",
+      )
     : null;
   if (owners && owner) {
     const remainingOwners = owners.filter((value) => value !== owner);

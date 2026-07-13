@@ -18,7 +18,7 @@ import {
   removeTomlBlock,
   replaceOrAppendMarked,
 } from "../src/installer/config.ts";
-import { INTEGRATIONS, applyHooks, applyMcp, applySubagent } from "../src/installer/installer.ts";
+import { applyHooks, applyMcp, applySubagent, INTEGRATIONS } from "../src/installer/installer.ts";
 
 const BLOCK = `${MIRU_START}\n## Miru\ninstructions\n${MIRU_END}\n`;
 const BLOCK_V2 = `${MIRU_START}\n## Miru\nupdated\n${MIRU_END}\n`;
@@ -120,9 +120,9 @@ describe("installer config", () => {
 }
 `,
     );
-    expect(await mergeJsonMember(path, "mcp", "miru", { command: ["bunx", "@takara-ai/miru-code"] })).toBe(
-      "updated",
-    );
+    expect(
+      await mergeJsonMember(path, "mcp", "miru", { command: ["bunx", "@takara-ai/miru-code"] }),
+    ).toBe("updated");
     const updated = await Bun.file(path).text();
     expect(updated).toContain("// keep this comment");
     expect(updated).toContain('"existing"');

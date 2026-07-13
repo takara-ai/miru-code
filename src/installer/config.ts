@@ -108,7 +108,12 @@ export async function mergeJsonMember(
     return "unchanged";
   }
   const next = upsertJsonMemberText(text, sectionKey, memberKey, value);
-  await Bun.write(path, ensureTrailingNewline(next ?? JSON.stringify(withMergedMember(parsed, sectionKey, memberKey, value), null, 2)));
+  await Bun.write(
+    path,
+    ensureTrailingNewline(
+      next ?? JSON.stringify(withMergedMember(parsed, sectionKey, memberKey, value), null, 2),
+    ),
+  );
   return existed ? "updated" : "created";
 }
 
@@ -258,7 +263,9 @@ function findSectionRange(
   text: string,
   sectionKey: string,
 ): { openBrace: number; closeBrace: number; indent: string } | null {
-  const keyMatch = new RegExp(`(^|\\n)([ \\t]*)"${escapeRegExp(sectionKey)}"\\s*:\\s*\\{`).exec(text);
+  const keyMatch = new RegExp(`(^|\\n)([ \\t]*)"${escapeRegExp(sectionKey)}"\\s*:\\s*\\{`).exec(
+    text,
+  );
   if (!keyMatch) {
     return null;
   }
