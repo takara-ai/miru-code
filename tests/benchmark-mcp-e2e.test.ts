@@ -208,15 +208,6 @@ describe("benchmark MCP end-to-end", () => {
               arguments: {},
             },
           },
-          {
-            jsonrpc: "2.0",
-            id: 5,
-            method: "tools/call",
-            params: {
-              name: "read_benchmark",
-              arguments: { recent_limit: 1 },
-            },
-          },
         ]);
 
         await server.connect(transport);
@@ -245,9 +236,10 @@ describe("benchmark MCP end-to-end", () => {
         ).toBe(true);
 
         const history = await loadBenchmarkHistory(historyPath);
-        expect(history.queries).toHaveLength(2);
-        expect(history.queries[0]?.q).toContain("authenticateUser");
-        expect(history.queries[1]?.q).toContain("chargeCustomer");
+        expect(history.n).toBe(2);
+        expect(history.miru).toBe(benchOne.miru_tok + benchTwo.miru_tok);
+        expect(history.grep).toBe(benchOne.grep_tok + benchTwo.grep_tok);
+        expect(history.saved).toBe(benchOne.saved_tok + benchTwo.saved_tok);
 
         const rollup = parseToolJson(transport.responseFor(4)) as {
           n: number;
@@ -267,15 +259,6 @@ describe("benchmark MCP end-to-end", () => {
         expect(rollup.repos).toBeUndefined();
         expect(rollup.history_path).toBeUndefined();
         expect(Object.keys(rollup).sort()).toEqual(["grep", "miru", "n", "save_pct", "saved"]);
-
-        const withRecent = parseToolJson(transport.responseFor(5)) as {
-          n: number;
-          recent: Array<{ q: string; saved: number; pct: number }>;
-        };
-        expect(withRecent.n).toBe(2);
-        expect(withRecent.recent).toHaveLength(1);
-        expect(withRecent.recent[0]?.q).toContain("chargeCustomer");
-        expect(Object.keys(withRecent.recent[0] ?? {}).sort()).toEqual(["pct", "q", "saved"]);
 
         cache.close();
       });
@@ -328,7 +311,7 @@ describe("benchmark MCP end-to-end", () => {
             method: "tools/call",
             params: {
               name: "read_benchmark",
-              arguments: { recent_limit: 1 },
+              arguments: {},
             },
           },
         ]);
@@ -367,13 +350,13 @@ describe("benchmark MCP end-to-end", () => {
           saved: number;
           miru: number;
           grep: number;
-          recent: Array<{ q: string }>;
+          recent?: unknown;
         };
         expect(rollup.n).toBe(1);
         expect(rollup.saved).toBe(locatePayload.benchmark.saved_tok);
         expect(rollup.miru).toBe(locatePayload.benchmark.miru_tok);
         expect(rollup.grep).toBe(locatePayload.benchmark.grep_tok);
-        expect(rollup.recent[0]?.q).toBe("miruAuthSecretToken");
+        expect(rollup.recent).toBeUndefined();
 
         cache.close();
       });

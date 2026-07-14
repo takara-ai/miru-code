@@ -62,6 +62,4 @@ export interface AgentBenchmarkRollup {
   grep: number;
   /** Only when more than one repo is present. */
   repos?: Array<{ r: string; n: number; saved: number; save_pct: number }>;
-  /** Only when recent_limit > 0. */
-  recent?: Array<{ q: string; saved: number; pct: number }>;
 }

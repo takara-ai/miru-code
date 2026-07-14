@@ -154,7 +154,7 @@ export const MCP_FIND_RELATED_TOOL_DESCRIPTION =
 
 export const MCP_READ_BENCHMARK_TOOL_DESCRIPTION =
   "Cumulative Miru vs Grep token savings from saved `search` and `locate` calls. Returns compact totals {n,saved,save_pct,miru,grep}. " +
-  "Set recent_limit>0 only if you need recent rows. Do not call unless the user asks about savings.";
+  "Do not call unless the user asks about savings.";
 
 export const SEARCH_GUARD_EXPAND_HINT =
   "If a hit has `truncated: true`, call `expand` with `file_path` and `anchor_line` — do not re-search or read the whole file.";

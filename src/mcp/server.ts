@@ -111,7 +111,7 @@ export function createMcpServer(
             return toolText(JSON.stringify({ error: "No results found." }));
           }
           try {
-            await appendBenchmarkQuery(recordFromBenchmark(query, repoRoot, comparison.benchmark));
+            await appendBenchmarkQuery(recordFromBenchmark(repoRoot, comparison.benchmark));
           } catch {
             // History is best-effort; never fail the search on persist errors.
           }
@@ -189,9 +189,7 @@ export function createMcpServer(
               locate: locateOpts,
             });
             try {
-              await appendBenchmarkQuery(
-                recordFromAgentSummary(literal, repoRoot, comparison.benchmark),
-              );
+              await appendBenchmarkQuery(recordFromAgentSummary(repoRoot, comparison.benchmark));
             } catch {
               // History is best-effort; never fail locate on persist errors.
             }
@@ -338,23 +336,13 @@ export function createMcpServer(
             .string()
             .optional()
             .describe(
-              "Optional local repo path or git URL to filter the rollup. Omit for all saved queries.",
+              "Optional local repo path or git URL to filter the rollup. Omit for overall totals.",
             ),
-          recent_limit: z
-            .number()
-            .int()
-            .min(0)
-            .max(20)
-            .optional()
-            .describe("Include this many recent rows (default 0). Keep 0 unless needed."),
         },
       },
-      async ({ repo, recent_limit: recentLimit }) => {
+      async ({ repo }) => {
         try {
-          const rollup = await readBenchmarkRollup({
-            repo,
-            recentLimit: recentLimit ?? 0,
-          });
+          const rollup = await readBenchmarkRollup({ repo });
           return toolText(JSON.stringify(rollup));
         } catch (err) {
           return toolText(err instanceof Error ? err.message : String(err));

@@ -1,37 +1,25 @@
+/**
+ * Benchmark mode history: JSONL of `{ r, m, g, s, p }` (repo + token deltas, no
+ * query text). Appends use `O_APPEND` (no lock). `read_benchmark` sums the file.
+ *
+ * Path: `<miru-state>/benchmark-history.json`, or `MIRU_BENCHMARK_HISTORY_PATH`.
+ * Cleared by `miru benchmark clear` / `miru uninstall`.
+ * Tests: `runWithBenchmarkHistoryPath` (AsyncLocalStorage).
+ */
+
 import { AsyncLocalStorage } from "node:async_hooks";
-import { mkdir, open, rename, unlink } from "node:fs/promises";
+import { appendFile, mkdir, rename } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { resolveMiruStateDir } from "../credentials.ts";
 import { isGitUrl } from "../utils.ts";
 import { agentBenchmarkFromTokens } from "./summary.ts";
 import type { AgentBenchmarkRollup, AgentBenchmarkSummary, SearchBenchmarkBlock } from "./types.ts";
 
-/**
- * Global rolled-up benchmark report filename under Miru's state directory
- * (e.g. `~/Library/Application Support/miru/benchmark-history.json` on macOS).
- * Override with `MIRU_BENCHMARK_HISTORY_PATH`. Cleared on `miru uninstall`
- * or `miru benchmark clear`.
- */
 const HISTORY_FILENAME = "benchmark-history.json";
-const HISTORY_VERSION = 1;
-export const DEFAULT_MAX_QUERIES = 500;
-
-const LOCK_WAIT_MS = 5_000;
-const LOCK_STALE_MS = 10_000;
-
 const historyPathStore = new AsyncLocalStorage<string>();
-/** In-process serialize of appends per history path. */
-const appendChains = new Map<string, Promise<void>>();
 
-/** Run `fn` with a request-scoped history path (safe under parallel tests). */
-export function runWithBenchmarkHistoryPath<T>(path: string, fn: () => Promise<T>): Promise<T> {
-  return historyPathStore.run(path, fn);
-}
-
-/** Compact on-disk / internal query row (short keys). */
-export interface BenchmarkQueryRecord {
-  at: string;
-  q: string;
+/** One JSONL line: r=repo, m=miru, g=grep, s=saved, p=save_pct. */
+export interface BenchmarkContribution {
   r: string;
   m: number;
   g: number;
@@ -39,94 +27,58 @@ export interface BenchmarkQueryRecord {
   p: number;
 }
 
-export interface BenchmarkHistoryFile {
-  version: typeof HISTORY_VERSION;
-  queries: BenchmarkQueryRecord[];
+/** Totals for one repo (or the global fold). pct_sum → mean = round(pct_sum / n). */
+export interface TokenTotals {
+  n: number;
+  miru: number;
+  grep: number;
+  saved: number;
+  pct_sum: number;
 }
 
-export interface BenchmarkRollup {
-  query_count: number;
-  total_miru_workflow_tokens: number;
-  total_grep_workflow_full_tokens: number;
-  total_tokens_saved: number;
-  mean_token_savings_pct: number;
-  by_repo: Array<{
-    repo: string;
-    query_count: number;
-    total_tokens_saved: number;
-    mean_token_savings_pct: number;
-  }>;
-  recent_queries: BenchmarkQueryRecord[];
+/** In-memory fold of the JSONL file. */
+export interface BenchmarkHistoryFile extends TokenTotals {
+  repos: Record<string, TokenTotals>;
+}
+
+export function runWithBenchmarkHistoryPath<T>(path: string, fn: () => Promise<T>): Promise<T> {
+  return historyPathStore.run(path, fn);
 }
 
 export function resolveBenchmarkHistoryPath(): string {
-  const fromStore = historyPathStore.getStore();
-  if (fromStore) {
-    return fromStore;
-  }
-  const override = process.env.MIRU_BENCHMARK_HISTORY_PATH?.trim();
-  if (override) {
-    return override;
-  }
-  return join(resolveMiruStateDir(), HISTORY_FILENAME);
+  return (
+    historyPathStore.getStore() ??
+    process.env.MIRU_BENCHMARK_HISTORY_PATH?.trim() ??
+    join(resolveMiruStateDir(), HISTORY_FILENAME)
+  );
 }
 
-/**
- * Normalize repo keys for history storage and `read_benchmark` filters:
- * resolve local paths and strip trailing slashes.
- */
+/** Absolute local path (no trailing slash), or git URL with trailing slashes stripped. */
 export function normalizeBenchmarkRepoKey(repo: string): string {
   const trimmed = repo.trim();
-  if (!trimmed) {
-    return trimmed;
-  }
-  if (isGitUrl(trimmed)) {
-    return trimmed.replace(/\/+$/, "") || trimmed;
-  }
-  let resolved = resolve(trimmed);
-  while (resolved.length > 1 && (resolved.endsWith("/") || resolved.endsWith("\\"))) {
-    resolved = resolved.slice(0, -1);
-  }
-  return resolved;
-}
-
-/** Delete the global benchmark report. No-op when missing. */
-export async function clearBenchmarkHistory(
-  path: string = resolveBenchmarkHistoryPath(),
-): Promise<{ cleared: boolean; path: string }> {
-  if (!(await Bun.file(path).exists())) {
-    return { cleared: false, path };
-  }
-  await Bun.file(path).delete();
-  return { cleared: true, path };
+  if (!trimmed) return trimmed;
+  if (isGitUrl(trimmed)) return trimmed.replace(/\/+$/, "") || trimmed;
+  return resolve(trimmed).replace(/[/\\]+$/, "") || resolve(trimmed);
 }
 
 export function recordFromBenchmark(
-  query: string,
   repo: string,
   benchmark: SearchBenchmarkBlock,
-  recordedAt: Date = new Date(),
-): BenchmarkQueryRecord {
+): BenchmarkContribution {
   const summary = agentBenchmarkFromTokens(
     benchmark.miru.workflow_tokens,
     benchmark.grep_read.workflow_full_tokens,
     benchmark.accuracy.rank1_match,
   );
-  // Keep the search block's precomputed savings pct (authoritative for history).
   summary.save_pct = benchmark.efficiency.token_savings_pct;
-  return recordFromAgentSummary(query, repo, summary, recordedAt);
+  return recordFromAgentSummary(repo, summary);
 }
 
-/** Persist compact agent-facing savings (search or locate). */
 export function recordFromAgentSummary(
-  query: string,
   repo: string,
   summary: Pick<AgentBenchmarkSummary, "miru_tok" | "grep_tok" | "save_pct" | "saved_tok">,
-  recordedAt: Date = new Date(),
-): BenchmarkQueryRecord {
+): BenchmarkContribution {
   return {
-    at: recordedAt.toISOString(),
-    q: query,
     r: normalizeBenchmarkRepoKey(repo),
     m: summary.miru_tok,
     g: summary.grep_tok,
@@ -135,219 +87,111 @@ export function recordFromAgentSummary(
   };
 }
 
-async function rotateCorruptHistory(path: string): Promise<string | undefined> {
-  const bak = `${path}.bak.${Date.now()}`;
-  try {
-    await rename(path, bak);
-    return bak;
-  } catch {
-    return undefined;
+function emptyTotals(): TokenTotals {
+  return { n: 0, miru: 0, grep: 0, saved: 0, pct_sum: 0 };
+}
+
+function isContribution(value: unknown): value is BenchmarkContribution {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const row = value as Record<string, unknown>;
+  return (
+    typeof row.r === "string" &&
+    [row.m, row.g, row.s, row.p].every((n) => typeof n === "number" && Number.isFinite(n))
+  );
+}
+
+function addContribution(totals: TokenTotals, c: BenchmarkContribution): void {
+  totals.n += 1;
+  totals.miru += c.m;
+  totals.grep += c.g;
+  totals.saved += c.s;
+  totals.pct_sum += c.p;
+}
+
+function foldContributions(rows: BenchmarkContribution[]): BenchmarkHistoryFile {
+  const history: BenchmarkHistoryFile = { ...emptyTotals(), repos: {} };
+  for (const row of rows) {
+    addContribution(history, row);
+    const repo = history.repos[row.r] ?? emptyTotals();
+    addContribution(repo, row);
+    history.repos[row.r] = repo;
   }
+  return history;
 }
 
-function emptyHistory(): BenchmarkHistoryFile {
-  return { version: HISTORY_VERSION, queries: [] };
+function parseContributions(text: string): BenchmarkContribution[] {
+  const out: BenchmarkContribution[] = [];
+  for (const line of text.split("\n")) {
+    if (!line) continue;
+    const parsed: unknown = JSON.parse(line);
+    if (!isContribution(parsed)) throw new Error("invalid benchmark history line");
+    out.push(parsed);
+  }
+  return out;
 }
 
-/**
- * Load history. Corrupt or wrong-version files are rotated aside (`*.bak.<ts>`)
- * instead of being silently overwritten on the next append.
- */
+async function rotateCorruptHistory(path: string): Promise<void> {
+  await rename(path, `${path}.bak.${Date.now()}`).catch(() => {});
+}
+
+/** Missing/empty → zeros. Bad line → rotate file aside, return zeros. */
 export async function loadBenchmarkHistory(
   path: string = resolveBenchmarkHistoryPath(),
 ): Promise<BenchmarkHistoryFile> {
-  if (!(await Bun.file(path).exists())) {
-    return emptyHistory();
-  }
+  if (!(await Bun.file(path).exists())) return { ...emptyTotals(), repos: {} };
+  const text = await Bun.file(path).text();
+  if (!text.trim()) return { ...emptyTotals(), repos: {} };
   try {
-    const parsed = JSON.parse(await Bun.file(path).text()) as Partial<BenchmarkHistoryFile>;
-    if (parsed.version !== HISTORY_VERSION || !Array.isArray(parsed.queries)) {
-      await rotateCorruptHistory(path);
-      return emptyHistory();
-    }
-    return { version: HISTORY_VERSION, queries: parsed.queries };
+    return foldContributions(parseContributions(text));
   } catch {
     await rotateCorruptHistory(path);
-    return emptyHistory();
+    return { ...emptyTotals(), repos: {} };
   }
 }
 
-async function writeHistoryAtomic(path: string, history: BenchmarkHistoryFile): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
-  const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
-  await Bun.write(tmp, `${JSON.stringify(history)}\n`);
-  await rename(tmp, path);
+export async function clearBenchmarkHistory(
+  path: string = resolveBenchmarkHistoryPath(),
+): Promise<{ cleared: boolean; path: string }> {
+  if (!(await Bun.file(path).exists())) return { cleared: false, path };
+  await Bun.file(path).delete();
+  return { cleared: true, path };
 }
 
-async function withHistoryFileLock<T>(historyPath: string, fn: () => Promise<T>): Promise<T> {
-  const lockPath = `${historyPath}.lock`;
-  const deadline = Date.now() + LOCK_WAIT_MS;
-
-  while (true) {
-    try {
-      const handle = await open(lockPath, "wx");
-      try {
-        await handle.writeFile(`${process.pid}\n${Date.now()}\n`);
-        return await fn();
-      } finally {
-        await handle.close().catch(() => {});
-        await unlink(lockPath).catch(() => {});
-      }
-    } catch (err) {
-      const code =
-        err && typeof err === "object" && "code" in err
-          ? (err as NodeJS.ErrnoException).code
-          : undefined;
-      if (code !== "EEXIST") {
-        throw err;
-      }
-      try {
-        const lockFile = Bun.file(lockPath);
-        if (await lockFile.exists()) {
-          const text = await lockFile.text();
-          const ts = Number(text.trim().split("\n")[1]);
-          if (Number.isFinite(ts) && Date.now() - ts > LOCK_STALE_MS) {
-            await unlink(lockPath).catch(() => {});
-            continue;
-          }
-        }
-      } catch {
-        // ignore lock-stat errors and retry / fall through
-      }
-      if (Date.now() >= deadline) {
-        // Best-effort: prefer recording over failing tool calls.
-        return await fn();
-      }
-      await Bun.sleep(15);
-    }
-  }
-}
-
-async function appendBenchmarkQueryUnlocked(
-  record: BenchmarkQueryRecord,
-  path: string,
-  maxQueries: number,
-): Promise<void> {
-  await withHistoryFileLock(path, async () => {
-    const history = await loadBenchmarkHistory(path);
-    history.queries.push(record);
-    if (history.queries.length > maxQueries) {
-      history.queries = history.queries.slice(history.queries.length - maxQueries);
-    }
-    await writeHistoryAtomic(path, history);
-  });
-}
-
+/** Append one JSONL line (`O_APPEND`). */
 export async function appendBenchmarkQuery(
-  record: BenchmarkQueryRecord,
-  options?: { path?: string; maxQueries?: number },
+  contribution: BenchmarkContribution,
+  options?: { path?: string },
 ): Promise<void> {
   const path = options?.path ?? resolveBenchmarkHistoryPath();
-  const maxQueries = options?.maxQueries ?? DEFAULT_MAX_QUERIES;
-
-  const prev = appendChains.get(path) ?? Promise.resolve();
-  const next = prev.then(
-    () => appendBenchmarkQueryUnlocked(record, path, maxQueries),
-    () => appendBenchmarkQueryUnlocked(record, path, maxQueries),
-  );
-  appendChains.set(path, next);
-  try {
-    await next;
-  } finally {
-    if (appendChains.get(path) === next) {
-      appendChains.delete(path);
-    }
-  }
+  await mkdir(dirname(path), { recursive: true });
+  await appendFile(path, `${JSON.stringify(contribution)}\n`, "utf8");
 }
 
-export function rollupBenchmarkQueries(
-  queries: BenchmarkQueryRecord[],
-  options?: { repo?: string; recentLimit?: number },
-): BenchmarkRollup {
-  const want = options?.repo ? normalizeBenchmarkRepoKey(options.repo) : undefined;
-  const filtered = want
-    ? queries.filter((entry) => normalizeBenchmarkRepoKey(entry.r) === want)
-    : queries;
-  const recentLimit = options?.recentLimit ?? 0;
-  const n = filtered.length;
-
-  if (n === 0) {
-    return {
-      query_count: 0,
-      total_miru_workflow_tokens: 0,
-      total_grep_workflow_full_tokens: 0,
-      total_tokens_saved: 0,
-      mean_token_savings_pct: 0,
-      by_repo: [],
-      recent_queries: [],
-    };
-  }
-
-  const totalMiru = filtered.reduce((sum, row) => sum + row.m, 0);
-  const totalGrep = filtered.reduce((sum, row) => sum + row.g, 0);
-  const totalSaved = filtered.reduce((sum, row) => sum + row.s, 0);
-  const meanSavingsPct = filtered.reduce((sum, row) => sum + row.p, 0) / n;
-
-  const byRepoMap = new Map<
-    string,
-    { query_count: number; total_tokens_saved: number; savings_pct_sum: number }
-  >();
-  for (const entry of filtered) {
-    const repoKey = normalizeBenchmarkRepoKey(entry.r);
-    const current = byRepoMap.get(repoKey) ?? {
-      query_count: 0,
-      total_tokens_saved: 0,
-      savings_pct_sum: 0,
-    };
-    current.query_count += 1;
-    current.total_tokens_saved += entry.s;
-    current.savings_pct_sum += entry.p;
-    byRepoMap.set(repoKey, current);
-  }
-
-  const by_repo = [...byRepoMap.entries()]
-    .map(([repo, stats]) => ({
-      repo,
-      query_count: stats.query_count,
-      total_tokens_saved: stats.total_tokens_saved,
-      mean_token_savings_pct: Math.round(stats.savings_pct_sum / stats.query_count),
-    }))
-    .sort((a, b) => b.total_tokens_saved - a.total_tokens_saved);
-
+function totalsToRollup(t: TokenTotals): AgentBenchmarkRollup {
   return {
-    query_count: n,
-    total_miru_workflow_tokens: totalMiru,
-    total_grep_workflow_full_tokens: totalGrep,
-    total_tokens_saved: totalSaved,
-    mean_token_savings_pct: Math.round(meanSavingsPct),
-    by_repo,
-    recent_queries: recentLimit > 0 ? filtered.slice(-recentLimit).reverse() : [],
+    n: t.n,
+    saved: t.saved,
+    save_pct: t.n > 0 ? Math.round(t.pct_sum / t.n) : 0,
+    miru: t.miru,
+    grep: t.grep,
   };
 }
 
-/** Agent-facing rollup: short keys, omit empty optional sections. */
-export function toAgentBenchmarkRollup(rollup: BenchmarkRollup): AgentBenchmarkRollup {
-  const out: AgentBenchmarkRollup = {
-    n: rollup.query_count,
-    saved: rollup.total_tokens_saved,
-    save_pct: rollup.mean_token_savings_pct,
-    miru: rollup.total_miru_workflow_tokens,
-    grep: rollup.total_grep_workflow_full_tokens,
-  };
-  if (rollup.by_repo.length > 1) {
-    out.repos = rollup.by_repo.map((row) => ({
-      r: row.repo,
-      n: row.query_count,
-      saved: row.total_tokens_saved,
-      save_pct: row.mean_token_savings_pct,
-    }));
+/** Optional `repo` filter. With 2+ repos unfiltered, attach `repos` by saved desc. */
+export function toAgentBenchmarkRollup(
+  history: BenchmarkHistoryFile,
+  options?: { repo?: string },
+): AgentBenchmarkRollup {
+  if (options?.repo) {
+    const key = normalizeBenchmarkRepoKey(options.repo);
+    return totalsToRollup(history.repos[key] ?? emptyTotals());
   }
-  if (rollup.recent_queries.length > 0) {
-    out.recent = rollup.recent_queries.map((row) => ({
-      q: row.q,
-      saved: row.s,
-      pct: row.p,
-    }));
+  const out = totalsToRollup(history);
+  const entries = Object.entries(history.repos);
+  if (entries.length > 1) {
+    out.repos = entries
+      .map(([r, t]) => ({ r, n: t.n, saved: t.saved, save_pct: totalsToRollup(t).save_pct }))
+      .sort((a, b) => b.saved - a.saved);
   }
   return out;
 }
@@ -355,14 +199,8 @@ export function toAgentBenchmarkRollup(rollup: BenchmarkRollup): AgentBenchmarkR
 export async function readBenchmarkRollup(options?: {
   path?: string;
   repo?: string;
-  recentLimit?: number;
 }): Promise<AgentBenchmarkRollup> {
-  const path = options?.path ?? resolveBenchmarkHistoryPath();
-  const history = await loadBenchmarkHistory(path);
-  return toAgentBenchmarkRollup(
-    rollupBenchmarkQueries(history.queries, {
-      repo: options?.repo,
-      recentLimit: options?.recentLimit ?? 0,
-    }),
-  );
+  return toAgentBenchmarkRollup(await loadBenchmarkHistory(options?.path), {
+    repo: options?.repo,
+  });
 }

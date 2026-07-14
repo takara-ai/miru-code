@@ -402,7 +402,7 @@ describe("uninstall local data cleanup", () => {
       accuracy: { rank1_match: true, top_k_overlap_pct: 100, miru_only: [], grep_only: [] },
       overhead: { parallel_total_ms: 3, miru_share_ms: 1, grep_share_ms: 2 },
     };
-    await appendBenchmarkQuery(recordFromBenchmark("q", "/repo", block), { path });
+    await appendBenchmarkQuery(recordFromBenchmark("/repo", block), { path });
 
     await runWithBenchmarkHistoryPath(path, async () => {
       const result = await removeUninstallLocalData();
@@ -448,7 +448,7 @@ describe("uninstall local data cleanup", () => {
     expect(text).toContain("miru benchmark clear");
     expect(text).toContain("no env overrides");
     expect(text).toContain("plaintext");
-    expect(text).toContain("500");
+    expect(text).toContain("JSONL");
     expect(text).toContain("Grep baseline");
   });
 });

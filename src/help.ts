@@ -155,10 +155,8 @@ export function printCommandHelp(command: string): void {
       writeStdout("Restart agents after changing mode. Prefer `off` when finished measuring.");
       writeStdout("");
       writeStdout("History is a global report (not per-repo) under Miru's state directory.");
-      writeStdout("Override path with MIRU_BENCHMARK_HISTORY_PATH. Keeps the last 500 queries.");
-      writeStdout(
-        "Queries and repo paths are stored in plaintext — use `clear` on shared machines.",
-      );
+      writeStdout("Override path with MIRU_BENCHMARK_HISTORY_PATH. Append-only JSONL of savings.");
+      writeStdout("Repo paths in the report are plaintext — use `clear` on shared machines.");
       writeStdout("");
       writeStdout("Savings compare Miru workflow tokens to a Grep baseline");
       writeStdout("(rg search + read of the top matched file), not the agent's full tool chain.");
