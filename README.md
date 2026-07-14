@@ -1,16 +1,8 @@
 # Miru (見る)
 
-Hybrid code search for AI agents — **Bun**, **TypeScript**, **Takara embeddings**.
-
-Find code by meaning, not grep. Miru returns the best **chunks** (path, lines, snippet) for questions like “where is auth middleware configured?”
+Your AI agent finds the code it needs in 60% fewer tokens.
 
 **Requires:** [Bun](https://bun.sh) 1.1+ · [Takara API key](https://takara.ai)
-
-## Privacy and API usage
-
-Miru sends **file contents** to the [Takara inference API](https://takara.ai) when building an index and when embedding search queries. Chunks from your repo are transmitted over HTTPS to generate embeddings. API usage may incur cost depending on your Takara plan.
-
-If you index proprietary code, make sure that sending snippets to Takara's endpoint fits your security and compliance requirements. `MIRU_WORKSPACE_ROOT` is an opt-in boundary for MCP local `repo` paths only, and restricts indexing to a single workspace directory when set.
 
 ## Install
 
@@ -41,13 +33,15 @@ miru install
 
 Interactive TUI — **↑↓** move, **space** toggle, **a** all, **enter** confirm. Pick agents and integrations:
 
-| Integration | What it does |
-|-------------|----------------|
-| MCP server | `search`, `expand`, and `find_related` tools in the agent |
-| Instructions | Search policy in `CLAUDE.md` / `AGENTS.md` / `GEMINI.md` |
-| Sub-agent | Dedicated `miru-code` agent file |
-| Cursor rules | Always-on `.cursor/rules/miru-code.mdc` (Cursor only) |
-| Search hooks *(experimental)* | Block built-in Grep/Glob and redirect to Miru MCP |
+
+| Integration                   | What it does                                                        |
+| ----------------------------- | ------------------------------------------------------------------- |
+| MCP server                    | `search`, `locate`, `expand`, and `find_related` tools in the agent |
+| Instructions                  | Search policy in `CLAUDE.md` / `AGENTS.md` / `GEMINI.md`            |
+| Sub-agent                     | Dedicated `miru-code` agent file                                    |
+| Cursor rules                  | Always-on `.cursor/rules/miru-code.mdc` (Cursor only)               |
+| Search hooks *(experimental)* | Block built-in Grep/Glob and redirect to Miru MCP                   |
+
 
 Restart the IDE when done.
 
@@ -57,18 +51,20 @@ miru uninstall   # remove miru config
 
 **Supported:** Cursor · Claude Code · Gemini CLI · Kiro · OpenCode · GitHub Copilot · Codex · VS Code · Visual Studio (Windows) · Windsurf / Devin Desktop
 
-| IDE | MCP | Instructions / rules | Hooks *(experimental)* |
-|-----|-----|------------------------|-------|
-| Cursor | `~/.cursor/mcp.json` | `~/.cursor/rules/miru-code.mdc` | `~/.cursor/hooks.json` |
-| Claude Code | `~/.claude.json` | `~/.claude/CLAUDE.md` | `~/.claude/settings.json` |
-| Gemini CLI | `~/.gemini/settings.json` | `~/.gemini/GEMINI.md` | `~/.gemini/settings.json` (`BeforeTool`) |
-| Kiro | `~/.kiro/settings/mcp.json` | `~/.kiro/steering/miru.md` | `~/.kiro/settings/hooks.json` |
-| OpenCode | `~/.config/opencode/opencode.json(c)` | `~/.config/opencode/AGENTS.md` | `~/.config/opencode/plugins/miru-search-guard.ts` |
-| GitHub Copilot | `~/.copilot/mcp-config.json` | — | `~/.copilot/hooks/miru-search.json` |
-| Codex | `~/.codex/config.toml` | `~/.codex/AGENTS.md` | `~/.codex/hooks.json` |
-| VS Code | `…/Code/User/mcp.json` | — | `~/.copilot/hooks/miru-search.json` |
-| Visual Studio | `%USERPROFILE%\.mcp.json` | — | `~/.copilot/hooks/miru-search.json` |
-| Windsurf | — | — | `~/.codeium/windsurf/hooks.json` |
+
+| IDE            | MCP                                   | Instructions / rules            | Hooks *(experimental)*                            |
+| -------------- | ------------------------------------- | ------------------------------- | ------------------------------------------------- |
+| Cursor         | `~/.cursor/mcp.json`                  | `~/.cursor/rules/miru-code.mdc` | `~/.cursor/hooks.json`                            |
+| Claude Code    | `~/.claude.json`                      | `~/.claude/CLAUDE.md`           | `~/.claude/settings.json`                         |
+| Gemini CLI     | `~/.gemini/settings.json`             | `~/.gemini/GEMINI.md`           | `~/.gemini/settings.json` (`BeforeTool`)          |
+| Kiro           | `~/.kiro/settings/mcp.json`           | `~/.kiro/steering/miru.md`      | `~/.kiro/settings/hooks.json`                     |
+| OpenCode       | `~/.config/opencode/opencode.json(c)` | `~/.config/opencode/AGENTS.md`  | `~/.config/opencode/plugins/miru-search-guard.ts` |
+| GitHub Copilot | `~/.copilot/mcp-config.json`          | —                               | `~/.copilot/hooks/miru-search.json`               |
+| Codex          | `~/.codex/config.toml`                | `~/.codex/AGENTS.md`            | `~/.codex/hooks.json`                             |
+| VS Code        | `…/Code/User/mcp.json`                | —                               | `~/.copilot/hooks/miru-search.json`               |
+| Visual Studio  | `%USERPROFILE%\.mcp.json`             | —                               | `~/.copilot/hooks/miru-search.json`               |
+| Windsurf       | —                                     | —                               | `~/.codeium/windsurf/hooks.json`                  |
+
 
 Sub-agent files are also written where supported (see `miru install` plan). Windsurf hooks only *(experimental)* — no MCP entry yet.
 
@@ -76,9 +72,9 @@ Sub-agent files are also written where supported (see `miru install` plan). Wind
 
 Search hooks are **experimental** — behavior and IDE support may change between releases.
 
-Hooks run `miru hook-guard` before built-in search tools execute. They **block** conceptual Grep/Glob/SemanticSearch and shell `rg`/`grep`/`find`, and tell the agent to use Miru MCP `search` instead. Exact literal lookups (e.g. `REDIS_HOST`, a symbol name) still pass through.
+Hooks run `miru hook-guard` before built-in search tools execute. They **block** conceptual Grep/Glob/SemanticSearch and shell `rg`/`grep`/`find`, and tell the agent to use Miru MCP `search` (or `locate` for exact literals) instead. Exact literal lookups (e.g. `REDIS_HOST`, a symbol name) still pass through.
 
-Hooks are optional at install time but **on by default**. Disable them in the installer if you only want MCP + instructions, or while evaluating the experimental hook integration.
+Hooks are **off by default** at install time. Enable them in the installer if you want built-in Grep/Glob redirected to Miru MCP.
 
 **Team sub-agent in a repo** (optional):
 
@@ -88,8 +84,11 @@ miru init --agent claude --force
 
 ## Try it
 
+Meaning-based questions → `search`. Exact strings (env vars, symbols, error codes) → `locate`.
+
 ```bash
 miru search "auth middleware" ./src
+miru locate REDIS_HOST ./src
 miru expand src/auth.ts 42 ./src
 miru find-related src/auth.ts 42 ./src
 ```
@@ -104,13 +103,17 @@ bunx @takara-ai/miru-code search "auth middleware" ./src
 
 ## MCP tools
 
-When wired via `miru install`, the MCP server exposes three tools. Pass the **project root** as `repo` for local workspaces (or an `https://` git URL). The index is built on the first call and cached for the session.
+When wired via `miru install`, the MCP server exposes `search`, `locate`, `expand`, and `find_related`. `read_benchmark` appears only in [benchmark mode](#benchmark-mode). Pass the **project root** as `repo` for local workspaces (or an `https://` git URL). The index is built on the first call and cached for the session.
 
-| Tool | When to use |
-|------|-------------|
-| `search` | Default for code exploration — hybrid semantic + keyword search. One call per question. |
-| `expand` | More context in the **same file** when a hit has `truncated: true`. |
-| `find_related` | Similar code in **other files** from a `file_path` + `anchor_line`. |
+
+| Tool             | When to use                                                                             |
+| ---------------- | --------------------------------------------------------------------------------------- |
+| `search`         | Default for code exploration — hybrid semantic + keyword search. One call per question. |
+| `locate`         | Exact substrings (env vars, symbols, error codes) — prefer over Grep.                   |
+| `expand`         | More context in the **same file** when a hit has `truncated: true`.                     |
+| `find_related`   | Similar code in **other files** from a `file_path` + `anchor_line`.                     |
+| `read_benchmark` | Cumulative token-savings rollup *(benchmark mode only)*.                                |
+
 
 ### Workflow
 
@@ -121,42 +124,13 @@ When wired via `miru install`, the MCP server exposes three tools. Pass the **pr
 
 Prefer these tools over Grep, Glob, or SemanticSearch when Miru MCP is connected — hooks and instructions enforce that when enabled.
 
-### Parameters
-
-**`search`**
-
-| Param | Required | Notes |
-|-------|----------|-------|
-| `query` | yes | Natural language or code query |
-| `repo` | yes | Project root or git URL |
-| `top_k` | no | Results to return (default 3, max 10) |
-| `dedupe_by_file` | no | Keep best hit per file (default `true`) |
-
-**`expand`**
-
-| Param | Required | Notes |
-|-------|----------|-------|
-| `file_path` | yes | From hit `file_path` or `absolute_path` (local repos) |
-| `anchor_line` | yes | From the search hit (`anchor_line` when truncated, else `start_line`) |
-| `repo` | yes | Same repo as the search |
-| `before` / `after` | no | Extra chunks before/after anchor (default 1 each) |
-
-**`find_related`**
-
-| Param | Required | Notes |
-|-------|----------|-------|
-| `file_path` | yes | From a search hit |
-| `anchor_line` | yes | From the search hit |
-| `repo` | yes | Same repo as the search |
-| `top_k` | no | Related chunks to return (default 3, max 10) |
-
-Local repo hits include `absolute_path` for one-click navigation. Confirm exact literals (env var names, quoted strings) with native grep when needed.
+Local repo hits include `absolute_path` for one-click navigation. Parameter reference is below under [MCP parameters](#mcp-parameters).
 
 ## How it works
 
 Hybrid search: Takara embeddings + BM25 + fusion + reranking. Indexes **code**, **docs**, **config**, or **all** via `--content`.
 
-Disk cache: `~/Library/Caches/miru` (macOS), `~/.cache/miru` (Linux). MCP watches local files and updates incrementally; run `miru clear .` after big refactors when using CLI only. Upgrading Miru invalidates stale indexes automatically when the package version epoch changes.
+Disk cache: `~/Library/Caches/miru` (macOS), `~/.cache/miru` (Linux), `%LOCALAPPDATA%\miru\Cache` (Windows). MCP watches local files and updates incrementally; run `miru clear .` after big refactors when using CLI only. Upgrading Miru invalidates stale indexes automatically when the package version epoch changes.
 
 ### Chunking & languages
 
@@ -199,17 +173,24 @@ Set `MIRU_AST_CHUNKING=0` to disable AST and use structural → lines only.
 
 ## CLI reference
 
-| Command | Purpose |
-|---------|---------|
-| `miru setup` | Store API key |
-| `miru install` | Configure IDE (global) |
-| `miru uninstall` | Remove IDE config |
-| `miru search <query> [path]` | Search (`-k N`, `--content`, `--json`) |
-| `miru find-related <file> <line> [path]` | Related chunks |
-| `miru init --agent <id>` | Project-local sub-agent |
-| `miru clear [path]` | Drop index cache |
-| `miru hook-guard` | PreToolUse hook entrypoint *(experimental)*; used by installers, reads JSON stdin |
-| `miru` | Start MCP server |
+
+| Command                                  | Purpose                                                                           |
+| ---------------------------------------- | --------------------------------------------------------------------------------- |
+| `miru setup`                             | Store API key                                                                     |
+| `miru install`                           | Configure IDE (global)                                                            |
+| `miru uninstall`                         | Remove IDE config                                                                     |
+| `miru search <query> [path]`             | Search (`-k N`, `--content`, `--json`)                                            |
+| `miru locate <literal> [path]`           | Exact substring in the index                                                      |
+| `miru expand <file> <line> [path]`       | Adjacent chunks in the same file                                                  |
+| `miru find-related <file> <line> [path]` | Related chunks                                                                    |
+| `miru benchmark on/off/status/clear`     | Toggle MCP benchmark mode / clear report                                          |
+| `miru init --agent <id>`                 | Project-local sub-agent                                                           |
+| `miru clear [path]`                      | Drop index cache                                                                  |
+| `miru hook-guard`                        | PreToolUse hook entrypoint *(experimental)*; used by installers, reads JSON stdin |
+| `miru`                                   | Start MCP server (`--benchmark` for comparisons)                                  |
+
+
+CLI uses hyphens (`find-related`); MCP tool names use underscores (`find_related`).
 
 ## Library
 
@@ -226,20 +207,112 @@ const results = await index.search({ query: "BM25 tokenize", topK: 10 });
 
 ## Environment
 
-| Variable | Notes |
-|----------|-------|
-| `TAKARA_API_KEY` | Required |
-| `MIRU_OPENAI_BASE_URL` | Default `https://infer.takara.ai/v1` |
-| `MIRU_OPENAI_EMBEDDING_MODEL` | Default `ds1-miru-int8` |
-| `MIRU_WORKSPACE_ROOT` | Optional: restrict MCP local `repo` paths to this directory |
-| `MIRU_MAX_INDEX_FILES` | Cap files indexed per operation |
-| `MIRU_ALLOW_HTTP_GIT` | Set `1` to allow plain `http://` git clones |
-| `MIRU_MCP_WATCH` | Set `0` to disable MCP file watch |
-| `MIRU_AST_CHUNKING` | Set `0` to disable tree-sitter AST chunking |
-| `MIRU_QUIET` | Set `1` to skip the framed CLI banner (subtitle only on color terminals) |
-| `NO_COLOR` | Disable CLI colors |
+
+| Variable                      | Notes                                                                    |
+| ----------------------------- | ------------------------------------------------------------------------ |
+| `TAKARA_API_KEY`              | Required                                                                 |
+| `MIRU_OPENAI_BASE_URL`        | Default `https://infer.takara.ai/v1`                                     |
+| `MIRU_OPENAI_EMBEDDING_MODEL` | Default `ds1-miru-int8`                                                  |
+| `MIRU_WORKSPACE_ROOT`         | Optional: restrict MCP local `repo` paths to this directory              |
+| `MIRU_MAX_INDEX_FILES`        | Cap files indexed per operation                                          |
+| `MIRU_ALLOW_HTTP_GIT`         | Set `1` to allow plain `http://` git clones                              |
+| `MIRU_MCP_WATCH`              | Set `0` to disable MCP file watch                                        |
+| `MIRU_AST_CHUNKING`           | Set `0` to disable tree-sitter AST chunking                              |
+| `MIRU_BENCHMARK_HISTORY_PATH` | Override; see [Benchmark mode](#benchmark-mode)                          |
+| `MIRU_QUIET`                  | Set `1` to skip the framed CLI banner (subtitle only on color terminals) |
+| `NO_COLOR`                    | Disable CLI colors                                                       |
+
 
 See `.env.example` for more.
+
+## Privacy and API usage
+
+Miru sends **file contents** to the [Takara inference API](https://takara.ai) when building an index and when embedding search queries. Chunks from your repo are transmitted over HTTPS to generate embeddings. API usage may incur cost depending on your Takara plan.
+
+If you index proprietary code, make sure that sending snippets to Takara's endpoint fits your security and compliance requirements. `MIRU_WORKSPACE_ROOT` is an opt-in boundary for MCP local `repo` paths only, and restricts indexing to a single workspace directory when set.
+
+## Benchmark mode
+
+Optional measurement of how many tokens Miru saves versus a simple Grep workflow (ripgrep + reading the top matched file). Useful when evaluating Miru; leave it off day-to-day. Only local repo paths are compared — git URL repos skip the comparison and return `benchmark_skipped: "local_repo_only"`.
+
+```bash
+miru benchmark on       # add --benchmark to installed MCP configs
+miru benchmark status
+miru benchmark off      # prefer off when finished measuring
+miru benchmark clear    # delete the global report
+```
+
+Restart agents after changing mode. `miru install` keeps `--benchmark` if it was already enabled.
+
+While on, each `search` / `locate` response includes a compact `benchmark` block (`save_pct`, `miru_tok`, `grep_tok`, `saved_tok`, `rank1`). Call `read_benchmark` for a cumulative rollup (or ask the agent when you want totals).
+
+History is **global** (not per-repo) under Miru's state directory:
+
+
+| OS      | Default path                                                                 |
+| ------- | ---------------------------------------------------------------------------- |
+| macOS   | `~/Library/Application Support/miru/benchmark-history.json`                  |
+| Linux   | `~/.config/miru/benchmark-history.json` (`$XDG_CONFIG_HOME/miru/…` when set) |
+| Windows | `%APPDATA%\miru\benchmark-history.json`                                      |
+
+
+Override with `MIRU_BENCHMARK_HISTORY_PATH`. Last 500 queries; stored in plaintext — `miru benchmark clear` or uninstall on shared machines.
+
+## MCP parameters
+
+`**search**`
+
+
+| Param            | Required | Notes                                   |
+| ---------------- | -------- | --------------------------------------- |
+| `query`          | yes      | Natural language or code query          |
+| `repo`           | yes      | Project root or git URL                 |
+| `top_k`          | no       | Results to return (default 3, max 10)   |
+| `dedupe_by_file` | no       | Keep best hit per file (default `true`) |
+
+
+`**locate**`
+
+
+| Param         | Required | Notes                                                                               |
+| ------------- | -------- | ----------------------------------------------------------------------------------- |
+| `literal`     | yes      | Exact substring to find                                                             |
+| `repo`        | yes      | Project root or git URL                                                             |
+| `mode`        | no       | `count` · `locations` · `lines` (default). Prefer `count`/`locations` when possible |
+| `limit`       | no       | Cap returned hits. Omit to return all matches                                       |
+| `ignore_case` | no       | Case-insensitive match (default `false`)                                            |
+
+
+`**expand**`
+
+
+| Param              | Required | Notes                                                                 |
+| ------------------ | -------- | --------------------------------------------------------------------- |
+| `file_path`        | yes      | From hit `file_path` or `absolute_path` (local repos)                 |
+| `anchor_line`      | yes      | From the search hit (`anchor_line` when truncated, else `start_line`) |
+| `repo`             | yes      | Same repo as the search                                               |
+| `before` / `after` | no       | Extra chunks before/after anchor (default 1 each)                     |
+
+
+`**find_related**`
+
+
+| Param         | Required | Notes                                        |
+| ------------- | -------- | -------------------------------------------- |
+| `file_path`   | yes      | From a search hit                            |
+| `anchor_line` | yes      | From the search hit                          |
+| `repo`        | yes      | Same repo as the search                      |
+| `top_k`       | no       | Related chunks to return (default 3, max 10) |
+
+
+`**read_benchmark**` *(benchmark mode only)*
+
+
+| Param          | Required | Notes                                                                  |
+| -------------- | -------- | ---------------------------------------------------------------------- |
+| `repo`         | no       | Filter rollup to one local path or git URL. Omit for all saved queries |
+| `recent_limit` | no       | Include this many recent rows (default `0`, max `20`)                  |
+
 
 ## Manual MCP (skip `miru install`)
 
@@ -251,6 +324,8 @@ See `.env.example` for more.
   }
 }
 ```
+
+For benchmark mode, set `"args": ["--benchmark"]` (or append that flag). Prefer `miru benchmark on` after a normal install — it updates every agent config.
 
 Run `miru setup` once so the server can load your key from `credentials.json`.
 
@@ -266,17 +341,7 @@ bun test && bun run typecheck
 
 Local MCP: `"command": "bun", "args": ["/path/to/miru-code/src/cli.ts"]`
 
-### CLI banner
-
-`miru help` and setup print a framed wordmark and Takara crane on color terminals. Set `MIRU_QUIET=1` to use the subtitle line only.
-
-Crane ASCII art is committed in `src/brand-banner.ts`. To regenerate it from the SVG source (local `assets/red_crane_vector.svg`, gitignored):
-
-```bash
-bun run scripts/render-crane-art.ts
-```
-
-Copy the printed `TAKARA_CRANE` constant into `src/brand-banner.ts`. Requires ImageMagick (`magick`).
+`miru help` / setup print a framed wordmark on color terminals (`MIRU_QUIET=1` for subtitle only). Crane art lives in `src/brand-banner.ts`; regenerate with `bun run scripts/render-crane-art.ts` (ImageMagick). The crane is a registered mark of Takara.ai Ltd.
 
 ## License
 
