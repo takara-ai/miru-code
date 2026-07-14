@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { type AgentId, writeAgentFile } from "./agents.ts";
+import { clearBenchmarkHistory, resolveBenchmarkHistoryPath } from "./benchmark/history.ts";
 import { clearCache } from "./cache.ts";
 import {
   fail,
@@ -373,7 +374,18 @@ async function runBenchmarkCommand(rest: string[]): Promise<void> {
     return;
   }
 
-  fail(`Unknown benchmark action "${action}". Use on, off, or status.`);
+  if (action === "clear") {
+    const path = resolveBenchmarkHistoryPath();
+    const result = await clearBenchmarkHistory(path);
+    if (result.cleared) {
+      success(`Cleared benchmark report ${result.path}`);
+    } else {
+      info(`No benchmark report at ${result.path}`);
+    }
+    return;
+  }
+
+  fail(`Unknown benchmark action "${action}". Use on, off, status, or clear.`);
   printCommandHelp("benchmark");
   process.exit(1);
 }

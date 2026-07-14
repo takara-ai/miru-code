@@ -58,6 +58,20 @@ export function mcpEntryHasBenchmark(entry: Record<string, unknown>): boolean {
   return listHasBenchmarkFlag(entry.args) || listHasBenchmarkFlag(entry.command);
 }
 
+/**
+ * Keep `--benchmark` on the canonical install entry when the existing MCP
+ * entry already had it (so `miru install` does not silently turn mode off).
+ */
+export function withPreservedBenchmarkFlag(
+  canonical: Record<string, unknown>,
+  existing: Record<string, unknown> | null | undefined,
+): Record<string, unknown> {
+  if (!existing || !mcpEntryHasBenchmark(existing)) {
+    return canonical;
+  }
+  return applyBenchmarkFlagToMcpEntry(canonical, true).entry;
+}
+
 export interface BenchmarkModeTargetResult {
   agent: string;
   path: string;

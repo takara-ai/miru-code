@@ -1,20 +1,27 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { mkdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { mkdir, open, rename, unlink } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import { resolveMiruStateDir } from "../credentials.ts";
+import { isGitUrl } from "../utils.ts";
 import { agentBenchmarkFromTokens } from "./summary.ts";
 import type { AgentBenchmarkRollup, AgentBenchmarkSummary, SearchBenchmarkBlock } from "./types.ts";
 
 /**
  * Global rolled-up benchmark report filename under Miru's state directory
  * (e.g. `~/Library/Application Support/miru/benchmark-history.json` on macOS).
- * Override with `MIRU_BENCHMARK_HISTORY_PATH`. Cleared on `miru uninstall`.
+ * Override with `MIRU_BENCHMARK_HISTORY_PATH`. Cleared on `miru uninstall`
+ * or `miru benchmark clear`.
  */
 const HISTORY_FILENAME = "benchmark-history.json";
 const HISTORY_VERSION = 1;
-const DEFAULT_MAX_QUERIES = 500;
+export const DEFAULT_MAX_QUERIES = 500;
+
+const LOCK_WAIT_MS = 5_000;
+const LOCK_STALE_MS = 10_000;
 
 const historyPathStore = new AsyncLocalStorage<string>();
+/** In-process serialize of appends per history path. */
+const appendChains = new Map<string, Promise<void>>();
 
 /** Run `fn` with a request-scoped history path (safe under parallel tests). */
 export function runWithBenchmarkHistoryPath<T>(path: string, fn: () => Promise<T>): Promise<T> {
@@ -64,6 +71,25 @@ export function resolveBenchmarkHistoryPath(): string {
   return join(resolveMiruStateDir(), HISTORY_FILENAME);
 }
 
+/**
+ * Normalize repo keys for history storage and `read_benchmark` filters:
+ * resolve local paths and strip trailing slashes.
+ */
+export function normalizeBenchmarkRepoKey(repo: string): string {
+  const trimmed = repo.trim();
+  if (!trimmed) {
+    return trimmed;
+  }
+  if (isGitUrl(trimmed)) {
+    return trimmed.replace(/\/+$/, "") || trimmed;
+  }
+  let resolved = resolve(trimmed);
+  while (resolved.length > 1 && (resolved.endsWith("/") || resolved.endsWith("\\"))) {
+    resolved = resolved.slice(0, -1);
+  }
+  return resolved;
+}
+
 /** Delete the global benchmark report. No-op when missing. */
 export async function clearBenchmarkHistory(
   path: string = resolveBenchmarkHistoryPath(),
@@ -101,7 +127,7 @@ export function recordFromAgentSummary(
   return {
     at: recordedAt.toISOString(),
     q: query,
-    r: repo,
+    r: normalizeBenchmarkRepoKey(repo),
     m: summary.miru_tok,
     g: summary.grep_tok,
     s: summary.saved_tok,
@@ -109,21 +135,107 @@ export function recordFromAgentSummary(
   };
 }
 
+async function rotateCorruptHistory(path: string): Promise<string | undefined> {
+  const bak = `${path}.bak.${Date.now()}`;
+  try {
+    await rename(path, bak);
+    return bak;
+  } catch {
+    return undefined;
+  }
+}
+
+function emptyHistory(): BenchmarkHistoryFile {
+  return { version: HISTORY_VERSION, queries: [] };
+}
+
+/**
+ * Load history. Corrupt or wrong-version files are rotated aside (`*.bak.<ts>`)
+ * instead of being silently overwritten on the next append.
+ */
 export async function loadBenchmarkHistory(
   path: string = resolveBenchmarkHistoryPath(),
 ): Promise<BenchmarkHistoryFile> {
   if (!(await Bun.file(path).exists())) {
-    return { version: HISTORY_VERSION, queries: [] };
+    return emptyHistory();
   }
   try {
     const parsed = JSON.parse(await Bun.file(path).text()) as Partial<BenchmarkHistoryFile>;
     if (parsed.version !== HISTORY_VERSION || !Array.isArray(parsed.queries)) {
-      return { version: HISTORY_VERSION, queries: [] };
+      await rotateCorruptHistory(path);
+      return emptyHistory();
     }
     return { version: HISTORY_VERSION, queries: parsed.queries };
   } catch {
-    return { version: HISTORY_VERSION, queries: [] };
+    await rotateCorruptHistory(path);
+    return emptyHistory();
   }
+}
+
+async function writeHistoryAtomic(path: string, history: BenchmarkHistoryFile): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
+  await Bun.write(tmp, `${JSON.stringify(history)}\n`);
+  await rename(tmp, path);
+}
+
+async function withHistoryFileLock<T>(historyPath: string, fn: () => Promise<T>): Promise<T> {
+  const lockPath = `${historyPath}.lock`;
+  const deadline = Date.now() + LOCK_WAIT_MS;
+
+  while (true) {
+    try {
+      const handle = await open(lockPath, "wx");
+      try {
+        await handle.writeFile(`${process.pid}\n${Date.now()}\n`);
+        return await fn();
+      } finally {
+        await handle.close().catch(() => {});
+        await unlink(lockPath).catch(() => {});
+      }
+    } catch (err) {
+      const code =
+        err && typeof err === "object" && "code" in err
+          ? (err as NodeJS.ErrnoException).code
+          : undefined;
+      if (code !== "EEXIST") {
+        throw err;
+      }
+      try {
+        const lockFile = Bun.file(lockPath);
+        if (await lockFile.exists()) {
+          const text = await lockFile.text();
+          const ts = Number(text.trim().split("\n")[1]);
+          if (Number.isFinite(ts) && Date.now() - ts > LOCK_STALE_MS) {
+            await unlink(lockPath).catch(() => {});
+            continue;
+          }
+        }
+      } catch {
+        // ignore lock-stat errors and retry / fall through
+      }
+      if (Date.now() >= deadline) {
+        // Best-effort: prefer recording over failing tool calls.
+        return await fn();
+      }
+      await Bun.sleep(15);
+    }
+  }
+}
+
+async function appendBenchmarkQueryUnlocked(
+  record: BenchmarkQueryRecord,
+  path: string,
+  maxQueries: number,
+): Promise<void> {
+  await withHistoryFileLock(path, async () => {
+    const history = await loadBenchmarkHistory(path);
+    history.queries.push(record);
+    if (history.queries.length > maxQueries) {
+      history.queries = history.queries.slice(history.queries.length - maxQueries);
+    }
+    await writeHistoryAtomic(path, history);
+  });
 }
 
 export async function appendBenchmarkQuery(
@@ -132,20 +244,30 @@ export async function appendBenchmarkQuery(
 ): Promise<void> {
   const path = options?.path ?? resolveBenchmarkHistoryPath();
   const maxQueries = options?.maxQueries ?? DEFAULT_MAX_QUERIES;
-  const history = await loadBenchmarkHistory(path);
-  history.queries.push(record);
-  if (history.queries.length > maxQueries) {
-    history.queries = history.queries.slice(history.queries.length - maxQueries);
+
+  const prev = appendChains.get(path) ?? Promise.resolve();
+  const next = prev.then(
+    () => appendBenchmarkQueryUnlocked(record, path, maxQueries),
+    () => appendBenchmarkQueryUnlocked(record, path, maxQueries),
+  );
+  appendChains.set(path, next);
+  try {
+    await next;
+  } finally {
+    if (appendChains.get(path) === next) {
+      appendChains.delete(path);
+    }
   }
-  await mkdir(dirname(path), { recursive: true });
-  await Bun.write(path, `${JSON.stringify(history)}\n`);
 }
 
 export function rollupBenchmarkQueries(
   queries: BenchmarkQueryRecord[],
   options?: { repo?: string; recentLimit?: number },
 ): BenchmarkRollup {
-  const filtered = options?.repo ? queries.filter((entry) => entry.r === options.repo) : queries;
+  const want = options?.repo ? normalizeBenchmarkRepoKey(options.repo) : undefined;
+  const filtered = want
+    ? queries.filter((entry) => normalizeBenchmarkRepoKey(entry.r) === want)
+    : queries;
   const recentLimit = options?.recentLimit ?? 0;
   const n = filtered.length;
 
@@ -171,7 +293,8 @@ export function rollupBenchmarkQueries(
     { query_count: number; total_tokens_saved: number; savings_pct_sum: number }
   >();
   for (const entry of filtered) {
-    const current = byRepoMap.get(entry.r) ?? {
+    const repoKey = normalizeBenchmarkRepoKey(entry.r);
+    const current = byRepoMap.get(repoKey) ?? {
       query_count: 0,
       total_tokens_saved: 0,
       savings_pct_sum: 0,
@@ -179,7 +302,7 @@ export function rollupBenchmarkQueries(
     current.query_count += 1;
     current.total_tokens_saved += entry.s;
     current.savings_pct_sum += entry.p;
-    byRepoMap.set(entry.r, current);
+    byRepoMap.set(repoKey, current);
   }
 
   const by_repo = [...byRepoMap.entries()]

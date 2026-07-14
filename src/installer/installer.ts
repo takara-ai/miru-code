@@ -11,6 +11,7 @@ import {
   type InstallMode,
   isAgentDetected,
 } from "./agents.ts";
+import { withPreservedBenchmarkFlag } from "./benchmark-mode.ts";
 import {
   mergeJsonMember,
   mergeTomlBlock,
@@ -18,6 +19,7 @@ import {
   removeMarked,
   removeTomlBlock,
   replaceOrAppendMarked,
+  stripJsonComments,
 } from "./config.ts";
 import { mergeHooks, removeHooks } from "./hooks/install.ts";
 import { promptConfirm, promptMultiSelect, requireInteractiveTerminal } from "./prompt.ts";
@@ -55,6 +57,33 @@ const ACTION_ICON: Partial<Record<InstallAction, string>> = {
   error: dim("✗"),
 };
 
+async function readExistingJsonMcpEntry(
+  path: string,
+  sectionKey: string,
+  memberKey: string,
+): Promise<Record<string, unknown> | null> {
+  if (!(await Bun.file(path).exists())) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(stripJsonComments(await Bun.file(path).text())) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+    const section = (parsed as Record<string, unknown>)[sectionKey];
+    if (!section || typeof section !== "object" || Array.isArray(section)) {
+      return null;
+    }
+    const entry = (section as Record<string, unknown>)[memberKey];
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      return null;
+    }
+    return entry as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
 async function applyMcp(agent: AgentTarget, mode: InstallMode): Promise<WriteResult | null> {
   const mcp = agent.mcp;
   if (!mcp) {
@@ -67,10 +96,14 @@ async function applyMcp(agent: AgentTarget, mode: InstallMode): Promise<WriteRes
     return { path: mcp.path, action };
   }
 
-  const action =
-    mode === "install"
-      ? await mergeJsonMember(mcp.path, mcp.key, mcp.memberKey, mcp.entry)
-      : await removeJsonMember(mcp.path, mcp.key, mcp.memberKey);
+  if (mode !== "install") {
+    const action = await removeJsonMember(mcp.path, mcp.key, mcp.memberKey);
+    return { path: mcp.path, action };
+  }
+
+  const existing = await readExistingJsonMcpEntry(mcp.path, mcp.key, mcp.memberKey);
+  const entry = withPreservedBenchmarkFlag(mcp.entry, existing);
+  const action = await mergeJsonMember(mcp.path, mcp.key, mcp.memberKey, entry);
   return { path: mcp.path, action };
 }
 

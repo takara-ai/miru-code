@@ -224,6 +224,33 @@ describe("installer config", () => {
     expect(remaining.includes("[mcp_servers.miru]")).toBe(false);
     expect(remaining.includes("[mcp_servers.other]")).toBe(true);
   });
+
+  test("codex toml merge preserves --benchmark across reinstall", async () => {
+    const path = join(root, "config.toml");
+    await Bun.write(
+      path,
+      `[mcp_servers.miru]
+command = "bunx"
+args = ["@takara-ai/miru-code", "--benchmark"]
+`,
+    );
+    expect(await mergeTomlBlock(path)).toBe("unchanged");
+
+    // Force a rewrite by tweaking whitespace-equivalent-but-not-identical block...
+    // Actually unchanged when exact match. Simulate outdated package path drift:
+    await Bun.write(
+      path,
+      `[mcp_servers.miru]
+command = "bunx"
+args = ["@takara-ai/miru-code@old", "--benchmark"]
+`,
+    );
+    expect(await mergeTomlBlock(path)).toBe("updated");
+    const text = await Bun.file(path).text();
+    expect(text).toContain('"--benchmark"');
+    expect(text).toContain("@takara-ai/miru-code");
+    expect(text).not.toContain("@takara-ai/miru-code@old");
+  });
 });
 
 describe("installer apply", () => {
@@ -298,7 +325,25 @@ describe("installer apply", () => {
     >;
     const miru = data.mcpServers?.miru as Record<string, unknown> | undefined;
     expect(miru).toBeDefined();
+    expect(miru?.command).toBe("bunx");
+    expect(miru?.args).toEqual(["@takara-ai/miru-code"]);
     expect(miru?.env).toBeUndefined();
+  });
+
+  test("applyMcp preserves --benchmark when reinstalling", async () => {
+    const agent = claudeTarget(root);
+    await applyMcp(agent, "install");
+    const mcpPath = agent.mcp?.path ?? "";
+    const data = JSON.parse(await Bun.file(mcpPath).text()) as {
+      mcpServers: { miru: { command: string; args: string[]; type: string } };
+    };
+    data.mcpServers.miru.args = ["@takara-ai/miru-code", "--benchmark"];
+    await Bun.write(mcpPath, `${JSON.stringify(data, null, 2)}\n`);
+
+    const again = await applyMcp(agent, "install");
+    expect(again?.action).toBe("unchanged");
+    const after = JSON.parse(await Bun.file(mcpPath).text()) as typeof data;
+    expect(after.mcpServers.miru.args).toEqual(["@takara-ai/miru-code", "--benchmark"]);
   });
 
   test("applyHooks installs Claude PreToolUse hook", async () => {
@@ -399,6 +444,10 @@ describe("uninstall local data cleanup", () => {
     const text = chunks.join("");
     expect(text).toContain("miru benchmark off");
     expect(text).toContain("miru benchmark on");
+    expect(text).toContain("miru benchmark clear");
     expect(text).toContain("no env overrides");
+    expect(text).toContain("plaintext");
+    expect(text).toContain("500");
+    expect(text).toContain("Grep baseline");
   });
 });

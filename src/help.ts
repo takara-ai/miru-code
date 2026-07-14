@@ -148,10 +148,19 @@ export function printCommandHelp(command: string): void {
       writeStdout("  miru benchmark on");
       writeStdout("  miru benchmark off");
       writeStdout("  miru benchmark status");
+      writeStdout("  miru benchmark clear");
       writeStdout("");
       writeStdout("Adds or removes `--benchmark` from Miru MCP args in agent configs.");
       writeStdout("If `--benchmark` is present, benchmark mode is on — no env overrides.");
       writeStdout("Restart agents after changing mode. Prefer `off` when finished measuring.");
+      writeStdout("");
+      writeStdout("History is a global report (not per-repo) under Miru's state directory.");
+      writeStdout("Override path with MIRU_BENCHMARK_HISTORY_PATH. Keeps the last 500 queries.");
+      writeStdout("Queries and repo paths are stored in plaintext — use `clear` on shared machines.");
+      writeStdout("");
+      writeStdout("Savings compare Miru workflow tokens to a Grep baseline");
+      writeStdout("(rg search + read of the top matched file), not the agent's full tool chain.");
+      writeStdout("Local paths only — git URL repos skip comparison with benchmark_skipped.");
       writeStdout("");
       return;
     case "init":

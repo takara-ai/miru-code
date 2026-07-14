@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { toAgentBenchmarkSummary } from "../src/benchmark/compare.ts";
@@ -8,6 +8,7 @@ import {
   type BenchmarkQueryRecord,
   clearBenchmarkHistory,
   loadBenchmarkHistory,
+  normalizeBenchmarkRepoKey,
   readBenchmarkRollup,
   recordFromBenchmark,
   resolveBenchmarkHistoryPath,
@@ -238,5 +239,70 @@ describe("benchmark history rollup", () => {
       expect(result.path).toBe(path);
     });
     expect(await Bun.file(path).exists()).toBe(false);
+  });
+
+  test("normalizeBenchmarkRepoKey strips trailing slashes for local paths", () => {
+    const base = normalizeBenchmarkRepoKey("/tmp/miru-repo");
+    expect(normalizeBenchmarkRepoKey("/tmp/miru-repo/")).toBe(base);
+    expect(normalizeBenchmarkRepoKey("/tmp/miru-repo///")).toBe(base);
+  });
+
+  test("rollup filters match trailing-slash and relative variants", () => {
+    const repo = normalizeBenchmarkRepoKey("/tmp/miru-filter-repo");
+    const queries = [
+      recordFromBenchmark("q1", `${repo}/`, sampleBlock()),
+      recordFromBenchmark("q2", "/other", sampleBlock()),
+    ];
+    const rollup = rollupBenchmarkQueries(queries, { repo: `${repo}/` });
+    expect(rollup.query_count).toBe(1);
+    expect(rollup.recent_queries).toEqual([]);
+    expect(queries[0]?.r).toBe(repo);
+  });
+
+  test("appendBenchmarkQuery serializes concurrent writers", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "miru-bench-race-"));
+    const path = join(dir, "benchmark-history.json");
+    await Promise.all(
+      Array.from({ length: 20 }, (_, i) =>
+        appendBenchmarkQuery(recordFromBenchmark(`q${i}`, "/repo", sampleBlock()), { path }),
+      ),
+    );
+    const history = await loadBenchmarkHistory(path);
+    expect(history.queries).toHaveLength(20);
+    expect(new Set(history.queries.map((row) => row.q)).size).toBe(20);
+  });
+
+  test("corrupt history is rotated aside instead of overwritten silently", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "miru-bench-corrupt-"));
+    const path = join(dir, "benchmark-history.json");
+    await Bun.write(path, "{not-json");
+    const loaded = await loadBenchmarkHistory(path);
+    expect(loaded.queries).toEqual([]);
+    expect(await Bun.file(path).exists()).toBe(false);
+
+    const bakEntries = (await readdir(dir)).filter((name) =>
+      name.startsWith("benchmark-history.json.bak."),
+    );
+    expect(bakEntries.length).toBe(1);
+
+    await appendBenchmarkQuery(recordFromBenchmark("recovered", "/repo", sampleBlock()), { path });
+    const after = await loadBenchmarkHistory(path);
+    expect(after.queries).toHaveLength(1);
+    expect(await Bun.file(join(dir, bakEntries[0]!)).exists()).toBe(true);
+  });
+
+  test("wrong-version history is rotated aside", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "miru-bench-ver-"));
+    const path = join(dir, "benchmark-history.json");
+    await Bun.write(
+      path,
+      `${JSON.stringify({ version: 999, queries: [{ at: "x", q: "old", r: "/r", m: 1, g: 2, s: 1, p: 50 }] })}\n`,
+    );
+    const loaded = await loadBenchmarkHistory(path);
+    expect(loaded.queries).toEqual([]);
+    const bakEntries = (await readdir(dir)).filter((name) =>
+      name.startsWith("benchmark-history.json.bak."),
+    );
+    expect(bakEntries.length).toBe(1);
   });
 });

@@ -7,6 +7,7 @@ import {
   listHasBenchmarkFlag,
   MCP_BENCHMARK_FLAG,
   withBenchmarkFlag,
+  withPreservedBenchmarkFlag,
 } from "../src/installer/benchmark-mode.ts";
 
 describe("benchmark mode helpers", () => {
@@ -83,5 +84,19 @@ describe("benchmark mode helpers", () => {
     const after = JSON.parse(await Bun.file(path).text()) as typeof parsed;
     expect(after.mcpServers.miru.args).toEqual(["@takara-ai/miru-code"]);
     await rm(dir, { recursive: true, force: true });
+  });
+
+  test("withPreservedBenchmarkFlag keeps flag on canonical install entry", () => {
+    const canonical = { command: "bunx", args: ["@takara-ai/miru-code"], type: "stdio" };
+    const existing = {
+      command: "bunx",
+      args: ["@takara-ai/miru-code", MCP_BENCHMARK_FLAG],
+      type: "stdio",
+    };
+    expect(withPreservedBenchmarkFlag(canonical, existing).args).toEqual([
+      "@takara-ai/miru-code",
+      MCP_BENCHMARK_FLAG,
+    ]);
+    expect(withPreservedBenchmarkFlag(canonical, null)).toEqual(canonical);
   });
 });

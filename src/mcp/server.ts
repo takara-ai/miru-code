@@ -38,6 +38,19 @@ const REPO_DESCRIPTION =
   "Pass the project root for local workspaces. " +
   "The index is built on the first tool call and cached for the session.";
 
+const BENCHMARK_LOCAL_ONLY_NOTE =
+  "Benchmark comparisons require a local repo path; git URL repos are skipped.";
+
+function withBenchmarkSkipped<T extends Record<string, unknown>>(
+  payload: T,
+): T & { benchmark_skipped: "local_repo_only"; note: string } {
+  return {
+    ...payload,
+    benchmark_skipped: "local_repo_only",
+    note: BENCHMARK_LOCAL_ONLY_NOTE,
+  };
+}
+
 export function createMcpServer(
   cache: IndexCache,
   options?: { benchmark?: boolean },
@@ -119,7 +132,11 @@ export function createMcpServer(
         if (results.length === 0) {
           return toolText(JSON.stringify({ error: "No results found." }));
         }
-        return toolText(JSON.stringify(formatResults(query, results, { repoRoot, snippet: true })));
+        const payload = formatResults(query, results, { repoRoot, snippet: true });
+        if (benchmark && !repoRoot) {
+          return toolText(JSON.stringify(withBenchmarkSkipped(payload)));
+        }
+        return toolText(JSON.stringify(payload));
       } catch (err) {
         return toolText(err instanceof Error ? err.message : String(err));
       }
@@ -185,7 +202,11 @@ export function createMcpServer(
         }
 
         const result = index.locateLiteral(literal, locateOpts);
-        return toolText(JSON.stringify(formatLiteralLocate(result)));
+        const payload = formatLiteralLocate(result);
+        if (benchmark && !localRepoRoot(repo)) {
+          return toolText(JSON.stringify(withBenchmarkSkipped(payload)));
+        }
+        return toolText(JSON.stringify(payload));
       } catch (err) {
         return toolText(err instanceof Error ? err.message : String(err));
       }
