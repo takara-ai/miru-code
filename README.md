@@ -68,13 +68,16 @@ miru uninstall   # remove miru config
 
 Sub-agent files are also written where supported (see `miru install` plan). Windsurf hooks only *(experimental)* — no MCP entry yet.
 
-### Search hooks *(experimental)*
+<details>
+<summary>Search hooks <em>(experimental)</em></summary>
 
 Search hooks are **experimental** — behavior and IDE support may change between releases.
 
 Hooks run `miru hook-guard` before built-in search tools execute. They **block** conceptual Grep/Glob/SemanticSearch and shell `rg`/`grep`/`find`, and tell the agent to use Miru MCP `search` (or `locate` for exact literals) instead. Exact literal lookups (e.g. `REDIS_HOST`, a symbol name) still pass through.
 
 Hooks are **off by default** at install time. Enable them in the installer if you want built-in Grep/Glob redirected to Miru MCP.
+
+</details>
 
 **Team sub-agent in a repo** (optional):
 
@@ -128,9 +131,15 @@ Local repo hits include `absolute_path` for one-click navigation. Parameter refe
 
 ## How it works
 
-Hybrid search: Takara embeddings + BM25 + fusion + reranking. Indexes **code**, **docs**, **config**, or **all** via `--content`.
+Hybrid search: Takara embeddings + BM25 + fusion + reranking. Index **code**, **docs**, **config**, or **all** with `--content`.
 
-Disk cache: `~/Library/Caches/miru` (macOS), `~/.cache/miru` (Linux), `%LOCALAPPDATA%\miru\Cache` (Windows). MCP watches local files and updates incrementally; run `miru clear .` after big refactors when using CLI only. Upgrading Miru invalidates stale indexes automatically when the package version epoch changes.
+MCP watches local files and updates the index incrementally. Package upgrades invalidate stale caches via the version epoch.
+
+| OS | Index cache |
+|----|-------------|
+| macOS | `~/Library/Caches/miru` |
+| Linux | `~/.cache/miru` |
+| Windows | `%LOCALAPPDATA%\miru\Cache` |
 
 ### Chunking & languages
 
@@ -161,9 +170,7 @@ Miru chunks source in tiers: **AST** (tree-sitter, default) → **structural** h
 | rust | `.rs` |
 | scala | `.scala` |
 | solidity | `.sol` |
-| typescript | `.ts`, `.mts`, `.cts` |
-
-**Also shipped:** `.tsx` uses a dedicated TSX grammar; extra OCaml and PHP-only grammars are vendored alongside the main set.
+| typescript | `.ts`, `.tsx`, `.mts`, `.cts` |
 
 **Structural fallback** (brace/indent heuristics when AST is unavailable): python, go, typescript, javascript, cpp, c.
 
@@ -185,7 +192,7 @@ Set `MIRU_AST_CHUNKING=0` to disable AST and use structural → lines only.
 | `miru find-related <file> <line> [path]` | Related chunks                                                                    |
 | `miru benchmark on/off/status/clear`     | Toggle MCP benchmark mode / clear report                                          |
 | `miru init --agent <id>`                 | Project-local sub-agent                                                           |
-| `miru clear [path]`                      | Drop index cache                                                                  |
+| `miru clear [path]`                      | Drop index cache (use after big CLI-only refactors)                               |
 | `miru hook-guard`                        | PreToolUse hook entrypoint *(experimental)*; used by installers, reads JSON stdin |
 | `miru`                                   | Start MCP server (`--benchmark` for comparisons)                                  |
 
