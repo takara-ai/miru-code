@@ -283,12 +283,17 @@ describe("benchmark history rollup", () => {
     const bakEntries = (await readdir(dir)).filter((name) =>
       name.startsWith("benchmark-history.json.bak."),
     );
-    expect(bakEntries.length).toBe(1);
+    expect(bakEntries).toHaveLength(1);
+    const bakName = bakEntries[0];
+    expect(bakName).toBeDefined();
+    if (bakName === undefined) {
+      return;
+    }
 
     await appendBenchmarkQuery(recordFromBenchmark("recovered", "/repo", sampleBlock()), { path });
     const after = await loadBenchmarkHistory(path);
     expect(after.queries).toHaveLength(1);
-    expect(await Bun.file(join(dir, bakEntries[0]!)).exists()).toBe(true);
+    expect(await Bun.file(join(dir, bakName)).exists()).toBe(true);
   });
 
   test("wrong-version history is rotated aside", async () => {
