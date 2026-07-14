@@ -89,9 +89,10 @@ describe("installer config", () => {
     expect(byId.windsurf?.hooksFormat).toBe("windsurf");
   });
 
-  test("search hooks are enabled by default in installer choices", () => {
+  test("search hooks are off by default in installer choices", () => {
     const hooksIntegration = INTEGRATIONS.find((entry) => entry.id === "hooks");
-    expect(hooksIntegration?.defaultChecked).toBe(true);
+    expect(hooksIntegration?.defaultChecked).toBe(false);
+    expect(hooksIntegration?.experimental).toBe(true);
   });
   let root = "";
 
