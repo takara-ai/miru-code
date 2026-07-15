@@ -263,7 +263,7 @@ History is **global** (not per-repo) under Miru's state directory:
 | Windows | `%APPDATA%\miru\benchmark-history.json`                                      |
 
 
-Override with `MIRU_BENCHMARK_HISTORY_PATH`. Last 500 queries; stored in plaintext — `miru benchmark clear` or uninstall on shared machines.
+Override with `MIRU_BENCHMARK_HISTORY_PATH`. Append-only JSONL of compact token deltas (no query text); `read_benchmark` returns cumulative totals. Stored in plaintext — `miru benchmark clear` or uninstall on shared machines.
 
 ## MCP parameters
 
@@ -315,10 +315,9 @@ Override with `MIRU_BENCHMARK_HISTORY_PATH`. Last 500 queries; stored in plainte
 `**read_benchmark**` *(benchmark mode only)*
 
 
-| Param          | Required | Notes                                                                  |
-| -------------- | -------- | ---------------------------------------------------------------------- |
-| `repo`         | no       | Filter rollup to one local path or git URL. Omit for all saved queries |
-| `recent_limit` | no       | Include this many recent rows (default `0`, max `20`)                  |
+| Param  | Required | Notes                                                                  |
+| ------ | -------- | ---------------------------------------------------------------------- |
+| `repo` | no       | Filter rollup to one local path or git URL. Omit for all saved queries |
 
 
 ## Manual MCP (skip `miru install`)
