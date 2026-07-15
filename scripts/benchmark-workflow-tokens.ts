@@ -2,7 +2,7 @@
  * Workflow token comparison: Miru search+expand vs grep+Read.
  *
  * Models what agents actually need for useful context:
- * - Miru: snippet search (top_k) + expand on rank-1 hit (before=1, after=1)
+ * - Miru: snippet search (top_k) + expand on rank-1 hit (MCP expand defaults)
  * - Grep: keyword rg output (top_k files) + Read on rank-1 grep file
  *
  * Usage:
@@ -18,7 +18,12 @@ import { loadEnvFiles } from "../src/env-files.ts";
 import { MiruIndex } from "../src/miru-index.ts";
 import { applySnippetsToResults, estimateResultTokens } from "../src/snippet.ts";
 import type { SearchResult } from "../src/types.ts";
-import { dedupeResultsByFile, expandChunksAtLine } from "../src/utils.ts";
+import {
+  DEFAULT_EXPAND_AFTER,
+  DEFAULT_EXPAND_BEFORE,
+  dedupeResultsByFile,
+  expandChunksAtLine,
+} from "../src/utils.ts";
 import { type GrepFileHit, grepSearch } from "./benchmark-grep.ts";
 import { pathMatches } from "./benchmark-lib.ts";
 import { pathExists, REPO_BENCHES, TOP_K } from "./search-ab-queries.ts";
@@ -28,9 +33,6 @@ normalizeTakaraApiKeyEnv();
 await loadStoredCredentials();
 
 process.env.MIRU_SEARCH_V2 = "1";
-
-const EXPAND_BEFORE = 1;
-const EXPAND_AFTER = 1;
 
 function estTokens(text: string): number {
   return Math.floor(text.length / 4);
@@ -80,8 +82,8 @@ function miruExpandTokens(
     top.chunk.file_path,
     line,
     repoPath,
-    EXPAND_BEFORE,
-    EXPAND_AFTER,
+    DEFAULT_EXPAND_BEFORE,
+    DEFAULT_EXPAND_AFTER,
   );
   return {
     tokens: chunks.reduce((sum, chunk) => sum + estTokens(chunk.content), 0),
@@ -155,8 +157,8 @@ function grepExpandEquivTokens(
     file,
     line,
     repoPath,
-    EXPAND_BEFORE,
-    EXPAND_AFTER,
+    DEFAULT_EXPAND_BEFORE,
+    DEFAULT_EXPAND_AFTER,
   );
   return chunks.reduce((sum, chunk) => sum + estTokens(chunk.content), 0);
 }
@@ -279,7 +281,7 @@ if (available.length === 0) {
 }
 
 console.error(
-  `Workflow tokens — Miru search+expand vs grep+Read (${available.length} repos, top_k=${TOP_K}, expand ±${EXPAND_BEFORE}/${EXPAND_AFTER} chunks)\n`,
+  `Workflow tokens — Miru search+expand vs grep+Read (${available.length} repos, top_k=${TOP_K}, expand ±${DEFAULT_EXPAND_BEFORE}/${DEFAULT_EXPAND_AFTER} chunks)\n`,
 );
 
 const rows: WorkflowRow[] = [];
@@ -294,8 +296,8 @@ for (const bench of available) {
 const summary = {
   queryCount: rows.length,
   topK: TOP_K,
-  expandBefore: EXPAND_BEFORE,
-  expandAfter: EXPAND_AFTER,
+  expandBefore: DEFAULT_EXPAND_BEFORE,
+  expandAfter: DEFAULT_EXPAND_AFTER,
   recall: {
     miru: rows.filter((r) => r.miruRecall).length / rows.length,
     grep: rows.filter((r) => r.grepRecall).length / rows.length,
@@ -328,7 +330,7 @@ if (json) {
   console.log("");
   console.log("Follow-up (to get useful context):");
   console.log(
-    `  miru expand       ${m.miruExpandOnly.toFixed(0)}  (rank-1 hit, ±${EXPAND_BEFORE} chunk)`,
+    `  miru expand       ${m.miruExpandOnly.toFixed(0)}  (rank-1 hit, ±${DEFAULT_EXPAND_BEFORE} chunk)`,
   );
   console.log(`  grep Read full    ${m.grepReadFull.toFixed(0)}  (entire rank-1 grep file)`);
   console.log(

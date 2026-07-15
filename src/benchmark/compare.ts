@@ -1,25 +1,28 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { relativePathFromRoot } from "../index/incremental.ts";
 import type { MiruIndex } from "../miru-index.ts";
 import { applySnippetsToResults, estimateResultTokens } from "../snippet.ts";
 import { countTokens, tokenCountMethod, tokenizerJsonPath } from "../token-count.ts";
 import type { SearchResult } from "../types.ts";
-import { dedupeResultsByFile, expandChunksAtLine } from "../utils.ts";
+import {
+  DEFAULT_EXPAND_AFTER,
+  DEFAULT_EXPAND_BEFORE,
+  dedupeResultsByFile,
+  expandChunksAtLine,
+} from "../utils.ts";
 import { type GrepFileHit, grepSearch } from "./grep.ts";
 import { agentBenchmarkFromTokens, attachAgentBenchmark, tokenSavingsPct } from "./summary.ts";
 import type { AgentBenchmarkSummary, SearchBenchmarkBlock } from "./types.ts";
 
-const EXPAND_BEFORE = 1;
-const EXPAND_AFTER = 1;
+/** Repo-relative `/`-separated path for all benchmark file identity. */
+function canonicalRepoPath(repoPath: string, filePath: string): string {
+  // Normalize separators first — Node's resolve treats `\` as a literal on POSIX.
+  return relativePathFromRoot(repoPath, filePath.replace(/\\/g, "/"));
+}
 
-function pathMatches(filePath: string, targetPath: string): boolean {
-  const normFile = filePath.replaceAll("\\", "/");
-  const normTarget = targetPath.replaceAll("\\", "/");
-  return (
-    normFile === normTarget ||
-    normFile.endsWith(`/${normTarget}`) ||
-    normTarget.endsWith(`/${normFile}`)
-  );
+function canonicalRepoPaths(repoPath: string, files: string[]): string[] {
+  return files.map((file) => canonicalRepoPath(repoPath, file));
 }
 
 function firstGrepMatchLine(hit: GrepFileHit | undefined): number | null {
@@ -96,8 +99,8 @@ function miruExpandTokens(
     top.chunk.file_path,
     line,
     repoPath,
-    EXPAND_BEFORE,
-    EXPAND_AFTER,
+    DEFAULT_EXPAND_BEFORE,
+    DEFAULT_EXPAND_AFTER,
   );
   return {
     tokens: chunks.reduce((sum, chunk) => sum + countTokens(chunk.content), 0),
@@ -149,15 +152,18 @@ export async function benchmarkSearchComparison(options: {
   repoPath: string;
   index: MiruIndex;
   topK: number;
+  /** Keep only the best hit per file (default true). Matches MCP `dedupe_by_file`. */
+  dedupeByFile?: boolean;
   relevant?: string[];
 }): Promise<{ benchmark: SearchBenchmarkBlock; results: SearchResult[] }> {
   const { query, repoPath, index, topK, relevant } = options;
+  const dedupeByFile = options.dedupeByFile !== false;
   const parallelStart = performance.now();
 
   const miruPromise = (async () => {
     const started = performance.now();
     const raw = await index.search({ query, topK, rerank: true });
-    const results = dedupeResultsByFile(raw).slice(0, topK);
+    const results = (dedupeByFile ? dedupeResultsByFile(raw) : raw).slice(0, topK);
     const snippetResults = applySnippetsToResults(results, query).map((entry) => entry.result);
     const searchTokens = estimateResultTokens(snippetResults);
     const expand = miruExpandTokens(index, repoPath, results[0], query);
@@ -186,8 +192,11 @@ export async function benchmarkSearchComparison(options: {
     readWindow: grepReads.readWindow,
     latencyMs: grepSearchOutcome.latencyMs + grepReads.latencyMs,
   };
-  const miruFiles = miruOutcome.results.map((result) => result.chunk.file_path);
-  const grepFiles = grepOutcome.grep.files;
+  const miruFiles = canonicalRepoPaths(
+    repoPath,
+    miruOutcome.results.map((result) => result.chunk.file_path),
+  );
+  const grepFiles = canonicalRepoPaths(repoPath, grepOutcome.grep.files);
   const miruTop = miruFiles[0] ?? null;
   const grepTop = grepFiles[0] ?? null;
   const workflowFull = grepOutcome.grep.tokens + grepOutcome.readFull;
@@ -235,9 +244,10 @@ export async function benchmarkSearchComparison(options: {
   };
 
   if (relevant && relevant.length > 0) {
+    const relevantFiles = new Set(canonicalRepoPaths(repoPath, relevant));
     block.accuracy.labeled_recall = {
-      miru: relevant.some((want) => miruFiles.some((file) => pathMatches(file, want))),
-      grep: relevant.some((want) => grepFiles.some((file) => pathMatches(file, want))),
+      miru: miruFiles.some((file) => relevantFiles.has(file)),
+      grep: grepFiles.some((file) => relevantFiles.has(file)),
     };
   }
 

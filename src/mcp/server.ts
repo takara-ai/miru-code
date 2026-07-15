@@ -21,6 +21,8 @@ import { formatLiteralLocate, type LiteralMode } from "../literal.ts";
 import type { ContentType } from "../types.ts";
 import {
   clampMcpTopK,
+  DEFAULT_EXPAND_AFTER,
+  DEFAULT_EXPAND_BEFORE,
   DEFAULT_MCP_TOP_K,
   dedupeResultsByFile,
   expandChunksAtLine,
@@ -102,11 +104,9 @@ export function createMcpServer(
             repoPath: repoRoot,
             index,
             topK: k,
+            dedupeByFile: dedupeByFile !== false,
           });
-          let results = comparison.results;
-          if (dedupeByFile !== false) {
-            results = dedupeResultsByFile(results);
-          }
+          const results = comparison.results;
           if (results.length === 0) {
             return toolText(JSON.stringify({ error: "No results found." }));
           }
@@ -229,21 +229,21 @@ export function createMcpServer(
           .int()
           .min(0)
           .optional()
-          .describe("Extra chunks before the anchor (default 1)."),
+          .describe(`Extra chunks before the anchor (default ${DEFAULT_EXPAND_BEFORE}).`),
         after: z
           .number()
           .int()
           .min(0)
           .optional()
-          .describe("Extra chunks after the anchor (default 1)."),
+          .describe(`Extra chunks after the anchor (default ${DEFAULT_EXPAND_AFTER}).`),
       },
     },
     async ({ file_path: filePath, anchor_line: anchorLine, repo, before, after }) => {
       try {
         const index = await getIndexForRepo(repo, cache);
         const repoRoot = localRepoRoot(repo);
-        const beforeCount = before ?? 1;
-        const afterCount = after ?? 1;
+        const beforeCount = before ?? DEFAULT_EXPAND_BEFORE;
+        const afterCount = after ?? DEFAULT_EXPAND_AFTER;
         const { anchor, chunks: expanded } = expandChunksAtLine(
           index.chunks,
           filePath,

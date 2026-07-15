@@ -39,6 +39,8 @@ import {
 import { withSpinner } from "./spinner.ts";
 import type { ContentType, SearchResult } from "./types.ts";
 import {
+  DEFAULT_EXPAND_AFTER,
+  DEFAULT_EXPAND_BEFORE,
   expandChunksAtLine,
   formatExpandResults,
   formatResults,
@@ -572,8 +574,8 @@ async function runCli(argv: string[]): Promise<void> {
     }
     const line = Number(lineRaw);
     const path = resolveSearchPath(sizedRest[2] ?? process.cwd());
-    let before = 1;
-    let after = 1;
+    let before = DEFAULT_EXPAND_BEFORE;
+    let after = DEFAULT_EXPAND_AFTER;
     for (let i = 3; i < sizedRest.length; i++) {
       const arg = sizedRest[i];
       if (arg === "--before" && sizedRest[i + 1]) {

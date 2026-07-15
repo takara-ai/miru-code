@@ -103,6 +103,10 @@ export type ExpandResults = {
 export const DEFAULT_MCP_TOP_K = 3;
 export const MAX_MCP_TOP_K = 10;
 
+/** Extra chunks before/after the expand anchor — MCP `expand` tool defaults. */
+export const DEFAULT_EXPAND_BEFORE = 1;
+export const DEFAULT_EXPAND_AFTER = 1;
+
 /** Clamp MCP top_k to a sane range; omit for the default. */
 export function clampMcpTopK(topK?: number): number {
   const value = topK ?? DEFAULT_MCP_TOP_K;

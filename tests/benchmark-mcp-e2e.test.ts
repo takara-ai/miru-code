@@ -149,6 +149,58 @@ describe("benchmark MCP end-to-end", () => {
     }
   });
 
+  test("benchmarkSearchComparison honors dedupeByFile=false", async () => {
+    const root = await buildTempRepo();
+    try {
+      const index = await buildIndex(root);
+      const sameFileChunks = index.chunks.filter((c) => c.file_path.includes("auth"));
+      const chunkA = sameFileChunks[0];
+      expect(chunkA).toBeDefined();
+      if (!chunkA) {
+        throw new Error("expected auth chunk");
+      }
+      const chunkB = sameFileChunks[1] ?? {
+        ...chunkA,
+        start_line: chunkA.start_line + 1,
+        end_line: chunkA.end_line + 1,
+      };
+      const other = index.chunks.find((c) => c.file_path.includes("billing")) ?? index.chunks[0];
+      if (!other) {
+        throw new Error("expected at least one indexed chunk");
+      }
+
+      index.search = async () => [
+        { score: 3, chunk: chunkA },
+        { score: 2, chunk: chunkB },
+        { score: 1, chunk: other },
+      ];
+
+      const deduped = await benchmarkSearchComparison({
+        query: "authenticateUser",
+        repoPath: root,
+        index,
+        topK: 5,
+        dedupeByFile: true,
+      });
+      const undeduped = await benchmarkSearchComparison({
+        query: "authenticateUser",
+        repoPath: root,
+        index,
+        topK: 5,
+        dedupeByFile: false,
+      });
+
+      const dedupedSameFile = deduped.results.filter((r) => r.chunk.file_path === chunkA.file_path);
+      const undedupedSameFile = undeduped.results.filter(
+        (r) => r.chunk.file_path === chunkA.file_path,
+      );
+      expect(dedupedSameFile).toHaveLength(1);
+      expect(undedupedSameFile.length).toBeGreaterThan(1);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("MCP search persists history and read_benchmark returns compact rollup", async () => {
     const root = await buildTempRepo();
     const historyDir = await mkdtemp(join(tmpdir(), "miru-bench-hist-e2e-"));
