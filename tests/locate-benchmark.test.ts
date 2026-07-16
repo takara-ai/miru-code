@@ -70,4 +70,50 @@ describe("locate benchmark comparison", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  test("passes match_variants/include/exclude/context_lines through to the real locate call", async () => {
+    const root = await mkdtemp(join(tmpdir(), "miru-locate-bench-opts-"));
+    try {
+      await writeFile(
+        join(root, "app.ts"),
+        ["const rateLimit = 1;", "const unrelated = 2;", "const rate_limit_window = 3;", ""].join(
+          "\n",
+        ),
+        "utf-8",
+      );
+      await writeFile(join(root, "other.ts"), "const rateLimit = 99;\n", "utf-8");
+
+      const embeddings = mockEmbeddings();
+      const built = await createIndexFromPath(root, embeddings, ["code"], root);
+      const index = new MiruIndex({
+        embeddings,
+        bm25Index: built.bm25,
+        semanticIndex: built.semantic,
+        chunks: built.chunks,
+        embeddingModel: embeddings.model,
+        root,
+        content: ["code"],
+      });
+
+      const comparison = await benchmarkLocateComparison({
+        literal: "rateLimit",
+        repoPath: root,
+        index,
+        locate: {
+          mode: "lines",
+          match_variants: true,
+          include: ["app.ts"],
+          context_lines: 1,
+        },
+      });
+
+      // match_variants must have found rate_limit_window too, and include must have
+      // dropped other.ts — if these options were silently ignored, n would differ.
+      expect(comparison.result.n).toBe(2);
+      expect(comparison.result.hits.every((h) => h.file_path === "app.ts")).toBe(true);
+      expect(comparison.result.hits[0]?.context).toBeDefined();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

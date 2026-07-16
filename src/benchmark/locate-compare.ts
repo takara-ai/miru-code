@@ -8,6 +8,7 @@
  */
 
 import {
+  DEFAULT_LITERAL_MODE,
   formatLiteralLocate,
   type LiteralLocateOptions,
   type LiteralLocateResult,
@@ -37,11 +38,7 @@ export async function benchmarkLocateComparison(options: {
   index: MiruIndex;
   locate?: LiteralLocateOptions;
 }): Promise<LocateBenchmarkComparison> {
-  const locateOpts: LiteralLocateOptions = {
-    mode: options.locate?.mode ?? "lines",
-    ignore_case: options.locate?.ignore_case,
-    ...(options.locate?.limit != null ? { limit: options.locate.limit } : {}),
-  };
+  const locateOpts: LiteralLocateOptions = { mode: DEFAULT_LITERAL_MODE, ...options.locate };
 
   const miruStart = performance.now();
   const result = options.index.locateLiteral(options.literal, locateOpts);
