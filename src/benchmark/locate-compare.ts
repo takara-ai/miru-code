@@ -47,8 +47,11 @@ export async function benchmarkLocateComparison(options: {
   const miruTok = countTokens(JSON.stringify(payload));
 
   // Unbounded agent-style Grep dump (±context) — the costlier path without locate.
+  // Never use less context than the caller actually requested via context_lines,
+  // or a locate call that returns inline context looks artificially expensive
+  // against a baseline that didn't have to fetch that context at all.
   const grep = await rgLiteralOutput(options.repoPath, options.literal, {
-    context: GREP_CONTEXT,
+    context: Math.max(GREP_CONTEXT, locateOpts.context_lines ?? 0),
     maxCount: 0,
     ignoreCase: locateOpts.ignore_case,
   });

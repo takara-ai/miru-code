@@ -116,4 +116,58 @@ describe("locate benchmark comparison", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  test("grep baseline widens to match a requested context_lines instead of a fixed default", async () => {
+    const root = await mkdtemp(join(tmpdir(), "miru-locate-bench-ctx-"));
+    try {
+      // 5 unique lines either side of the match so -C 2 (default) and -C 5
+      // (requested) produce genuinely different amounts of grep context.
+      const lines = [
+        "const pad0 = 0;",
+        "const pad1 = 1;",
+        "const pad2 = 2;",
+        "const pad3 = 3;",
+        "const pad4 = 4;",
+        "const DATABASE_URL = process.env.DATABASE_URL;",
+        "const pad5 = 5;",
+        "const pad6 = 6;",
+        "const pad7 = 7;",
+        "const pad8 = 8;",
+        "const pad9 = 9;",
+        "",
+      ];
+      await writeFile(join(root, "app.ts"), lines.join("\n"), "utf-8");
+
+      const embeddings = mockEmbeddings();
+      const built = await createIndexFromPath(root, embeddings, ["code"], root);
+      const index = new MiruIndex({
+        embeddings,
+        bm25Index: built.bm25,
+        semanticIndex: built.semantic,
+        chunks: built.chunks,
+        embeddingModel: embeddings.model,
+        root,
+        content: ["code"],
+      });
+
+      const defaultContext = await benchmarkLocateComparison({
+        literal: "DATABASE_URL",
+        repoPath: root,
+        index,
+        locate: { mode: "lines" },
+      });
+      const wideContext = await benchmarkLocateComparison({
+        literal: "DATABASE_URL",
+        repoPath: root,
+        index,
+        locate: { mode: "lines", context_lines: 5 },
+      });
+
+      // If context_lines were still ignored by the grep baseline, both calls
+      // would grep with the same fixed -C 2 and produce identical token counts.
+      expect(wideContext.benchmark.grep_tok).toBeGreaterThan(defaultContext.benchmark.grep_tok);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });
