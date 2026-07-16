@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.3.0](https://github.com/takara-ai/miru-code/compare/v1.2.2...v1.3.0) (2026-07-16)
+
+
+### Features
+
+* **locate:** support literal arrays, casing variants, glob scoping, and context lines ([7d50988](https://github.com/takara-ai/miru-code/commit/7d5098889386132417f3315da1b1169bcd2594c3))
+
+
+### Bug Fixes
+
+* **benchmark:** stop dropping match_variants/include/exclude/context_lines in locate comparison ([6616c31](https://github.com/takara-ai/miru-code/commit/6616c3161ae12be6544dedde5766c552ab1a2a19))
+
 ## [1.2.2](https://github.com/takara-ai/miru-code/compare/v1.2.1...v1.2.2) (2026-07-16)
 
 
