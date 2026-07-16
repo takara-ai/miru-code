@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { findIndexCachePath } from "../src/cache.ts";
 import { resolve } from "node:path";
+import { findIndexCachePath } from "../src/cache.ts";
 import { detectLanguage } from "../src/index/files.ts";
 import type { Chunk } from "../src/types.ts";
 import {
