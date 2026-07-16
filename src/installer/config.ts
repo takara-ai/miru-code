@@ -260,26 +260,114 @@ function removeJsonMemberText(text: string, sectionKey: string, memberKey: strin
   return `${text.slice(0, removeStart)}${text.slice(removeEnd)}`;
 }
 
+/** True only when // or /* appear outside of strings (URLs like https:// must not match). */
 function hasJsoncSyntax(text: string): boolean {
-  return text.includes("//") || text.includes("/*");
+  let inString = false;
+  let quote = "";
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i] ?? "";
+    const next = text[i + 1] ?? "";
+    if (inString) {
+      if (ch === "\\") {
+        i++;
+        continue;
+      }
+      if (ch === quote) {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inString = true;
+      quote = ch;
+      continue;
+    }
+    if (ch === "/" && next === "/") {
+      return true;
+    }
+    if (ch === "/" && next === "*") {
+      return true;
+    }
+  }
+  return false;
 }
 
+/**
+ * Locate a section object at the document root only.
+ * Nested keys with the same name (e.g. Claude Code projects.*.mcpServers) are ignored.
+ */
 function findSectionRange(
   text: string,
   sectionKey: string,
 ): { openBrace: number; closeBrace: number; indent: string } | null {
-  const keyMatch = new RegExp(`(^|\\n)([ \\t]*)"${escapeRegExp(sectionKey)}"\\s*:\\s*\\{`).exec(
-    text,
-  );
-  if (!keyMatch) {
-    return null;
+  const keyPrefix = new RegExp(`^"${escapeRegExp(sectionKey)}"\\s*:\\s*\\{`);
+  let depth = 0;
+  let inString = false;
+  let quote = "";
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i] ?? "";
+    const next = text[i + 1] ?? "";
+    if (inLineComment) {
+      if (ch === "\n") inLineComment = false;
+      continue;
+    }
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        inBlockComment = false;
+        i++;
+      }
+      continue;
+    }
+    if (inString) {
+      if (ch === "\\") {
+        i++;
+        continue;
+      }
+      if (ch === quote) {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === "/" && next === "/") {
+      inLineComment = true;
+      i++;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      inBlockComment = true;
+      i++;
+      continue;
+    }
+    if (depth === 1 && ch === '"') {
+      const match = keyPrefix.exec(text.slice(i));
+      if (match) {
+        const lineStart = text.lastIndexOf("\n", i) + 1;
+        const indent = /^[ \t]*/.exec(text.slice(lineStart, i))?.[0] ?? "";
+        const openBrace = i + match[0].length - 1;
+        const closeBrace = findMatchingBrace(text, openBrace);
+        if (closeBrace < 0) {
+          return null;
+        }
+        return { openBrace, closeBrace, indent };
+      }
+    }
+    if (ch === '"' || ch === "'") {
+      inString = true;
+      quote = ch;
+      continue;
+    }
+    if (ch === "{") {
+      depth++;
+      continue;
+    }
+    if (ch === "}") {
+      depth--;
+    }
   }
-  const openBrace = text.indexOf("{", keyMatch.index);
-  const closeBrace = findMatchingBrace(text, openBrace);
-  if (openBrace < 0 || closeBrace < 0) {
-    return null;
-  }
-  return { openBrace, closeBrace, indent: keyMatch[2] ?? "" };
+  return null;
 }
 
 function findMatchingBrace(text: string, openIndex: number): number {

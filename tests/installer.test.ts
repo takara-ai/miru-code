@@ -143,6 +143,67 @@ describe("installer config", () => {
     expect(updated).toContain('"miru"');
   });
 
+  test("mergeJsonMember adds root mcpServers without touching nested Claude projects", async () => {
+    const path = join(root, ".claude.json");
+    const entry = {
+      command: "bunx",
+      args: ["@takara-ai/miru-code"],
+      type: "stdio",
+    };
+    // https:// in a string must not be treated as JSONC // comments.
+    await Bun.write(
+      path,
+      JSON.stringify(
+        {
+          tip: "https://support.claude.com/en/articles/example",
+          projects: {
+            "/repo/a": {
+              mcpServers: {
+                miru: { command: "bunx", args: ["old"], type: "stdio" },
+              },
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    expect(await mergeJsonMember(path, "mcpServers", "miru", entry)).toBe("updated");
+    const data = JSON.parse(await Bun.file(path).text()) as {
+      mcpServers?: { miru?: unknown };
+      projects: { "/repo/a": { mcpServers: { miru: { args: string[] } } } };
+    };
+    expect(data.mcpServers?.miru).toEqual(entry);
+    expect(data.projects["/repo/a"].mcpServers.miru.args).toEqual(["old"]);
+  });
+
+  test("mergeJsonMember JSONC root section ignores nested mcpServers", async () => {
+    const path = join(root, "settings.jsonc");
+    await Bun.write(
+      path,
+      `{
+  // keep this comment
+  "projects": {
+    "/repo/a": {
+      "mcpServers": {
+        "miru": { "command": "nested" }
+      }
+    }
+  }
+}
+`,
+    );
+    const entry = { command: "bunx", args: ["@takara-ai/miru-code"], type: "stdio" };
+    expect(await mergeJsonMember(path, "mcpServers", "miru", entry)).toBe("updated");
+    const data = JSON.parse((await Bun.file(path).text()).replace(/^\s*\/\/.*$/gm, "")) as {
+      mcpServers?: { miru?: unknown };
+      projects: { "/repo/a": { mcpServers: { miru: { command: string } } } };
+    };
+    expect(data.mcpServers?.miru).toEqual(entry);
+    expect(data.projects["/repo/a"].mcpServers.miru.command).toBe("nested");
+  });
+
   test("mergeJsonMember is idempotent", async () => {
     const path = join(root, "mcp.json");
     const value = { command: "bunx", args: ["@takara-ai/miru-code"] };
@@ -329,6 +390,49 @@ describe("installer apply", () => {
     expect(miru?.command).toBe("bunx");
     expect(miru?.args).toEqual(["@takara-ai/miru-code"]);
     expect(miru?.env).toBeUndefined();
+  });
+
+  test("applyMcp installs Claude root mcpServers when only project MCP exists", async () => {
+    const agent = claudeTarget(root);
+    const mcpPath = agent.mcp?.path ?? "";
+    await Bun.write(
+      mcpPath,
+      JSON.stringify(
+        {
+          tip: "https://support.claude.com/en/articles/example",
+          projects: {
+            "/Users/me/Code/ds1": {
+              mcpServers: {
+                miru: {
+                  command: "bunx",
+                  args: ["@takara-ai/miru-code"],
+                  type: "stdio",
+                },
+              },
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    const result = await applyMcp(agent, "install");
+    expect(result?.action).toBe("updated");
+    const data = JSON.parse(await Bun.file(mcpPath).text()) as {
+      mcpServers?: { miru?: { command: string; args: string[]; type: string } };
+      projects: {
+        "/Users/me/Code/ds1": { mcpServers: { miru: { args: string[] } } };
+      };
+    };
+    expect(data.mcpServers?.miru).toEqual({
+      command: "bunx",
+      args: ["@takara-ai/miru-code"],
+      type: "stdio",
+    });
+    expect(data.projects["/Users/me/Code/ds1"].mcpServers.miru.args).toEqual([
+      "@takara-ai/miru-code",
+    ]);
   });
 
   test("applyMcp preserves --benchmark when reinstalling", async () => {
