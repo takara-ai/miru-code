@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.2.1](https://github.com/takara-ai/miru-code/compare/v1.2.0...v1.2.1) (2026-07-16)
+
+
+### Bug Fixes
+
+* **benchmark:** fallback to grep/findstr when rg is unavailable ([73abc29](https://github.com/takara-ai/miru-code/commit/73abc29e6d9f9d25b15b4d201fcf8bda48d902bc))
+* **benchmark:** harden native fallback and literal parsing ([8e5ec95](https://github.com/takara-ai/miru-code/commit/8e5ec95f420fed14242941471e28ae1a1d2a630c))
+* **benchmark:** normalize windows absolute paths in fallback ([d2d0976](https://github.com/takara-ai/miru-code/commit/d2d0976086ea3a920f36e1b292ba839d64325329))
+* **benchmark:** parse windows findstr paths correctly ([479e0ec](https://github.com/takara-ai/miru-code/commit/479e0ec9b030f4aecc2b14e272a26bf30ac95eb0))
+* **benchmark:** parse windows grep output paths ([9f278f8](https://github.com/takara-ai/miru-code/commit/9f278f805872daf2575053a8e328a93bbe404ef1))
+* **test:** make path assertions windows-safe ([f77b461](https://github.com/takara-ai/miru-code/commit/f77b4613f18768820b13d540386724b2cc360269))
+* **test:** satisfy import order lint ([bd67ec6](https://github.com/takara-ai/miru-code/commit/bd67ec654abcf50c585dd35d4c948211312b17e7))
+
 ## [1.2.0](https://github.com/takara-ai/miru-code/compare/v1.1.0...v1.2.0) (2026-07-16)
 
 
