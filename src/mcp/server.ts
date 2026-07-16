@@ -17,7 +17,7 @@ import {
   MCP_SEARCH_TOOL_DESCRIPTION,
   MCP_SERVER_INSTRUCTIONS,
 } from "../installer/search-policy.ts";
-import { formatLiteralLocate, type LiteralMode } from "../literal.ts";
+import { formatLiteralLocate } from "../literal.ts";
 import type { ContentType } from "../types.ts";
 import {
   clampMcpTopK,
@@ -149,9 +149,11 @@ export function createMcpServer(
       description: MCP_LOCATE_TOOL_DESCRIPTION,
       inputSchema: {
         literal: z
-          .string()
-          .min(1)
-          .describe("Exact substring to find (env var, symbol, error code, quoted text)."),
+          .union([z.string().min(1), z.array(z.string().min(1)).min(1)])
+          .describe(
+            "Exact substring to find (env var, symbol, error code, quoted text). " +
+              "Pass an array to OR-match several substrings (e.g. spelling/casing variants) in one call.",
+          ),
         repo: z.string().describe(REPO_DESCRIPTION),
         mode: z
           .enum(["count", "locations", "lines"])
@@ -168,20 +170,37 @@ export function createMcpServer(
             "Optional cap on returned hits. Omit to return ALL matches (recommended). Do not fall back to Grep if n is large — use mode=count or locations instead.",
           ),
         ignore_case: z.boolean().optional().describe("Case-insensitive match (default false)."),
+        match_variants: z
+          .boolean()
+          .optional()
+          .describe(
+            'Also match other ways the same word might be written in code, e.g. "rateLimit" also finds "rate_limit" and "RATE_LIMIT".',
+          ),
+        include: z
+          .array(z.string().min(1))
+          .optional()
+          .describe(
+            'Gitignore-style glob patterns; only matching files are searched (e.g. "apps/tldr/**/*.go").',
+          ),
+        exclude: z
+          .array(z.string().min(1))
+          .optional()
+          .describe("Gitignore-style glob patterns; matching files are skipped."),
+        context_lines: z
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .describe("Lines of context before/after each match, like `grep -C` (mode=lines only)."),
       },
     },
-    async ({ literal, repo, mode, limit, ignore_case: ignoreCase }) => {
+    async ({ literal, repo, ...locateOpts }) => {
       try {
         const index = await getIndexForRepo(repo, cache);
-        const locateOpts = {
-          mode: (mode as LiteralMode | undefined) ?? "lines",
-          ...(limit != null ? { limit } : {}),
-          ignore_case: ignoreCase,
-        };
 
         if (benchmark) {
           const repoRoot = localRepoRoot(repo);
-          if (repoRoot) {
+          if (repoRoot && typeof literal === "string") {
             const comparison = await benchmarkLocateComparison({
               literal,
               repoPath: repoRoot,

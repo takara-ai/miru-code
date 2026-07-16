@@ -450,7 +450,10 @@ export class MiruIndex {
    * Exact substring location over indexed chunks (no disk re-walk).
    * Prefer for known literals; use `search` for meaning-based questions.
    */
-  locateLiteral(literal: string, options?: LiteralLocateOptions): LiteralLocateResult {
+  locateLiteral(
+    literal: string | readonly string[],
+    options?: LiteralLocateOptions,
+  ): LiteralLocateResult {
     return locateLiteral(this.chunksInternal, literal, options);
   }
 }

@@ -27,7 +27,12 @@ import { getBenchmarkModeStatus, setBenchmarkMode } from "./installer/benchmark-
 import { runSearchGuardFromStdin } from "./installer/hooks/search-guard.ts";
 import { runInstaller } from "./installer/installer.ts";
 import { promptConfirm } from "./installer/prompt.ts";
-import { formatLiteralLocate, type LiteralMode } from "./literal.ts";
+import {
+  DEFAULT_LITERAL_MODE,
+  formatLiteralLocate,
+  type LiteralLocateOptions,
+  type LiteralMode,
+} from "./literal.ts";
 import { serveMcp } from "./mcp/serve.ts";
 import { MiruIndex } from "./miru-index.ts";
 import {
@@ -264,22 +269,15 @@ async function runLocate(
   literal: string,
   content: ContentType[],
   jsonFlag: boolean,
-  mode: LiteralMode,
-  limit: number | undefined,
-  ignoreCase: boolean,
+  options: LiteralLocateOptions,
 ): Promise<void> {
   await ensureCredentials({ interactive: true });
+  const mode = options.mode ?? DEFAULT_LITERAL_MODE;
 
   const payload = await withSpinner("Locating literal", async () => {
     const built = await MiruIndex.fromSource(path, content);
     await built.saveToCache(path);
-    return formatLiteralLocate(
-      built.locateLiteral(literal, {
-        mode,
-        ignore_case: ignoreCase,
-        ...(limit != null ? { limit } : {}),
-      }),
-    );
+    return formatLiteralLocate(built.locateLiteral(literal, options));
   });
 
   if (prefersJsonOutput(jsonFlag)) {
@@ -290,10 +288,18 @@ async function runLocate(
   const n = Number(payload.n ?? 0);
   const files = Number(payload.files ?? 0);
   writeStdout(`literal=${literal}  n=${n}  files=${files}  mode=${mode}`);
-  const hits = payload.hits as Array<{ f: string; l: number; t?: string }> | undefined;
+  const hits = payload.hits as
+    | Array<{ f: string; l: number; t?: string; ctx?: string[]; ctx_l?: number }>
+    | undefined;
   if (hits) {
     for (const hit of hits) {
-      if (hit.t !== undefined) {
+      if (hit.ctx !== undefined) {
+        writeStdout(`  ${hit.f}:${hit.l}:`);
+        const startLine = hit.ctx_l ?? hit.l;
+        hit.ctx.forEach((line, i) => {
+          writeStdout(`    ${startLine + i}: ${line}`);
+        });
+      } else if (hit.t !== undefined) {
         writeStdout(`  ${hit.f}:${hit.l}: ${hit.t}`);
       } else {
         writeStdout(`  ${hit.f}:${hit.l}`);
@@ -528,10 +534,20 @@ async function runCli(argv: string[]): Promise<void> {
       printCommandHelp("locate");
       process.exit(1);
     }
-    let mode: LiteralMode = "lines";
-    let limit: number | undefined;
-    let ignoreCase = false;
+    const options: LiteralLocateOptions = {};
+    const include: string[] = [];
+    const exclude: string[] = [];
     const pathArgs: string[] = [];
+    const positiveInt = (flag: string, raw: string | undefined, min: number): number => {
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n < min) {
+        fail(
+          `locate ${flag} must be a${min === 0 ? " non-negative" : ""} integer${min > 0 ? ` ≥ ${min}` : ""}.`,
+        );
+        process.exit(1);
+      }
+      return Math.floor(n);
+    };
     for (let i = 1; i < sizedRest.length; i++) {
       const arg = sizedRest[i];
       if (arg === "--mode" && sizedRest[i + 1]) {
@@ -540,28 +556,45 @@ async function runCli(argv: string[]): Promise<void> {
           fail(`Unknown locate mode "${value}". Use count, locations, or lines.`);
           process.exit(1);
         }
-        mode = value;
+        options.mode = value as LiteralMode;
         continue;
       }
       if (arg === "--limit" && sizedRest[i + 1]) {
-        const raw = Number(sizedRest[++i]);
-        if (!Number.isFinite(raw) || raw < 1) {
-          fail("locate --limit must be a positive integer.");
-          process.exit(1);
-        }
-        limit = Math.floor(raw);
+        options.limit = positiveInt("--limit", sizedRest[++i], 1);
         continue;
       }
       if (arg === "--ignore-case") {
-        ignoreCase = true;
+        options.ignore_case = true;
+        continue;
+      }
+      if (arg === "--match-variants") {
+        options.match_variants = true;
+        continue;
+      }
+      if (arg === "--include" && sizedRest[i + 1]) {
+        include.push(sizedRest[++i] as string);
+        continue;
+      }
+      if (arg === "--exclude" && sizedRest[i + 1]) {
+        exclude.push(sizedRest[++i] as string);
+        continue;
+      }
+      if (arg === "--context" && sizedRest[i + 1]) {
+        options.context_lines = positiveInt("--context", sizedRest[++i], 0);
         continue;
       }
       if (arg !== undefined) {
         pathArgs.push(arg);
       }
     }
+    if (include.length > 0) {
+      options.include = include;
+    }
+    if (exclude.length > 0) {
+      options.exclude = exclude;
+    }
     const path = resolveSearchPath(pathArgs[0] ?? process.cwd());
-    await runLocate(path, literal, content, jsonFlag, mode, limit, ignoreCase);
+    await runLocate(path, literal, content, jsonFlag, options);
     return;
   }
 

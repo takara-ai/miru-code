@@ -96,10 +96,17 @@ export function printCommandHelp(command: string): void {
       writeStdout("  --mode MODE         count | locations | lines (default: lines)");
       writeStdout("  --limit N           Optional hit cap (default: all matches)");
       writeStdout("  --ignore-case       Case-insensitive match");
+      writeStdout("  --match-variants    Also match camelCase/snake_case/kebab-case/CONSTANT_CASE");
+      writeStdout("  --include GLOB      Only search files matching this glob (repeatable)");
+      writeStdout("  --exclude GLOB      Skip files matching this glob (repeatable)");
+      writeStdout("  --context N         Lines of context around each match (mode=lines)");
       writeStdout("  --content TYPE      code | docs | config | all (default: code config)");
       writeStdout("  --json              JSON output (default when piped)");
       section("Example");
       writeStdout("  miru locate MIRU_BENCHMARK_HISTORY_PATH . --mode locations");
+      writeStdout(
+        '  miru locate rateLimit . --match-variants --include "apps/tldr/**" --context 3',
+      );
       writeStdout("");
       return;
     case "expand":

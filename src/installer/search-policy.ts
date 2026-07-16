@@ -141,7 +141,12 @@ export const MCP_LOCATE_TOOL_DESCRIPTION =
   "Exact substring locator over the Miru index. Use for known literals (env vars, symbols, error codes, quoted text) — not meaning-based questions (`search`). " +
   "Returns ALL matches by default as compact {n,files,hits} — do NOT fall back to Grep/rg when n is large. " +
   "Prefer mode=locations (or count for totals only); use lines when you need matching line text. " +
-  "Optional `limit` only if you intentionally want a sample. In benchmark mode, includes compact token savings vs agent Grep.";
+  "Optional `limit` only if you intentionally want a sample. " +
+  "Pass an array to `literal` to match several spellings in one call; " +
+  'or set `match_variants: true` to also match other ways the same word is written in code (e.g. "rateLimit" also finds "rate_limit"). ' +
+  "Use `include`/`exclude` (gitignore-style globs) to scope to part of a monorepo. " +
+  "Use `context_lines` in `lines` mode to get surrounding lines inline instead of a follow-up `expand`/Read. " +
+  "In benchmark mode, includes compact token savings vs agent Grep.";
 
 export const MCP_EXPAND_TOOL_DESCRIPTION =
   "More context in the SAME file as a search hit. Pass `file_path` + `anchor_line` from the hit; " +
