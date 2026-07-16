@@ -81,15 +81,20 @@ function queryQuantizedIndexLegacy(
   };
 }
 
-function benchMs(iterations: number, fn: () => void): number {
-  for (let i = 0; i < Math.min(iterations, 20); i++) {
+/** Best-of-`trials` timing, after warmup — filters out one-off GC/scheduler noise. */
+function benchMs(iterations: number, fn: () => void, trials = 3): number {
+  for (let i = 0; i < Math.max(iterations, 20); i++) {
     fn();
   }
-  const start = Bun.nanoseconds();
-  for (let i = 0; i < iterations; i++) {
-    fn();
+  let best = Number.POSITIVE_INFINITY;
+  for (let t = 0; t < trials; t++) {
+    const start = Bun.nanoseconds();
+    for (let i = 0; i < iterations; i++) {
+      fn();
+    }
+    best = Math.min(best, (Bun.nanoseconds() - start) / 1e6 / iterations);
   }
-  return (Bun.nanoseconds() - start) / 1e6 / iterations;
+  return best;
 }
 
 function expectQueryEqual(a: QueryResult, b: QueryResult): void {

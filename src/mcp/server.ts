@@ -18,6 +18,7 @@ import {
   MCP_SERVER_INSTRUCTIONS,
 } from "../installer/search-policy.ts";
 import { formatLiteralLocate } from "../literal.ts";
+import { formatExpandResultsText, formatLiteralLocateText, formatResultsText } from "./format-text.ts";
 import type { ContentType } from "../types.ts";
 import {
   clampMcpTopK,
@@ -108,7 +109,7 @@ export function createMcpServer(
           });
           const results = comparison.results;
           if (results.length === 0) {
-            return toolText(JSON.stringify({ error: "No results found." }));
+            return toolText("No results found.");
           }
           try {
             await appendBenchmarkQuery(recordFromBenchmark(repoRoot, comparison.benchmark));
@@ -130,13 +131,13 @@ export function createMcpServer(
           results = dedupeResultsByFile(results);
         }
         if (results.length === 0) {
-          return toolText(JSON.stringify({ error: "No results found." }));
+          return toolText("No results found.");
         }
         const payload = formatResults(query, results, { repoRoot, snippet: true });
         if (benchmark && !repoRoot) {
           return toolText(JSON.stringify(withBenchmarkSkipped(payload)));
         }
-        return toolText(JSON.stringify(payload));
+        return toolText(formatResultsText(payload));
       } catch (err) {
         return toolText(err instanceof Error ? err.message : String(err));
       }
@@ -223,7 +224,7 @@ export function createMcpServer(
         if (benchmark && !localRepoRoot(repo)) {
           return toolText(JSON.stringify(withBenchmarkSkipped(payload)));
         }
-        return toolText(JSON.stringify(payload));
+        return toolText(formatLiteralLocateText(payload));
       } catch (err) {
         return toolText(err instanceof Error ? err.message : String(err));
       }
@@ -277,7 +278,7 @@ export function createMcpServer(
           );
         }
         return toolText(
-          JSON.stringify(
+          formatExpandResultsText(
             formatExpandResults(filePath, anchorLine, anchor, expanded, {
               repoRoot,
               before: beforeCount,
@@ -327,12 +328,10 @@ export function createMcpServer(
         }
         const results = await index.findRelated(chunk, clampMcpTopK(topK));
         if (results.length === 0) {
-          return toolText(
-            JSON.stringify({ error: `No related chunks found for ${filePath}:${anchorLine}.` }),
-          );
+          return toolText(`No related chunks found for ${filePath}:${anchorLine}.`);
         }
         return toolText(
-          JSON.stringify(
+          formatResultsText(
             formatResults(`Chunks related to ${filePath}:${anchorLine}`, results, {
               repoRoot,
               snippet: true,

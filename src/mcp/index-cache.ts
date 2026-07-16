@@ -65,6 +65,11 @@ export function shouldIgnoreWatchPath(relativePath: string | null | undefined): 
   return false;
 }
 
+/**
+ * Session cache of MiruIndex instances. Keeps them fresh by reconciling
+ * mtimes on load (`checkAndQueueStaleFiles`) and applying incremental
+ * updates from fs.watch (`flushFileUpdates` / `applyFileChanges`).
+ */
 export class IndexCache {
   private readonly content: ContentType[];
   private readonly defaultRef: string | null;
