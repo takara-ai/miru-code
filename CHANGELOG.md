@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.4.0](https://github.com/takara-ai/miru-code/compare/v1.3.1...v1.4.0) (2026-07-16)
+
+
+### Features
+
+* **mcp:** render tool results as plain text instead of JSON ([d5c661c](https://github.com/takara-ai/miru-code/commit/d5c661c336e8eca2ba5c9b4bef20b912bae23e38))
+
+
+### Bug Fixes
+
+* **benchmark:** count MCP plaintext bodies and return text in benchmark mode ([2c80972](https://github.com/takara-ai/miru-code/commit/2c80972188a94741b1e10bd7d8d8a222f822a764))
+
 ## [1.3.1](https://github.com/takara-ai/miru-code/compare/v1.3.0...v1.3.1) (2026-07-16)
 
 
