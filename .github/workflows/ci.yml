@@ -9,8 +9,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lint-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Typecheck
+        run: bun run typecheck
+
   test:
     runs-on: ${{ matrix.os }}
+    needs: lint-typecheck
     strategy:
       fail-fast: false
       matrix:
@@ -28,12 +50,6 @@ jobs:
       - name: Install ripgrep
         if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get update && sudo apt-get install -y ripgrep
-
-      - name: Lint
-        run: bun run lint
-
-      - name: Typecheck
-        run: bun run typecheck
 
       - name: Test
         run: bun test
