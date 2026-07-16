@@ -187,10 +187,11 @@ async function grepRankedMatches(repoRoot: string, pattern: string, topK: number
 async function findstrRankedMatches(repoRoot: string, keywords: string[], topK: number) {
   const counts = new Map<string, number>();
   for (const keyword of keywords) {
-    const proc = Bun.spawn(
-      ["findstr", "/S", "/N", "/I", "/P", `/C:${keyword}`, "*"],
-      { stdout: "pipe", stderr: "pipe", cwd: repoRoot },
-    );
+    const proc = Bun.spawn(["findstr", "/S", "/N", "/I", "/P", `/C:${keyword}`, "*"], {
+      stdout: "pipe",
+      stderr: "pipe",
+      cwd: repoRoot,
+    });
     const text = await new Response(proc.stdout).text();
     await proc.exited;
     for (const line of text.split("\n")) {
@@ -246,7 +247,17 @@ function parseCountMatches(repoRoot: string, countText: string, topK: number) {
 
 async function rgFilePreview(absPath: string, pattern: string): Promise<string> {
   const proc = Bun.spawn(
-    ["rg", "-i", "-n", "-C", String(GREP_CONTEXT), "-m", String(GREP_LINES_PER_FILE), pattern, absPath],
+    [
+      "rg",
+      "-i",
+      "-n",
+      "-C",
+      String(GREP_CONTEXT),
+      "-m",
+      String(GREP_LINES_PER_FILE),
+      pattern,
+      absPath,
+    ],
     { stdout: "pipe", stderr: "pipe" },
   );
   const output = await new Response(proc.stdout).text();
@@ -256,7 +267,19 @@ async function rgFilePreview(absPath: string, pattern: string): Promise<string> 
 
 async function grepFilePreview(absPath: string, pattern: string): Promise<string> {
   const proc = Bun.spawn(
-    ["grep", "-I", "-i", "-n", "-E", "-C", String(GREP_CONTEXT), "-m", String(GREP_LINES_PER_FILE), pattern, absPath],
+    [
+      "grep",
+      "-I",
+      "-i",
+      "-n",
+      "-E",
+      "-C",
+      String(GREP_CONTEXT),
+      "-m",
+      String(GREP_LINES_PER_FILE),
+      pattern,
+      absPath,
+    ],
     { stdout: "pipe", stderr: "pipe" },
   );
   const output = await new Response(proc.stdout).text();

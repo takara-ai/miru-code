@@ -75,11 +75,14 @@ export async function rgLiteralOutput(
     throw new Error("No search tool found in PATH (tried rg, grep, and findstr on Windows)");
   }
   const start = performance.now();
-  const proc = Bun.spawn(buildLiteralArgs(tool, repoRoot, literal, context, maxCount, !!options.ignoreCase), {
-    stdout: "pipe",
-    stderr: "pipe",
-    ...(tool === "findstr" ? { cwd: repoRoot } : {}),
-  });
+  const proc = Bun.spawn(
+    buildLiteralArgs(tool, repoRoot, literal, context, maxCount, !!options.ignoreCase),
+    {
+      stdout: "pipe",
+      stderr: "pipe",
+      ...(tool === "findstr" ? { cwd: repoRoot } : {}),
+    },
+  );
   const text = await new Response(proc.stdout).text();
   await proc.exited;
   const latency_ms = performance.now() - start;
