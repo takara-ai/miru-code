@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.2.0](https://github.com/takara-ai/miru-code/compare/v1.1.0...v1.2.0) (2026-07-16)
+
+
+### Features
+
+* benchmark mode and locate tool ([c1ba1af](https://github.com/takara-ai/miru-code/commit/c1ba1aff3c9b74156a91d4dc1108071431a6ce0d))
+* **benchmark:** add MCP benchmark mode with Hugging Face token counting ([654448c](https://github.com/takara-ai/miru-code/commit/654448c6d83313e085b6ed025095bd7b293237ad))
+* **benchmark:** add rollup tool, compact payloads, and mode toggle ([8a2d029](https://github.com/takara-ai/miru-code/commit/8a2d02943dda03ff3a2294fe438b37b1d56f98e3))
+* **cli:** set process.title to miru ([461c551](https://github.com/takara-ai/miru-code/commit/461c5517d5492fdf8c51ab3fd8125caefa1f0636))
+* **locate:** add exact-literal MCP/CLI tool with Grep token benchmarks ([2321a1e](https://github.com/takara-ai/miru-code/commit/2321a1efc1b5d1383535fc243f012527efa602bf))
+* prd 276 index freshness cache invalidation ([a8ce1b3](https://github.com/takara-ai/miru-code/commit/a8ce1b3335d44bc523e3fce689ce1add41d9c442))
+
+
+### Bug Fixes
+
+* **benchmark:** harden mode persistence and history edge cases ([54be476](https://github.com/takara-ai/miru-code/commit/54be476b901837d68f8b08b0caef6bc44c30c3ea))
+* **benchmark:** honor dedupe flag and unify path/expand defaults ([a85215f](https://github.com/takara-ai/miru-code/commit/a85215fa1d5f5f29ee8cf415af45dfa8d506eef9))
+* **benchmark:** persist history as append-only JSONL without locks ([82268ef](https://github.com/takara-ai/miru-code/commit/82268efa93a1a24b714cc224a1495167c6ad9f28))
+* **installer:** avoid control-character regex in arrow key parser ([361aac3](https://github.com/takara-ai/miru-code/commit/361aac3851304c05635c693cfc1f26fd2a2083a4))
+* **installer:** leave experimental search hooks off by default ([21cdf9e](https://github.com/takara-ai/miru-code/commit/21cdf9ecf7ae933f828dd58bf905638896d887d0))
+* **installer:** leave search hooks unchecked by default ([9aa82af](https://github.com/takara-ai/miru-code/commit/9aa82af8bf745d3daa46bbae09cc7bac2e4f2452))
+* **installer:** support Windows arrow key sequences in prompts ([8fa6b1b](https://github.com/takara-ai/miru-code/commit/8fa6b1bf8959c55ad04d7f0355ef967e28912d88))
+* **mcp:** detect new files and close race in index freshness check ([c237898](https://github.com/takara-ai/miru-code/commit/c237898479086ddbad056f2ae0f3b3c26eacbeb6))
+* **mcp:** resolve IndexCache self-deadlock during stale reconciliation ([d0d7125](https://github.com/takara-ai/miru-code/commit/d0d712546934e708b8bf37a71cb20c9aaee73e87))
+* **security:** add shared ownership tracking for VS Code hook file ([def4152](https://github.com/takara-ai/miru-code/commit/def4152712df5e71d9c119f70c6a3538d21fa9ad))
+* **security:** clarify MIRU_WORKSPACE_ROOT as opt-in MCP boundary ([112c5b7](https://github.com/takara-ai/miru-code/commit/112c5b793e48948d245d224822f6b0afccd32914))
+* **security:** enable hook guard by default in installer ([524c614](https://github.com/takara-ai/miru-code/commit/524c6140816617a2c3ecabe1c8ab44749430e9e6))
+* **security:** preserve JSONC content during installer edits ([04709e5](https://github.com/takara-ai/miru-code/commit/04709e5e1a6cb4bbcd40e1da21f2b1e8aa7dbf46))
+* **security:** remove external JSONC parser dependency ([f5dfe35](https://github.com/takara-ai/miru-code/commit/f5dfe356c673f594dd443a695c9dbc05164e664d))
+
 ## [1.1.2](https://github.com/takara-ai/miru-code/compare/v1.1.1...v1.1.2) (2026-07-13)
 
 
