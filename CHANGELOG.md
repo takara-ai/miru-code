@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.2](https://github.com/takara-ai/miru-code/compare/v1.2.1...v1.2.2) (2026-07-16)
+
+
+### Bug Fixes
+
+* **installer:** write Claude MCP at root, not nested projects ([b0797a2](https://github.com/takara-ai/miru-code/commit/b0797a29b2d56ab218ec6853620b309f401e6953))
+
 ## [1.2.1](https://github.com/takara-ai/miru-code/compare/v1.2.0...v1.2.1) (2026-07-16)
 
 
