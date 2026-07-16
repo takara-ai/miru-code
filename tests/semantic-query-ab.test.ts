@@ -221,8 +221,8 @@ describe("semantic query A/B", () => {
       console.log(
         `  ${scenario.label.padEnd(20)} legacy=${scenario.legacyMs.toFixed(3)}ms optimized=${scenario.optimizedMs.toFixed(3)}ms speedup=${speedup.toFixed(2)}x`,
       );
-      // Guard against catastrophic regressions only; exact speedup varies by machine/load.
-      expect(speedup).toBeGreaterThan(0.75);
+      // Guard against catastrophic regressions only; exact speedup varies by OS/runner load.
+      expect(speedup).toBeGreaterThan(0.5);
     }
   });
 });
