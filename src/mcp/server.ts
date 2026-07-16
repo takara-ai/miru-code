@@ -1,14 +1,28 @@
 import * as z from "zod";
 import packageJson from "../../package.json";
+import { attachSearchBenchmark, benchmarkSearchComparison } from "../benchmark/compare.ts";
 import {
+  appendBenchmarkQuery,
+  readBenchmarkRollup,
+  recordFromAgentSummary,
+  recordFromBenchmark,
+} from "../benchmark/history.ts";
+import { attachLocateBenchmark, benchmarkLocateComparison } from "../benchmark/locate-compare.ts";
+import {
+  MCP_BENCHMARK_SERVER_INSTRUCTIONS,
   MCP_EXPAND_TOOL_DESCRIPTION,
   MCP_FIND_RELATED_TOOL_DESCRIPTION,
+  MCP_LOCATE_TOOL_DESCRIPTION,
+  MCP_READ_BENCHMARK_TOOL_DESCRIPTION,
   MCP_SEARCH_TOOL_DESCRIPTION,
   MCP_SERVER_INSTRUCTIONS,
 } from "../installer/search-policy.ts";
+import { formatLiteralLocate, type LiteralMode } from "../literal.ts";
 import type { ContentType } from "../types.ts";
 import {
   clampMcpTopK,
+  DEFAULT_EXPAND_AFTER,
+  DEFAULT_EXPAND_BEFORE,
   DEFAULT_MCP_TOP_K,
   dedupeResultsByFile,
   expandChunksAtLine,
@@ -26,14 +40,31 @@ const REPO_DESCRIPTION =
   "Pass the project root for local workspaces. " +
   "The index is built on the first tool call and cached for the session.";
 
-export function createMcpServer(cache: IndexCache): MiruMcpServer {
+const BENCHMARK_LOCAL_ONLY_NOTE =
+  "Benchmark comparisons require a local repo path; git URL repos are skipped.";
+
+function withBenchmarkSkipped<T extends Record<string, unknown>>(
+  payload: T,
+): T & { benchmark_skipped: "local_repo_only"; note: string } {
+  return {
+    ...payload,
+    benchmark_skipped: "local_repo_only",
+    note: BENCHMARK_LOCAL_ONLY_NOTE,
+  };
+}
+
+export function createMcpServer(
+  cache: IndexCache,
+  options?: { benchmark?: boolean },
+): MiruMcpServer {
+  const benchmark = options?.benchmark ?? false;
   const server = new MiruMcpServer(
     {
       name: "miru",
       version: packageJson.version,
     },
     {
-      instructions: MCP_SERVER_INSTRUCTIONS,
+      instructions: benchmark ? MCP_BENCHMARK_SERVER_INSTRUCTIONS : MCP_SERVER_INSTRUCTIONS,
     },
   );
 
@@ -64,15 +95,116 @@ export function createMcpServer(cache: IndexCache): MiruMcpServer {
     async ({ query, repo, top_k: topK, dedupe_by_file: dedupeByFile }) => {
       try {
         const index = await getIndexForRepo(repo, cache);
-        let results = await index.search({ query, topK: clampMcpTopK(topK) });
+        const repoRoot = localRepoRoot(repo);
+        const k = clampMcpTopK(topK);
+
+        if (benchmark && repoRoot) {
+          const comparison = await benchmarkSearchComparison({
+            query,
+            repoPath: repoRoot,
+            index,
+            topK: k,
+            dedupeByFile: dedupeByFile !== false,
+          });
+          const results = comparison.results;
+          if (results.length === 0) {
+            return toolText(JSON.stringify({ error: "No results found." }));
+          }
+          try {
+            await appendBenchmarkQuery(recordFromBenchmark(repoRoot, comparison.benchmark));
+          } catch {
+            // History is best-effort; never fail the search on persist errors.
+          }
+          return toolText(
+            JSON.stringify(
+              attachSearchBenchmark(
+                formatResults(query, results, { repoRoot, snippet: true }),
+                comparison.benchmark,
+              ),
+            ),
+          );
+        }
+
+        let results = await index.search({ query, topK: k });
         if (dedupeByFile !== false) {
           results = dedupeResultsByFile(results);
         }
         if (results.length === 0) {
           return toolText(JSON.stringify({ error: "No results found." }));
         }
-        const repoRoot = localRepoRoot(repo);
-        return toolText(JSON.stringify(formatResults(query, results, { repoRoot, snippet: true })));
+        const payload = formatResults(query, results, { repoRoot, snippet: true });
+        if (benchmark && !repoRoot) {
+          return toolText(JSON.stringify(withBenchmarkSkipped(payload)));
+        }
+        return toolText(JSON.stringify(payload));
+      } catch (err) {
+        return toolText(err instanceof Error ? err.message : String(err));
+      }
+    },
+  );
+
+  server.registerTool(
+    "locate",
+    {
+      description: MCP_LOCATE_TOOL_DESCRIPTION,
+      inputSchema: {
+        literal: z
+          .string()
+          .min(1)
+          .describe("Exact substring to find (env var, symbol, error code, quoted text)."),
+        repo: z.string().describe(REPO_DESCRIPTION),
+        mode: z
+          .enum(["count", "locations", "lines"])
+          .optional()
+          .describe(
+            "count=totals only; locations=path:line; lines=path:line+text (default). Prefer count/locations when possible.",
+          ),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe(
+            "Optional cap on returned hits. Omit to return ALL matches (recommended). Do not fall back to Grep if n is large — use mode=count or locations instead.",
+          ),
+        ignore_case: z.boolean().optional().describe("Case-insensitive match (default false)."),
+      },
+    },
+    async ({ literal, repo, mode, limit, ignore_case: ignoreCase }) => {
+      try {
+        const index = await getIndexForRepo(repo, cache);
+        const locateOpts = {
+          mode: (mode as LiteralMode | undefined) ?? "lines",
+          ...(limit != null ? { limit } : {}),
+          ignore_case: ignoreCase,
+        };
+
+        if (benchmark) {
+          const repoRoot = localRepoRoot(repo);
+          if (repoRoot) {
+            const comparison = await benchmarkLocateComparison({
+              literal,
+              repoPath: repoRoot,
+              index,
+              locate: locateOpts,
+            });
+            try {
+              await appendBenchmarkQuery(recordFromAgentSummary(repoRoot, comparison.benchmark));
+            } catch {
+              // History is best-effort; never fail locate on persist errors.
+            }
+            return toolText(
+              JSON.stringify(attachLocateBenchmark(comparison.payload, comparison.benchmark)),
+            );
+          }
+        }
+
+        const result = index.locateLiteral(literal, locateOpts);
+        const payload = formatLiteralLocate(result);
+        if (benchmark && !localRepoRoot(repo)) {
+          return toolText(JSON.stringify(withBenchmarkSkipped(payload)));
+        }
+        return toolText(JSON.stringify(payload));
       } catch (err) {
         return toolText(err instanceof Error ? err.message : String(err));
       }
@@ -97,21 +229,21 @@ export function createMcpServer(cache: IndexCache): MiruMcpServer {
           .int()
           .min(0)
           .optional()
-          .describe("Extra chunks before the anchor (default 1)."),
+          .describe(`Extra chunks before the anchor (default ${DEFAULT_EXPAND_BEFORE}).`),
         after: z
           .number()
           .int()
           .min(0)
           .optional()
-          .describe("Extra chunks after the anchor (default 1)."),
+          .describe(`Extra chunks after the anchor (default ${DEFAULT_EXPAND_AFTER}).`),
       },
     },
     async ({ file_path: filePath, anchor_line: anchorLine, repo, before, after }) => {
       try {
         const index = await getIndexForRepo(repo, cache);
         const repoRoot = localRepoRoot(repo);
-        const beforeCount = before ?? 1;
-        const afterCount = after ?? 1;
+        const beforeCount = before ?? DEFAULT_EXPAND_BEFORE;
+        const afterCount = after ?? DEFAULT_EXPAND_AFTER;
         const { anchor, chunks: expanded } = expandChunksAtLine(
           index.chunks,
           filePath,
@@ -193,6 +325,31 @@ export function createMcpServer(cache: IndexCache): MiruMcpServer {
       }
     },
   );
+
+  if (benchmark) {
+    server.registerTool(
+      "read_benchmark",
+      {
+        description: MCP_READ_BENCHMARK_TOOL_DESCRIPTION,
+        inputSchema: {
+          repo: z
+            .string()
+            .optional()
+            .describe(
+              "Optional local repo path or git URL to filter the rollup. Omit for overall totals.",
+            ),
+        },
+      },
+      async ({ repo }) => {
+        try {
+          const rollup = await readBenchmarkRollup({ repo });
+          return toolText(JSON.stringify(rollup));
+        } catch (err) {
+          return toolText(err instanceof Error ? err.message : String(err));
+        }
+      },
+    );
+  }
 
   return server;
 }

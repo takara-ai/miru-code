@@ -37,6 +37,7 @@
   "files": [
     "src",
     "grammars",
+    "tokenizer",
     "README.md",
     "LICENSE"
   ],
@@ -57,8 +58,10 @@
     "benchmark:recall": "bun run scripts/benchmark-recall-tokens.ts",
     "benchmark:vs-grep": "bun run scripts/benchmark-miru-vs-grep.ts",
     "benchmark:workflow": "bun run scripts/benchmark-workflow-tokens.ts",
+    "benchmark:literal": "bun run scripts/benchmark-literal-tokens.ts",
     "benchmark:quality": "bun run scripts/benchmark-quality.ts",
-    "benchmark:quantization": "bun run scripts/benchmark-quantization.ts"
+    "benchmark:quantization": "bun run scripts/benchmark-quantization.ts",
+    "benchmark:tokenizer-ab": "bun run scripts/tokenizer-ab.ts"
   },
   "dependencies": {
     "ignore": "^7.0.5",
@@ -67,7 +70,10 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.1",
+    "@huggingface/tokenizers": "^0.1.3",
     "@types/bun": "^1.3.14",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
     "tree-sitter-bash": "^0.25.1",
     "tree-sitter-c": "^0.24.1",
     "tree-sitter-c-sharp": "^0.23.5",
@@ -90,8 +96,6 @@
     "tree-sitter-scala": "^0.24.0",
     "tree-sitter-solidity": "^1.2.13",
     "tree-sitter-typescript": "^0.23.2",
-    "typescript": "^6.0.3",
-    "ajv": "^8.17.1",
-    "ajv-formats": "^3.0.1"
+    "typescript": "^6.0.3"
   }
 }

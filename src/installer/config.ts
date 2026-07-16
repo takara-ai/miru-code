@@ -6,6 +6,11 @@ const CODEX_MCP_BLOCK = `[mcp_servers.miru]
 command = "bunx"
 args = ["@takara-ai/miru-code"]
 `;
+/** Same Codex block with `--benchmark` preserved across reinstall. */
+const CODEX_MCP_BLOCK_BENCHMARK = `[mcp_servers.miru]
+command = "bunx"
+args = ["@takara-ai/miru-code", "--benchmark"]
+`;
 
 /** Strip line and block comments so JSONC configs can be parsed. */
 export function stripJsonComments(text: string): string {
@@ -487,12 +492,19 @@ export async function mergeTomlBlock(path: string): Promise<InstallAction> {
   const existed = await Bun.file(path).exists();
   const existing = existed ? await Bun.file(path).text() : "";
 
-  if (existing.includes(CODEX_MCP_BLOCK.trim())) {
+  const defaultBlock = CODEX_MCP_BLOCK.trim();
+  const benchmarkBlock = CODEX_MCP_BLOCK_BENCHMARK.trim();
+  if (existing.includes(defaultBlock) || existing.includes(benchmarkBlock)) {
     return "unchanged";
   }
 
+  const preserveBenchmark =
+    existing.includes(CODEX_MCP_HEADER) &&
+    (existing.includes('"--benchmark"') || existing.includes("'--benchmark'"));
+  const block = preserveBenchmark ? CODEX_MCP_BLOCK_BENCHMARK : CODEX_MCP_BLOCK;
+
   const base = stripTomlSection(existing, CODEX_MCP_HEADER).replace(/\n+$/, "");
-  const next = base.length > 0 ? `${base}\n\n${CODEX_MCP_BLOCK}` : CODEX_MCP_BLOCK;
+  const next = base.length > 0 ? `${base}\n\n${block}` : block;
   await Bun.write(path, next.endsWith("\n") ? next : `${next}\n`);
   return existed ? "updated" : "created";
 }

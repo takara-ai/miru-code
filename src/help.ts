@@ -34,11 +34,13 @@ export function printMainHelp(): void {
 
   section("Commands");
   commandRow("search", "Hybrid search over a codebase");
+  commandRow("locate", "Exact substring location in the index");
   commandRow("expand", "Adjacent chunks in the same file as a hit");
   commandRow("find-related", "Find chunks related to a file:line");
   commandRow("setup", "Save your Takara API key locally");
   commandRow("install", "Configure miru across coding agents");
   commandRow("uninstall", "Remove miru agent configuration");
+  commandRow("benchmark", "Turn MCP benchmark mode on or off");
   commandRow("init", "Write a project-local sub-agent file");
   commandRow("clear", "Remove cached index for a path");
   commandRow("help", "Show help for a command");
@@ -62,6 +64,8 @@ export function printEnvHelp(): void {
   writeStdout(`      Default: ${DEFAULT_EMBEDDING_MODEL}`);
   writeStdout("  MIRU_CONCURRENCY");
   writeStdout(`      Parallel workers (default: CPUs − ${DEFAULT_RESERVE_CORES})`);
+  writeStdout("  MIRU_TOKENIZER_JSON");
+  writeStdout("      Path to tokenizer.json (default: <package>/tokenizer/tokenizer.json)");
   writeStdout("");
 }
 
@@ -78,10 +82,24 @@ export function printCommandHelp(command: string): void {
       writeStdout("  miru search <query> [path] [options]");
       section("Options");
       writeStdout("  -k, --top-k N       Number of results (default: 5)");
-      writeStdout("  --content TYPE      code | docs | config | all");
+      writeStdout("  --content TYPE      code | docs | config | all (default: code config)");
       writeStdout("  --json              JSON output (default when piped)");
       section("Example");
       writeStdout('  miru search "where is auth" ./src -k 10 --content code docs');
+      writeStdout("");
+      return;
+    case "locate":
+      commandHeader("locate", "Exact substring location over the Miru index.");
+      section("Usage");
+      writeStdout("  miru locate <literal> [path] [options]");
+      section("Options");
+      writeStdout("  --mode MODE         count | locations | lines (default: lines)");
+      writeStdout("  --limit N           Optional hit cap (default: all matches)");
+      writeStdout("  --ignore-case       Case-insensitive match");
+      writeStdout("  --content TYPE      code | docs | config | all (default: code config)");
+      writeStdout("  --json              JSON output (default when piped)");
+      section("Example");
+      writeStdout("  miru locate MIRU_BENCHMARK_HISTORY_PATH . --mode locations");
       writeStdout("");
       return;
     case "expand":
@@ -121,6 +139,28 @@ export function printCommandHelp(command: string): void {
     case "uninstall":
       commandHeader("uninstall", "Remove miru configuration from agents.");
       writeStdout("Removes MCP entries, marked instruction blocks, and global sub-agents.");
+      writeStdout("Also deletes the global benchmark report from Miru's state directory.");
+      writeStdout("");
+      return;
+    case "benchmark":
+      commandHeader("benchmark", "Toggle MCP benchmark mode on installed agents.");
+      section("Usage");
+      writeStdout("  miru benchmark on");
+      writeStdout("  miru benchmark off");
+      writeStdout("  miru benchmark status");
+      writeStdout("  miru benchmark clear");
+      writeStdout("");
+      writeStdout("Adds or removes `--benchmark` from Miru MCP args in agent configs.");
+      writeStdout("If `--benchmark` is present, benchmark mode is on — no env overrides.");
+      writeStdout("Restart agents after changing mode. Prefer `off` when finished measuring.");
+      writeStdout("");
+      writeStdout("History is a global report (not per-repo) under Miru's state directory.");
+      writeStdout("Override path with MIRU_BENCHMARK_HISTORY_PATH. Append-only JSONL of savings.");
+      writeStdout("Repo paths in the report are plaintext — use `clear` on shared machines.");
+      writeStdout("");
+      writeStdout("Savings compare Miru workflow tokens to a Grep baseline");
+      writeStdout("(rg search + read of the top matched file), not the agent's full tool chain.");
+      writeStdout("Local paths only — git URL repos skip comparison with benchmark_skipped.");
       writeStdout("");
       return;
     case "init":
@@ -145,9 +185,12 @@ export function printCommandHelp(command: string): void {
     case "mcp":
       commandHeader("mcp", "Stdio MCP server (default with no subcommand).");
       section("Usage");
-      writeStdout("  miru [--ref BRANCH] [--content TYPE ...]");
+      writeStdout("  miru [--ref BRANCH] [--content TYPE ...] [--benchmark]");
+      writeStdout("  Default content: code config");
       writeStdout("");
       writeStdout("Indexes on the first search/expand/find_related tool call (repo argument).");
+      writeStdout("Use --benchmark (or `miru benchmark on`) for token-savings comparisons.");
+      writeStdout("Leave with `miru benchmark off` and restart the agent.");
       writeStdout("");
       return;
     default:

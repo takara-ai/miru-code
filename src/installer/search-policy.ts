@@ -18,7 +18,7 @@ export function buildSearchPolicyTable(native: NativeToolNames): string {
 | Same file, more context | Miru MCP \`expand\` on \`truncated: true\` | Re-search, ${native.read} whole file |
 | Similar code elsewhere | Miru MCP \`find_related\` | ${native.grep} chains |
 | Search docs or config | Miru \`search\` | ${native.grep} README paths |
-| Exact literal string in a file? | ${native.grep} | Miru |
+| Exact literal string in a file? | Miru MCP \`locate\` | ${native.grep}, Miru \`search\` |
 | Edit a known file:line | ${native.read} (after Miru found it) | ${native.read}-before-search |`;
 }
 
@@ -29,6 +29,7 @@ ${SNIPPET_GUIDANCE}
 
 Use Miru MCP tools:
 - \`search\` — one call per question; pass project root as \`repo\`
+- \`locate\` — exact substring (env var, symbol, error code); prefer \`mode=count\` or \`locations\`
 - \`expand\` — more context in the same file when \`truncated: true\` (\`file_path\` + \`anchor_line\`)
 - \`find_related\` — similar code in other files (hits may also be snippets; use \`expand\` if truncated)
 
@@ -38,7 +39,6 @@ Stop rules:
 - ${native.read} is for editing a path Miru already gave you, not for exploration
 
 Native tools are allowed ONLY when:
-- confirming an exact literal string (env var name, error code, quoted text)
 - reading a file you already located via Miru, to edit it
 - searching outside the indexed repo
 
@@ -49,15 +49,17 @@ export function buildMcpWorkflow(native: NativeToolNames): string {
   return `### MCP workflow
 
 1. Call \`search\` with \`repo\` set to the project root (local path or https:// git URL).
-2. If a hit has \`truncated: true\`, call \`expand\` with \`file_path\` and \`anchor_line\`.
-3. Use \`find_related\` to trace similar code in other files — not for more context in the same file.
-4. ${native.read} via \`absolute_path\` only when editing or when \`expand\` still lacks context.`;
+2. For exact literals, call \`locate\` (prefer \`mode=count\` or \`locations\`).
+3. If a hit has \`truncated: true\`, call \`expand\` with \`file_path\` and \`anchor_line\`.
+4. Use \`find_related\` to trace similar code in other files — not for more context in the same file.
+5. ${native.read} via \`absolute_path\` only when editing or when \`expand\` still lacks context.`;
 }
 
 const CLI_FALLBACK = `### CLI fallback (no MCP in this session)
 
 \`\`\`bash
 miru search "authentication flow" .
+miru locate DATABASE_URL . --mode locations
 miru expand src/auth.ts 42 .
 miru find-related src/auth.ts 42 .
 \`\`\`
@@ -65,7 +67,7 @@ miru find-related src/auth.ts 42 .
 If \`miru\` is not on \`$PATH\`, use \`bunx @takara-ai/miru-code\`.`;
 
 export function buildSubagentBody(native: NativeToolNames): string {
-  return `When Miru MCP is available, use MCP \`search\`, \`expand\`, and \`find_related\` — not ${native.explorationDenied} for exploration.
+  return `When Miru MCP is available, use MCP \`search\`, \`locate\`, \`expand\`, and \`find_related\` — not ${native.explorationDenied} for exploration.
 
 ${buildSearchPolicyBody(native)}
 
@@ -108,7 +110,7 @@ alwaysApply: true
 
 ${SEARCH_POLICY_BODY}
 
-When Miru MCP is connected, call \`search\` once per question. On \`truncated: true\`, call \`expand\` with \`file_path\` and \`anchor_line\`. Never use Cursor SemanticSearch or Grep for codebase questions unless confirming an exact literal.`;
+When Miru MCP is connected, call \`search\` once per question. On \`truncated: true\`, call \`expand\` with \`file_path\` and \`anchor_line\`. Use \`locate\` for exact literals — not Grep. Never use Cursor SemanticSearch for codebase questions.`;
 
 export const SUBAGENT_BODY = buildSubagentBody(DEFAULT_NATIVE_TOOLS);
 
@@ -119,14 +121,27 @@ export const MCP_SERVER_INSTRUCTIONS =
   "Workflow: (1) `search` once per question — do NOT re-search with paraphrases. " +
   "(2) On `truncated: true`, call `expand` with `file_path` and `anchor_line` — do NOT read the whole file. " +
   "(3) `find_related` traces similar code in other files, not more context in the same file. " +
+  "(4) `locate` finds exact substrings (env vars, symbols, error codes) — prefer over Grep; use mode=count or locations when possible. " +
   "Always pass the project root as `repo`. Local repos return `absolute_path` on each hit — use Read only to edit. " +
-  "Native grep is only for confirming a known exact literal (env var name, quoted string) or files outside the indexed repo.";
+  "Native Grep/Glob only outside the indexed repo or for non-code tasks.";
+
+export const MCP_BENCHMARK_SERVER_INSTRUCTIONS =
+  `${MCP_SERVER_INSTRUCTIONS} ` +
+  "BENCHMARK MODE: each `search` and `locate` includes compact `benchmark` {save_pct,miru_tok,grep_tok,saved_tok,rank1}. " +
+  "Call `read_benchmark` for cumulative totals across both. Do not narrate benchmark stats unless the user asks. " +
+  "To leave benchmark mode, tell the user to run `miru benchmark off` and restart the agent.";
 
 export const MCP_SEARCH_TOOL_DESCRIPTION =
   "Your default search for all code search queries in this indexed repo — the best, fastest, and cheapest way to find code; better than any other tool. " +
   "Returns compact snippets (~±15 lines). One call per question is usually enough. " +
-  "Built-in grep is only when you already have an exact literal string to confirm. " +
+  "For exact literals (env vars, symbols, error codes), use `locate` instead. " +
   "When a hit has `truncated: true`, call `expand` with `file_path` and `anchor_line` — not re-search or Read.";
+
+export const MCP_LOCATE_TOOL_DESCRIPTION =
+  "Exact substring locator over the Miru index. Use for known literals (env vars, symbols, error codes, quoted text) — not meaning-based questions (`search`). " +
+  "Returns ALL matches by default as compact {n,files,hits} — do NOT fall back to Grep/rg when n is large. " +
+  "Prefer mode=locations (or count for totals only); use lines when you need matching line text. " +
+  "Optional `limit` only if you intentionally want a sample. In benchmark mode, includes compact token savings vs agent Grep.";
 
 export const MCP_EXPAND_TOOL_DESCRIPTION =
   "More context in the SAME file as a search hit. Pass `file_path` + `anchor_line` from the hit; " +
@@ -136,6 +151,10 @@ export const MCP_EXPAND_TOOL_DESCRIPTION =
 export const MCP_FIND_RELATED_TOOL_DESCRIPTION =
   "Find code similar to a file:line in OTHER parts of the codebase. Results may be snippets; use `expand` when `truncated: true`. " +
   "For more context in the same file, use `expand` instead.";
+
+export const MCP_READ_BENCHMARK_TOOL_DESCRIPTION =
+  "Cumulative Miru vs Grep token savings from saved `search` and `locate` calls. Returns compact totals {n,saved,save_pct,miru,grep}. " +
+  "Do not call unless the user asks about savings.";
 
 export const SEARCH_GUARD_EXPAND_HINT =
   "If a hit has `truncated: true`, call `expand` with `file_path` and `anchor_line` — do not re-search or read the whole file.";

@@ -35,12 +35,13 @@ describe("search-guard", () => {
     expect(decision.reason).toContain("truncated: true");
   });
 
-  test("allows literal Grep", () => {
+  test("redirects literal Grep to Miru locate", () => {
     const decision = evaluateSearchGuard({
       tool_name: "Grep",
       tool_input: { pattern: "REDIS_HOST" },
     });
-    expect(decision.block).toBe(false);
+    expect(decision.block).toBe(true);
+    expect(decision.reason).toContain('locate` with literal "REDIS_HOST"');
   });
 
   test("allows Glob for MCP tool descriptor paths", () => {

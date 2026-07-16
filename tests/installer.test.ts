@@ -4,6 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadAgentTemplate } from "../src/agents.ts";
 import {
+  appendBenchmarkQuery,
+  recordFromBenchmark,
+  runWithBenchmarkHistoryPath,
+} from "../src/benchmark/history.ts";
+import type { SearchBenchmarkBlock } from "../src/benchmark/types.ts";
+import { printCommandHelp } from "../src/help.ts";
+import {
   AGENT_TARGETS,
   type AgentTarget,
   MIRU_END,
@@ -18,7 +25,13 @@ import {
   removeTomlBlock,
   replaceOrAppendMarked,
 } from "../src/installer/config.ts";
-import { applyHooks, applyMcp, applySubagent, INTEGRATIONS } from "../src/installer/installer.ts";
+import {
+  applyHooks,
+  applyMcp,
+  applySubagent,
+  INTEGRATIONS,
+  removeUninstallLocalData,
+} from "../src/installer/installer.ts";
 
 const BLOCK = `${MIRU_START}\n## Miru\ninstructions\n${MIRU_END}\n`;
 const BLOCK_V2 = `${MIRU_START}\n## Miru\nupdated\n${MIRU_END}\n`;
@@ -76,9 +89,10 @@ describe("installer config", () => {
     expect(byId.windsurf?.hooksFormat).toBe("windsurf");
   });
 
-  test("search hooks are unchecked by default in installer choices", () => {
+  test("search hooks are off by default in installer choices", () => {
     const hooksIntegration = INTEGRATIONS.find((entry) => entry.id === "hooks");
     expect(hooksIntegration?.defaultChecked).toBe(false);
+    expect(hooksIntegration?.experimental).toBe(true);
   });
   let root = "";
 
@@ -211,6 +225,33 @@ describe("installer config", () => {
     expect(remaining.includes("[mcp_servers.miru]")).toBe(false);
     expect(remaining.includes("[mcp_servers.other]")).toBe(true);
   });
+
+  test("codex toml merge preserves --benchmark across reinstall", async () => {
+    const path = join(root, "config.toml");
+    await Bun.write(
+      path,
+      `[mcp_servers.miru]
+command = "bunx"
+args = ["@takara-ai/miru-code", "--benchmark"]
+`,
+    );
+    expect(await mergeTomlBlock(path)).toBe("unchanged");
+
+    // Force a rewrite by tweaking whitespace-equivalent-but-not-identical block...
+    // Actually unchanged when exact match. Simulate outdated package path drift:
+    await Bun.write(
+      path,
+      `[mcp_servers.miru]
+command = "bunx"
+args = ["@takara-ai/miru-code@old", "--benchmark"]
+`,
+    );
+    expect(await mergeTomlBlock(path)).toBe("updated");
+    const text = await Bun.file(path).text();
+    expect(text).toContain('"--benchmark"');
+    expect(text).toContain("@takara-ai/miru-code");
+    expect(text).not.toContain("@takara-ai/miru-code@old");
+  });
 });
 
 describe("installer apply", () => {
@@ -285,7 +326,25 @@ describe("installer apply", () => {
     >;
     const miru = data.mcpServers?.miru as Record<string, unknown> | undefined;
     expect(miru).toBeDefined();
+    expect(miru?.command).toBe("bunx");
+    expect(miru?.args).toEqual(["@takara-ai/miru-code"]);
     expect(miru?.env).toBeUndefined();
+  });
+
+  test("applyMcp preserves --benchmark when reinstalling", async () => {
+    const agent = claudeTarget(root);
+    await applyMcp(agent, "install");
+    const mcpPath = agent.mcp?.path ?? "";
+    const data = JSON.parse(await Bun.file(mcpPath).text()) as {
+      mcpServers: { miru: { command: string; args: string[]; type: string } };
+    };
+    data.mcpServers.miru.args = ["@takara-ai/miru-code", "--benchmark"];
+    await Bun.write(mcpPath, `${JSON.stringify(data, null, 2)}\n`);
+
+    const again = await applyMcp(agent, "install");
+    expect(again?.action).toBe("unchanged");
+    const after = JSON.parse(await Bun.file(mcpPath).text()) as typeof data;
+    expect(after.mcpServers.miru.args).toEqual(["@takara-ai/miru-code", "--benchmark"]);
   });
 
   test("applyHooks installs Claude PreToolUse hook", async () => {
@@ -309,5 +368,87 @@ describe("installer apply", () => {
 
     expect((await applySubagent(agent, "uninstall"))?.action).toBe("removed");
     expect(await Bun.file(subagentPath).exists()).toBe(false);
+  });
+});
+
+describe("uninstall local data cleanup", () => {
+  test("removeUninstallLocalData deletes the global benchmark report", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "miru-uninstall-bench-"));
+    const path = join(dir, "benchmark-history.json");
+    const block: SearchBenchmarkBlock = {
+      mode: true,
+      token_count_method: "wordpiece",
+      tokenizer_json: null,
+      miru: {
+        search_tokens: 10,
+        workflow_tokens: 10,
+        latency_ms: 1,
+        top_file: "a.ts",
+        top_files: ["a.ts"],
+      },
+      grep_read: {
+        search_tokens: 5,
+        read_full_tokens: 20,
+        read_window_tokens: 8,
+        workflow_full_tokens: 25,
+        workflow_window_tokens: 13,
+        latency_ms: 2,
+        top_file: "a.ts",
+        top_files: ["a.ts"],
+        pattern: "a",
+        keywords: ["a"],
+      },
+      efficiency: { token_savings_pct: 60, baseline: "grep_search_plus_read_full" },
+      accuracy: { rank1_match: true, top_k_overlap_pct: 100, miru_only: [], grep_only: [] },
+      overhead: { parallel_total_ms: 3, miru_share_ms: 1, grep_share_ms: 2 },
+    };
+    await appendBenchmarkQuery(recordFromBenchmark("/repo", block), { path });
+
+    await runWithBenchmarkHistoryPath(path, async () => {
+      const result = await removeUninstallLocalData();
+      expect(result.benchmarkHistoryCleared).toBe(true);
+      expect(result.benchmarkHistoryPath).toBe(path);
+    });
+    expect(await Bun.file(path).exists()).toBe(false);
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test("uninstall help mentions benchmark report cleanup", () => {
+    const chunks: string[] = [];
+    const original = process.stdout.write.bind(process.stdout);
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      chunks.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8"));
+      return true;
+    }) as typeof process.stdout.write;
+    try {
+      printCommandHelp("uninstall");
+    } finally {
+      process.stdout.write = original;
+    }
+    const text = chunks.join("");
+    expect(text).toContain("benchmark report");
+    expect(text).toContain("state directory");
+  });
+
+  test("benchmark help documents on/off exit path", () => {
+    const chunks: string[] = [];
+    const original = process.stdout.write.bind(process.stdout);
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      chunks.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8"));
+      return true;
+    }) as typeof process.stdout.write;
+    try {
+      printCommandHelp("benchmark");
+    } finally {
+      process.stdout.write = original;
+    }
+    const text = chunks.join("");
+    expect(text).toContain("miru benchmark off");
+    expect(text).toContain("miru benchmark on");
+    expect(text).toContain("miru benchmark clear");
+    expect(text).toContain("no env overrides");
+    expect(text).toContain("plaintext");
+    expect(text).toContain("JSONL");
+    expect(text).toContain("Grep baseline");
   });
 });

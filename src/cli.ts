@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { type AgentId, writeAgentFile } from "./agents.ts";
+import { clearBenchmarkHistory, resolveBenchmarkHistoryPath } from "./benchmark/history.ts";
 import { clearCache } from "./cache.ts";
 import {
   fail,
@@ -7,8 +8,10 @@ import {
   formatSearchErrorPretty,
   formatSearchResultsPretty,
   hint,
+  info,
   prefersJsonOutput,
   success,
+  writeStdout,
 } from "./cli-ui.ts";
 import { loadStoredCredentials } from "./credentials.ts";
 import { normalizeTakaraApiKeyEnv } from "./env.ts";
@@ -20,9 +23,11 @@ import {
   printFullHelp,
   printMainHelp,
 } from "./help.ts";
+import { getBenchmarkModeStatus, setBenchmarkMode } from "./installer/benchmark-mode.ts";
 import { runSearchGuardFromStdin } from "./installer/hooks/search-guard.ts";
 import { runInstaller } from "./installer/installer.ts";
 import { promptConfirm } from "./installer/prompt.ts";
+import { formatLiteralLocate, type LiteralMode } from "./literal.ts";
 import { serveMcp } from "./mcp/serve.ts";
 import { MiruIndex } from "./miru-index.ts";
 import {
@@ -34,6 +39,8 @@ import {
 import { withSpinner } from "./spinner.ts";
 import type { ContentType, SearchResult } from "./types.ts";
 import {
+  DEFAULT_EXPAND_AFTER,
+  DEFAULT_EXPAND_BEFORE,
   expandChunksAtLine,
   formatExpandResults,
   formatResults,
@@ -52,6 +59,7 @@ await loadStoredCredentials();
 
 const CLI_COMMANDS = new Set([
   "search",
+  "locate",
   "expand",
   "find-related",
   "init",
@@ -59,6 +67,7 @@ const CLI_COMMANDS = new Set([
   "uninstall",
   "setup",
   "clear",
+  "benchmark",
   "hook-guard",
   "help",
   "-h",
@@ -104,7 +113,7 @@ function parseContentArgv(argv: string[]): { content: ContentType[]; rest: strin
       rest.push(arg);
     }
   }
-  return { content: resolveContent(content.length > 0 ? content : ["code"]), rest };
+  return { content: resolveContent(content), rest };
 }
 
 function parseTopK(argv: string[]): { topK: number; rest: string[] } {
@@ -250,6 +259,53 @@ class RelatedChunkNotFoundError extends Error {
   }
 }
 
+async function runLocate(
+  path: string,
+  literal: string,
+  content: ContentType[],
+  jsonFlag: boolean,
+  mode: LiteralMode,
+  limit: number | undefined,
+  ignoreCase: boolean,
+): Promise<void> {
+  await ensureCredentials({ interactive: true });
+
+  const payload = await withSpinner("Locating literal", async () => {
+    const built = await MiruIndex.fromSource(path, content);
+    await built.saveToCache(path);
+    return formatLiteralLocate(
+      built.locateLiteral(literal, {
+        mode,
+        ignore_case: ignoreCase,
+        ...(limit != null ? { limit } : {}),
+      }),
+    );
+  });
+
+  if (prefersJsonOutput(jsonFlag)) {
+    console.log(JSON.stringify(payload));
+    return;
+  }
+
+  const n = Number(payload.n ?? 0);
+  const files = Number(payload.files ?? 0);
+  writeStdout(`literal=${literal}  n=${n}  files=${files}  mode=${mode}`);
+  const hits = payload.hits as Array<{ f: string; l: number; t?: string }> | undefined;
+  if (hits) {
+    for (const hit of hits) {
+      if (hit.t !== undefined) {
+        writeStdout(`  ${hit.f}:${hit.l}: ${hit.t}`);
+      } else {
+        writeStdout(`  ${hit.f}:${hit.l}`);
+      }
+    }
+    if (payload.truncated) {
+      writeStdout(`  … truncated (showing ${hits.length} of ${n})`);
+    }
+  }
+  writeStdout("");
+}
+
 async function runInit(agent: AgentId, force: boolean): Promise<void> {
   try {
     const dest = await writeAgentFile(agent, { force });
@@ -265,6 +321,75 @@ async function runInit(agent: AgentId, force: boolean): Promise<void> {
 async function runClear(path: string): Promise<void> {
   await clearCache(path);
   success(`Cleared cached index for ${path}`);
+}
+
+async function runBenchmarkCommand(rest: string[]): Promise<void> {
+  const action = rest[0];
+  if (!action || action === "-h" || action === "--help") {
+    printCommandHelp("benchmark");
+    return;
+  }
+
+  if (action === "status") {
+    const rows = await getBenchmarkModeStatus();
+    const installed = rows.filter((row) => row.action !== "missing");
+    if (installed.length === 0) {
+      info("No Miru MCP installs found. Run `miru install` first.");
+      return;
+    }
+    for (const row of installed) {
+      writeStdout(`  ${row.enabled ? "on " : "off"}  ${row.agent.padEnd(16)} ${row.path}`);
+    }
+    const onCount = installed.filter((row) => row.enabled).length;
+    writeStdout("");
+    if (onCount > 0) {
+      hint(
+        `Benchmark mode on for ${onCount}/${installed.length}. Run \`miru benchmark off\` to leave.`,
+      );
+    } else {
+      hint("Benchmark mode is off for all installed agents.");
+    }
+    return;
+  }
+
+  if (action === "on" || action === "off") {
+    const enabled = action === "on";
+    const rows = await setBenchmarkMode(enabled);
+    const touched = rows.filter((row) => row.action === "updated" || row.action === "unchanged");
+    if (touched.length === 0) {
+      info("No Miru MCP installs found. Run `miru install` first.");
+      return;
+    }
+    for (const row of touched) {
+      const label = row.action === "updated" ? (enabled ? "enabled" : "disabled") : "unchanged";
+      writeStdout(`  ${label.padEnd(9)} ${row.agent.padEnd(16)} ${row.path}`);
+    }
+    writeStdout("");
+    success(
+      enabled
+        ? "Benchmark mode on. Restart agents to apply."
+        : "Benchmark mode off. Restart agents to apply.",
+    );
+    if (enabled) {
+      hint("Leave anytime with `miru benchmark off`.");
+    }
+    return;
+  }
+
+  if (action === "clear") {
+    const path = resolveBenchmarkHistoryPath();
+    const result = await clearBenchmarkHistory(path);
+    if (result.cleared) {
+      success(`Cleared benchmark report ${result.path}`);
+    } else {
+      info(`No benchmark report at ${result.path}`);
+    }
+    return;
+  }
+
+  fail(`Unknown benchmark action "${action}". Use on, off, status, or clear.`);
+  printCommandHelp("benchmark");
+  process.exit(1);
 }
 
 async function runCli(argv: string[]): Promise<void> {
@@ -301,6 +426,11 @@ async function runCli(argv: string[]): Promise<void> {
 
   if (command === "install" || command === "uninstall") {
     await runInstaller(command);
+    return;
+  }
+
+  if (command === "benchmark") {
+    await runBenchmarkCommand(rest);
     return;
   }
 
@@ -392,6 +522,49 @@ async function runCli(argv: string[]): Promise<void> {
     return;
   }
 
+  if (command === "locate") {
+    const literal = sizedRest[0];
+    if (!literal) {
+      printCommandHelp("locate");
+      process.exit(1);
+    }
+    let mode: LiteralMode = "lines";
+    let limit: number | undefined;
+    let ignoreCase = false;
+    const pathArgs: string[] = [];
+    for (let i = 1; i < sizedRest.length; i++) {
+      const arg = sizedRest[i];
+      if (arg === "--mode" && sizedRest[i + 1]) {
+        const value = sizedRest[++i];
+        if (value !== "count" && value !== "locations" && value !== "lines") {
+          fail(`Unknown locate mode "${value}". Use count, locations, or lines.`);
+          process.exit(1);
+        }
+        mode = value;
+        continue;
+      }
+      if (arg === "--limit" && sizedRest[i + 1]) {
+        const raw = Number(sizedRest[++i]);
+        if (!Number.isFinite(raw) || raw < 1) {
+          fail("locate --limit must be a positive integer.");
+          process.exit(1);
+        }
+        limit = Math.floor(raw);
+        continue;
+      }
+      if (arg === "--ignore-case") {
+        ignoreCase = true;
+        continue;
+      }
+      if (arg !== undefined) {
+        pathArgs.push(arg);
+      }
+    }
+    const path = resolveSearchPath(pathArgs[0] ?? process.cwd());
+    await runLocate(path, literal, content, jsonFlag, mode, limit, ignoreCase);
+    return;
+  }
+
   if (command === "expand") {
     const filePath = sizedRest[0];
     const lineRaw = sizedRest[1];
@@ -401,8 +574,8 @@ async function runCli(argv: string[]): Promise<void> {
     }
     const line = Number(lineRaw);
     const path = resolveSearchPath(sizedRest[2] ?? process.cwd());
-    let before = 1;
-    let after = 1;
+    let before = DEFAULT_EXPAND_BEFORE;
+    let after = DEFAULT_EXPAND_AFTER;
     for (let i = 3; i < sizedRest.length; i++) {
       const arg = sizedRest[i];
       if (arg === "--before" && sizedRest[i + 1]) {
@@ -435,10 +608,15 @@ async function runCli(argv: string[]): Promise<void> {
 
 async function runMcp(argv: string[]): Promise<void> {
   let ref: string | null = null;
+  let benchmark = false;
   const contentTokens: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
+    if (arg === "--benchmark") {
+      benchmark = true;
+      continue;
+    }
     if (arg === "--ref" && argv[i + 1]) {
       ref = argv[++i] ?? null;
       continue;
@@ -459,7 +637,8 @@ async function runMcp(argv: string[]): Promise<void> {
 
   await serveMcp({
     ref,
-    content: resolveContent(contentTokens.length > 0 ? contentTokens : ["code"]),
+    content: resolveContent(contentTokens),
+    benchmark,
   });
 }
 

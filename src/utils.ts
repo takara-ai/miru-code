@@ -1,7 +1,7 @@
 import { join, relative, resolve, sep } from "node:path";
 import { applySnippetsToResults, searchSnippetsEnabled } from "./snippet.ts";
 import type { Chunk, ContentType, SearchResult } from "./types.ts";
-import { chunkToDict } from "./types.ts";
+import { chunkToDict, defaultContentTypes } from "./types.ts";
 
 const GIT_URL_SCHEMES = [
   "https://",
@@ -102,6 +102,10 @@ export type ExpandResults = {
 
 export const DEFAULT_MCP_TOP_K = 3;
 export const MAX_MCP_TOP_K = 10;
+
+/** Extra chunks before/after the expand anchor — MCP `expand` tool defaults. */
+export const DEFAULT_EXPAND_BEFORE = 1;
+export const DEFAULT_EXPAND_AFTER = 1;
 
 /** Clamp MCP top_k to a sane range; omit for the default. */
 export function clampMcpTopK(topK?: number): number {
@@ -246,6 +250,9 @@ export function formatExpandResults(
 }
 
 export function resolveContent(raw: string[]): ContentType[] {
+  if (raw.length === 0) {
+    return defaultContentTypes();
+  }
   if (raw.includes("all")) {
     return ["code", "docs", "config"];
   }

@@ -14,9 +14,10 @@ import { createIndexFromPath } from "./index/create.ts";
 import { applyIncrementalFileChanges } from "./index/incremental.ts";
 import { persistencePaths, saveIndexBundle } from "./index/persistence.ts";
 import type { SemanticIndex } from "./index/semantic-index.ts";
+import { type LiteralLocateOptions, type LiteralLocateResult, locateLiteral } from "./literal.ts";
 import { hybridSearch, searchSemanticOnly } from "./search.ts";
 import type { Chunk, ContentType, SearchResult } from "./types.ts";
-import { chunkKey, chunkToDict } from "./types.ts";
+import { chunkKey, chunkToDict, defaultContentTypes } from "./types.ts";
 import { computeSourceCacheKey, isGitUrl } from "./utils.ts";
 import { indexCacheEpoch } from "./version.ts";
 
@@ -120,7 +121,7 @@ export class MiruIndex {
     this.chunksInternal = options.chunks;
     this.embeddingModel = options.embeddingModel;
     this._root = options.root ?? null;
-    this.content = options.content ?? ["code"];
+    this.content = options.content ?? defaultContentTypes();
     this.loadedFromDiskFlag = options.loadedFromDisk ?? false;
     this.storedFileMtimes = new Map(Object.entries(options.storedFileMtimes ?? {}));
     this.fileMapping = new Map();
@@ -162,7 +163,7 @@ export class MiruIndex {
    */
   static async fromGit(
     url: string,
-    content: ContentType[] = ["code"],
+    content: ContentType[] = defaultContentTypes(),
     embeddingModel?: string,
     ref?: string | null,
   ): Promise<MiruIndex> {
@@ -202,7 +203,7 @@ export class MiruIndex {
   /** Resolve a local path or git URL and delegate to `fromPath` or `fromGit`. */
   static async fromSource(
     source: string,
-    content: ContentType[] = ["code"],
+    content: ContentType[] = defaultContentTypes(),
     embeddingModel?: string,
     ref?: string | null,
   ): Promise<MiruIndex> {
@@ -221,7 +222,7 @@ export class MiruIndex {
    */
   static async fromPath(
     path: string,
-    content: ContentType[] = ["code"],
+    content: ContentType[] = defaultContentTypes(),
     embeddingModel?: string,
   ): Promise<MiruIndex> {
     const resolved = resolve(path);
@@ -271,7 +272,7 @@ export class MiruIndex {
   static async loadFromDisk(path: string, embeddingModel?: string): Promise<MiruIndex> {
     const model = embeddingModel ?? resolveEmbeddingModel();
     const { bm25, semantic, chunks, metadata } = await loadCachedIndex(path);
-    const content = (metadata.content_type as ContentType[]) ?? ["code"];
+    const content = (metadata.content_type as ContentType[]) ?? defaultContentTypes();
     const root = metadata.root_path ? String(metadata.root_path) : null;
     const storedFileMtimes = (metadata.file_mtimes as Record<string, number>) ?? {};
 
@@ -443,5 +444,13 @@ export class MiruIndex {
     });
 
     return results.filter((r) => chunkKey(r.chunk) !== chunkKey(target)).slice(0, topK);
+  }
+
+  /**
+   * Exact substring location over indexed chunks (no disk re-walk).
+   * Prefer for known literals; use `search` for meaning-based questions.
+   */
+  locateLiteral(literal: string, options?: LiteralLocateOptions): LiteralLocateResult {
+    return locateLiteral(this.chunksInternal, literal, options);
   }
 }

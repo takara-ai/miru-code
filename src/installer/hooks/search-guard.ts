@@ -2,7 +2,7 @@ import { SEARCH_GUARD_EXPAND_HINT } from "../search-policy.ts";
 
 const REDIRECT_PREFIX =
   "Use Miru MCP instead of built-in search tools (pass project root as `repo`). " +
-  "Grep/Glob/Shell are only for exact literal confirmation or non-code tasks.";
+  "Prefer Miru `locate` for exact literals and `search` for meaning-based questions.";
 
 const MIRU_TOOL_RE = /miru/i;
 
@@ -121,6 +121,9 @@ export function searchGuardBlockReason(
   toolInput: Record<string, unknown>,
 ): string {
   const query = suggestedMiruQuery(toolName, toolInput);
+  if (GREP_TOOL_RE.test(toolName) && isLiteralGrepPattern(grepPatternFromInput(toolInput))) {
+    return `${REDIRECT_PREFIX} Try Miru \`locate\` with literal "${query.replace(/^['"`]|['"`]$/g, "")}". ${SEARCH_GUARD_EXPAND_HINT}`;
+  }
   return `${REDIRECT_PREFIX} Try Miru \`search\` with query "${query}". ${SEARCH_GUARD_EXPAND_HINT}`;
 }
 
@@ -166,10 +169,6 @@ export function evaluateSearchGuard(payload: HookPayload): GuardDecision {
   }
 
   if (GREP_TOOL_RE.test(toolName)) {
-    const pattern = grepPatternFromInput(toolInput);
-    if (isLiteralGrepPattern(pattern)) {
-      return { block: false, reason: "" };
-    }
     return { block: true, reason: searchGuardBlockReason(toolName, toolInput) };
   }
 
