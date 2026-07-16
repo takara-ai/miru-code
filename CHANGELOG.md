@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.1](https://github.com/takara-ai/miru-code/compare/v1.3.0...v1.3.1) (2026-07-16)
+
+
+### Bug Fixes
+
+* **benchmark:** grep every match_variants/literal-array variant, not just the raw literal ([185a237](https://github.com/takara-ai/miru-code/commit/185a23775aa188339001d9168913967c4167f423))
+* **benchmark:** scale grep baseline context to the requested context_lines ([8c88e2f](https://github.com/takara-ai/miru-code/commit/8c88e2f44566994659d140cd40aaea0c222c117a))
+
 ## [1.3.0](https://github.com/takara-ai/miru-code/compare/v1.2.2...v1.3.0) (2026-07-16)
 
 
