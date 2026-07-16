@@ -20,10 +20,19 @@ export function agentBenchmarkFromTokens(
   };
 }
 
-/** Attach compact `benchmark` to an MCP tool payload. */
+/** Attach compact `benchmark` to an MCP tool payload (JSON path / tests). */
 export function attachAgentBenchmark<T extends Record<string, unknown>>(
   payload: T,
   benchmark: AgentBenchmarkSummary,
 ): T & { benchmark: AgentBenchmarkSummary } {
   return { ...payload, benchmark };
+}
+
+/**
+ * Append a compact trailing JSON object so plaintext MCP bodies can still expose
+ * `benchmark` without wrapping the result in JSON scaffolding.
+ * `miru_tok` counts the body only — never this trailer.
+ */
+export function appendAgentBenchmark(body: string, benchmark: AgentBenchmarkSummary): string {
+  return `${body}\n\n${JSON.stringify({ benchmark })}`;
 }

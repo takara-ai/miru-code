@@ -1,13 +1,14 @@
 import * as z from "zod";
 import packageJson from "../../package.json";
-import { attachSearchBenchmark, benchmarkSearchComparison } from "../benchmark/compare.ts";
+import { benchmarkSearchComparison, toAgentBenchmarkSummary } from "../benchmark/compare.ts";
 import {
   appendBenchmarkQuery,
   readBenchmarkRollup,
   recordFromAgentSummary,
   recordFromBenchmark,
 } from "../benchmark/history.ts";
-import { attachLocateBenchmark, benchmarkLocateComparison } from "../benchmark/locate-compare.ts";
+import { benchmarkLocateComparison } from "../benchmark/locate-compare.ts";
+import { appendAgentBenchmark } from "../benchmark/summary.ts";
 import {
   MCP_BENCHMARK_SERVER_INSTRUCTIONS,
   MCP_EXPAND_TOOL_DESCRIPTION,
@@ -18,7 +19,6 @@ import {
   MCP_SERVER_INSTRUCTIONS,
 } from "../installer/search-policy.ts";
 import { formatLiteralLocate } from "../literal.ts";
-import { formatExpandResultsText, formatLiteralLocateText, formatResultsText } from "./format-text.ts";
 import type { ContentType } from "../types.ts";
 import {
   clampMcpTopK,
@@ -33,6 +33,11 @@ import {
   MAX_MCP_TOP_K,
   resolveChunk,
 } from "../utils.ts";
+import {
+  formatExpandResultsText,
+  formatLiteralLocateText,
+  formatResultsText,
+} from "./format-text.ts";
 import { getIndexForRepo, type IndexCache, toolText } from "./index-cache.ts";
 import { MiruMcpServer } from "./runtime.ts";
 
@@ -44,14 +49,11 @@ const REPO_DESCRIPTION =
 const BENCHMARK_LOCAL_ONLY_NOTE =
   "Benchmark comparisons require a local repo path; git URL repos are skipped.";
 
-function withBenchmarkSkipped<T extends Record<string, unknown>>(
-  payload: T,
-): T & { benchmark_skipped: "local_repo_only"; note: string } {
-  return {
-    ...payload,
+function withBenchmarkSkippedNote(body: string): string {
+  return `${body}\n\n${JSON.stringify({
     benchmark_skipped: "local_repo_only",
     note: BENCHMARK_LOCAL_ONLY_NOTE,
-  };
+  })}`;
 }
 
 export function createMcpServer(
@@ -116,13 +118,11 @@ export function createMcpServer(
           } catch {
             // History is best-effort; never fail the search on persist errors.
           }
+          const body = formatResultsText(
+            formatResults(query, results, { repoRoot, snippet: true }),
+          );
           return toolText(
-            JSON.stringify(
-              attachSearchBenchmark(
-                formatResults(query, results, { repoRoot, snippet: true }),
-                comparison.benchmark,
-              ),
-            ),
+            appendAgentBenchmark(body, toAgentBenchmarkSummary(comparison.benchmark)),
           );
         }
 
@@ -134,10 +134,11 @@ export function createMcpServer(
           return toolText("No results found.");
         }
         const payload = formatResults(query, results, { repoRoot, snippet: true });
+        const body = formatResultsText(payload);
         if (benchmark && !repoRoot) {
-          return toolText(JSON.stringify(withBenchmarkSkipped(payload)));
+          return toolText(withBenchmarkSkippedNote(body));
         }
-        return toolText(formatResultsText(payload));
+        return toolText(body);
       } catch (err) {
         return toolText(err instanceof Error ? err.message : String(err));
       }
@@ -213,18 +214,18 @@ export function createMcpServer(
             } catch {
               // History is best-effort; never fail locate on persist errors.
             }
-            return toolText(
-              JSON.stringify(attachLocateBenchmark(comparison.payload, comparison.benchmark)),
-            );
+            const body = formatLiteralLocateText(comparison.payload);
+            return toolText(appendAgentBenchmark(body, comparison.benchmark));
           }
         }
 
         const result = index.locateLiteral(literal, locateOpts);
         const payload = formatLiteralLocate(result);
+        const body = formatLiteralLocateText(payload);
         if (benchmark && !localRepoRoot(repo)) {
-          return toolText(JSON.stringify(withBenchmarkSkipped(payload)));
+          return toolText(withBenchmarkSkippedNote(body));
         }
-        return toolText(formatLiteralLocateText(payload));
+        return toolText(body);
       } catch (err) {
         return toolText(err instanceof Error ? err.message : String(err));
       }

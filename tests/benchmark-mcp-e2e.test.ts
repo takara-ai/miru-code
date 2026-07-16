@@ -13,6 +13,7 @@ import { createIndexFromPath } from "../src/index/create.ts";
 import { IndexCache } from "../src/mcp/index-cache.ts";
 import { createMcpServer } from "../src/mcp/server.ts";
 import { MiruIndex } from "../src/miru-index.ts";
+import { countTokens } from "../src/token-count.ts";
 import { computeSourceCacheKey, formatResults } from "../src/utils.ts";
 import { MemoryTransport } from "./helpers/mcp-memory-transport.ts";
 import { unitVector } from "./test-helpers.ts";
@@ -92,12 +93,31 @@ function preloadCache(cache: IndexCache, root: string, index: MiruIndex): void {
   entry.task = Promise.resolve(index);
 }
 
-function parseToolJson(response: unknown): Record<string, unknown> {
+function parseToolText(response: unknown): string {
   if (!response || typeof response !== "object" || !("result" in response)) {
     throw new Error("missing tools/call result");
   }
   const content = (response as { result: { content: Array<{ text: string }> } }).result.content;
-  return JSON.parse(content[0]?.text ?? "{}") as Record<string, unknown>;
+  return content[0]?.text ?? "";
+}
+
+function parseToolJson(response: unknown): Record<string, unknown> {
+  return JSON.parse(parseToolText(response) || "{}") as Record<string, unknown>;
+}
+
+/** Split plaintext MCP body from trailing `{"benchmark":...}` line. */
+function parseBenchmarkToolText(response: unknown): {
+  body: string;
+  benchmark: Record<string, unknown>;
+} {
+  const text = parseToolText(response);
+  const marker = '\n\n{"benchmark":';
+  const idx = text.lastIndexOf(marker);
+  if (idx < 0) {
+    throw new Error("missing benchmark trailer");
+  }
+  const trailer = JSON.parse(text.slice(idx + 2)) as { benchmark: Record<string, unknown> };
+  return { body: text.slice(0, idx), benchmark: trailer.benchmark };
 }
 
 describe("benchmark MCP end-to-end", () => {
@@ -128,9 +148,15 @@ describe("benchmark MCP end-to-end", () => {
         rank1: expect.any(Boolean),
       });
       for (const key of Object.keys(summary)) {
-        expect(["save_pct", "miru_tok", "grep_tok", "saved_tok", "rank1", "miru_only"]).toContain(
-          key,
-        );
+        expect([
+          "save_pct",
+          "miru_tok",
+          "grep_tok",
+          "saved_tok",
+          "rank1",
+          "miru_only",
+          "search_tok",
+        ]).toContain(key);
       }
 
       const attached = attachSearchBenchmark(
@@ -264,10 +290,12 @@ describe("benchmark MCP end-to-end", () => {
 
         await server.connect(transport);
 
-        const searchOne = parseToolJson(transport.responseFor(2));
-        const searchTwo = parseToolJson(transport.responseFor(3));
-        expect(searchOne.error).toBeUndefined();
-        expect(searchTwo.error).toBeUndefined();
+        const searchOne = parseBenchmarkToolText(transport.responseFor(2));
+        const searchTwo = parseBenchmarkToolText(transport.responseFor(3));
+        expect(searchOne.body.length).toBeGreaterThan(0);
+        expect(searchTwo.body.length).toBeGreaterThan(0);
+        expect(searchOne.body.startsWith("{")).toBe(false);
+        expect(searchTwo.body.startsWith("{")).toBe(false);
 
         const benchOne = searchOne.benchmark as {
           save_pct: number;
@@ -275,15 +303,28 @@ describe("benchmark MCP end-to-end", () => {
           grep_tok: number;
           saved_tok: number;
           rank1: boolean;
+          search_tok?: number;
         };
         const benchTwo = searchTwo.benchmark as typeof benchOne;
         expect(benchOne.miru_tok).toBeGreaterThan(0);
         expect(benchTwo.miru_tok).toBeGreaterThan(0);
+        expect(benchOne.search_tok).toBeGreaterThan(0);
+        expect(benchOne.search_tok).toBeLessThanOrEqual(benchOne.miru_tok);
+        expect(benchOne.search_tok).toBe(countTokens(searchOne.body));
+        expect(benchTwo.search_tok).toBe(countTokens(searchTwo.body));
         expect(benchOne.saved_tok).toBe(Math.max(0, benchOne.grep_tok - benchOne.miru_tok));
         expect(benchTwo.saved_tok).toBe(Math.max(0, benchTwo.grep_tok - benchTwo.miru_tok));
         expect(
           Object.keys(benchOne).every((key) =>
-            ["save_pct", "miru_tok", "grep_tok", "saved_tok", "rank1", "miru_only"].includes(key),
+            [
+              "save_pct",
+              "miru_tok",
+              "grep_tok",
+              "saved_tok",
+              "rank1",
+              "miru_only",
+              "search_tok",
+            ].includes(key),
           ),
         ).toBe(true);
 
@@ -370,26 +411,19 @@ describe("benchmark MCP end-to-end", () => {
 
         await server.connect(transport);
 
-        const locatePayload = parseToolJson(transport.responseFor(2)) as {
-          literal: string;
-          n: number;
-          hits: Array<{ f: string; l: number }>;
-          benchmark: {
-            save_pct: number;
-            miru_tok: number;
-            grep_tok: number;
-            saved_tok: number;
-            rank1: boolean;
-          };
+        const locate = parseBenchmarkToolText(transport.responseFor(2));
+        expect(locate.body).toContain("miruAuthSecretToken");
+        expect(locate.body.startsWith("{")).toBe(false);
+        const locateBench = locate.benchmark as {
+          save_pct: number;
+          miru_tok: number;
+          grep_tok: number;
+          saved_tok: number;
+          rank1: boolean;
         };
-        expect(locatePayload.literal).toBe("miruAuthSecretToken");
-        expect(locatePayload.n).toBeGreaterThan(0);
-        expect(locatePayload.hits.length).toBeGreaterThan(0);
-        expect(locatePayload.benchmark.grep_tok).toBeGreaterThan(locatePayload.benchmark.miru_tok);
-        expect(locatePayload.benchmark.saved_tok).toBe(
-          locatePayload.benchmark.grep_tok - locatePayload.benchmark.miru_tok,
-        );
-        expect(Object.keys(locatePayload.benchmark).sort()).toEqual([
+        expect(locateBench.grep_tok).toBeGreaterThan(locateBench.miru_tok);
+        expect(locateBench.saved_tok).toBe(locateBench.grep_tok - locateBench.miru_tok);
+        expect(Object.keys(locateBench).sort()).toEqual([
           "grep_tok",
           "miru_tok",
           "rank1",
@@ -405,9 +439,9 @@ describe("benchmark MCP end-to-end", () => {
           recent?: unknown;
         };
         expect(rollup.n).toBe(1);
-        expect(rollup.saved).toBe(locatePayload.benchmark.saved_tok);
-        expect(rollup.miru).toBe(locatePayload.benchmark.miru_tok);
-        expect(rollup.grep).toBe(locatePayload.benchmark.grep_tok);
+        expect(rollup.saved).toBe(locateBench.saved_tok);
+        expect(rollup.miru).toBe(locateBench.miru_tok);
+        expect(rollup.grep).toBe(locateBench.grep_tok);
         expect(rollup.recent).toBeUndefined();
 
         cache.close();

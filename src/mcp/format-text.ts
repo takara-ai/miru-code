@@ -1,7 +1,10 @@
 import type { ExpandResults } from "../utils.ts";
 
 /** Plain-text rendering of `formatResults()` output — same info as the JSON shape, no scaffolding. */
-export function formatResultsText(payload: { query: string; results: Record<string, unknown>[] }): string {
+export function formatResultsText(payload: {
+  query: string;
+  results: Record<string, unknown>[];
+}): string {
   if (payload.results.length === 0) {
     return "No results found.";
   }
@@ -20,10 +23,11 @@ export function formatResultsText(payload: { query: string; results: Record<stri
 
 /** Plain-text rendering of `formatLiteralLocate()` output. */
 export function formatLiteralLocateText(payload: Record<string, unknown>): string {
-  const label = (payload.literals as string[] | undefined)?.join(" | ") ?? (payload.literal as string);
+  const label =
+    (payload.literals as string[] | undefined)?.join(" | ") ?? (payload.literal as string);
   const n = payload.n as number;
   const files = payload.files as number;
-  const truncatedNote = payload.truncated ? " (truncated — pass a narrower include/exclude or mode=count)" : "";
+  const truncatedNote = payload.truncated ? " (truncated — pass a narrower include/exclude)" : "";
   const header = `"${label}": ${n} match${n === 1 ? "" : "es"} across ${files} file${files === 1 ? "" : "s"}${truncatedNote}`;
 
   const hits = payload.hits as
@@ -36,8 +40,11 @@ export function formatLiteralLocateText(payload: Record<string, unknown>): strin
   const lines = [header, ""];
   for (const hit of hits) {
     lines.push(hit.t !== undefined ? `${hit.f}:${hit.l}: ${hit.t}` : `${hit.f}:${hit.l}`);
-    if (hit.ctx && hit.ctx_l !== undefined) {
-      hit.ctx.forEach((line, i) => lines.push(`  ${hit.ctx_l! + i}: ${line}`));
+    if (hit.ctx != null && hit.ctx_l !== undefined) {
+      const ctxStart = hit.ctx_l;
+      for (let i = 0; i < hit.ctx.length; i++) {
+        lines.push(`  ${ctxStart + i}: ${hit.ctx[i]}`);
+      }
     }
   }
   return lines.join("\n");

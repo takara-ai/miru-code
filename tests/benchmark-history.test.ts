@@ -77,6 +77,7 @@ describe("agent benchmark payloads", () => {
       saved_tok: 300,
       rank1: true,
       miru_only: ["only-a.ts", "only-b.ts", "only-c.ts"],
+      search_tok: 100,
     });
     expect(JSON.stringify(summary).length).toBeLessThan(JSON.stringify(full).length / 3);
   });

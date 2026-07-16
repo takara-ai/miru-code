@@ -165,8 +165,9 @@ export function printCommandHelp(command: string): void {
       writeStdout("Override path with MIRU_BENCHMARK_HISTORY_PATH. Append-only JSONL of savings.");
       writeStdout("Repo paths in the report are plaintext — use `clear` on shared machines.");
       writeStdout("");
-      writeStdout("Savings compare Miru workflow tokens to a Grep baseline");
-      writeStdout("(rg search + read of the top matched file), not the agent's full tool chain.");
+      writeStdout("Savings compare Miru MCP response tokens (search text + expand text)");
+      writeStdout("to a Grep baseline (rg search + read of the top matched file),");
+      writeStdout("not bare chunk content and not the agent's full tool chain.");
       writeStdout("Local paths only — git URL repos skip comparison with benchmark_skipped.");
       writeStdout("");
       return;

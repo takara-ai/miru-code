@@ -42,7 +42,12 @@ export interface SearchBenchmarkBlock {
   };
 }
 
-/** Compact per-search stats attached to MCP `search` responses (agent-facing). */
+/**
+ * Compact per-search stats appended to MCP `search` / `locate` responses.
+ * `miru_tok` is the agent-facing MCP text body for that tool (search also adds
+ * one expand body for workflow vs grep+read). Not JSON scaffolding, not the
+ * trailing `{"benchmark":...}` line.
+ */
 export interface AgentBenchmarkSummary {
   save_pct: number;
   miru_tok: number;
@@ -51,6 +56,11 @@ export interface AgentBenchmarkSummary {
   rank1: boolean;
   /** Present only when non-empty; capped at 3 paths. */
   miru_only?: string[];
+  /**
+   * Search only: tokens of the search MCP text body alone (before expand).
+   * `miru_tok` = search_tok + expand body when present.
+   */
+  search_tok?: number;
 }
 
 /** Compact cumulative rollup for MCP `read_benchmark` (agent-facing). */

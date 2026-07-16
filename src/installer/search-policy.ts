@@ -127,7 +127,10 @@ export const MCP_SERVER_INSTRUCTIONS =
 
 export const MCP_BENCHMARK_SERVER_INSTRUCTIONS =
   `${MCP_SERVER_INSTRUCTIONS} ` +
-  "BENCHMARK MODE: each `search` and `locate` includes compact `benchmark` {save_pct,miru_tok,grep_tok,saved_tok,rank1}. " +
+  "BENCHMARK MODE: each `search` and `locate` ends with a compact JSON line " +
+  '`{"benchmark":{save_pct,miru_tok,grep_tok,saved_tok,rank1[,search_tok,miru_only]}}`. ' +
+  "Results stay plain text. For search, `miru_tok` is search MCP text + one expand (workflow vs grep+read); " +
+  "`search_tok` is this search body alone. " +
   "Call `read_benchmark` for cumulative totals across both. Do not narrate benchmark stats unless the user asks. " +
   "To leave benchmark mode, tell the user to run `miru benchmark off` and restart the agent.";
 

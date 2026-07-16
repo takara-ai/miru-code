@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { benchmarkLocateComparison } from "../src/benchmark/locate-compare.ts";
 import type { EmbeddingBackend } from "../src/embeddings/openai.ts";
 import { createIndexFromPath } from "../src/index/create.ts";
+import { formatLiteralLocateText } from "../src/mcp/format-text.ts";
 import { MiruIndex } from "../src/miru-index.ts";
 import { countTokens } from "../src/token-count.ts";
 import { unitVector } from "./test-helpers.ts";
@@ -58,7 +59,9 @@ describe("locate benchmark comparison", () => {
       });
 
       expect(comparison.result.n).toBeGreaterThan(0);
-      expect(comparison.benchmark.miru_tok).toBe(countTokens(JSON.stringify(comparison.payload)));
+      expect(comparison.benchmark.miru_tok).toBe(
+        countTokens(formatLiteralLocateText(comparison.payload)),
+      );
       expect(comparison.benchmark.grep_tok).toBeGreaterThan(comparison.benchmark.miru_tok);
       expect(comparison.benchmark.saved_tok).toBe(
         comparison.benchmark.grep_tok - comparison.benchmark.miru_tok,

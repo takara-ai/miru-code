@@ -1,10 +1,11 @@
 /**
- * Compare Miru `locate` agent payload tokens vs the costlier native Grep path.
+ * Compare Miru `locate` MCP response tokens vs the costlier native Grep path.
  *
- * Baseline mirrors Cursor/Claude Grep-style output: fixed-string matches with
- * ±GREP_CONTEXT lines (not slim `rg -n`). That is the expensive path agents
- * take without `locate`, so savings measure real workflow cost — not an
- * apples-to-apples payload contest against optimally-minimal ripgrep.
+ * Miru side counts the agent-facing text body (`formatLiteralLocateText`), not
+ * the intermediate JSON payload. Baseline mirrors Cursor/Claude Grep-style
+ * output: fixed-string matches with ±GREP_CONTEXT lines (not slim `rg -n`).
+ * That is the expensive path agents take without `locate`, so savings measure
+ * real workflow cost — not an apples-to-apples contest against minimal ripgrep.
  */
 
 import {
@@ -13,6 +14,7 @@ import {
   type LiteralLocateOptions,
   type LiteralLocateResult,
 } from "../literal.ts";
+import { formatLiteralLocateText } from "../mcp/format-text.ts";
 import type { MiruIndex } from "../miru-index.ts";
 import { countTokens } from "../token-count.ts";
 import { GREP_CONTEXT } from "./grep.ts";
@@ -44,7 +46,7 @@ export async function benchmarkLocateComparison(options: {
   const result = options.index.locateLiteral(options.literal, locateOpts);
   const miruMs = performance.now() - miruStart;
   const payload = formatLiteralLocate(result);
-  const miruTok = countTokens(JSON.stringify(payload));
+  const miruTok = countTokens(formatLiteralLocateText(payload));
 
   // Unbounded agent-style Grep dump (±context) — the costlier path without locate.
   // Never use less context than the caller actually requested via context_lines,

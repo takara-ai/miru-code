@@ -1,8 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { relativePathFromRoot } from "../index/incremental.ts";
+import { formatExpandResultsText, formatResultsText } from "../mcp/format-text.ts";
 import type { MiruIndex } from "../miru-index.ts";
-import { applySnippetsToResults, estimateResultTokens } from "../snippet.ts";
+import { applySnippetsToResults } from "../snippet.ts";
 import { countTokens, tokenCountMethod, tokenizerJsonPath } from "../token-count.ts";
 import type { SearchResult } from "../types.ts";
 import {
@@ -10,6 +11,8 @@ import {
   DEFAULT_EXPAND_BEFORE,
   dedupeResultsByFile,
   expandChunksAtLine,
+  formatExpandResults,
+  formatResults,
 } from "../utils.ts";
 import { type GrepFileHit, grepSearch } from "./grep.ts";
 import { agentBenchmarkFromTokens, attachAgentBenchmark, tokenSavingsPct } from "./summary.ts";
@@ -83,6 +86,7 @@ async function readLineWindowTokens(
   }
 }
 
+/** Tokens of the MCP `expand` text body (headers + chunk content), matching what agents receive. */
 function miruExpandTokens(
   index: MiruIndex,
   repoPath: string,
@@ -94,7 +98,7 @@ function miruExpandTokens(
   }
   const [{ meta }] = applySnippetsToResults([top], query);
   const line = meta.truncated ? meta.anchor_line : top.chunk.start_line;
-  const { chunks } = expandChunksAtLine(
+  const { anchor, chunks } = expandChunksAtLine(
     index.chunks,
     top.chunk.file_path,
     line,
@@ -102,8 +106,18 @@ function miruExpandTokens(
     DEFAULT_EXPAND_BEFORE,
     DEFAULT_EXPAND_AFTER,
   );
+  if (!anchor) {
+    return { tokens: 0, lineSpan: 0 };
+  }
+  const text = formatExpandResultsText(
+    formatExpandResults(top.chunk.file_path, line, anchor, chunks, {
+      repoRoot: repoPath,
+      before: DEFAULT_EXPAND_BEFORE,
+      after: DEFAULT_EXPAND_AFTER,
+    }),
+  );
   return {
-    tokens: chunks.reduce((sum, chunk) => sum + countTokens(chunk.content), 0),
+    tokens: countTokens(text),
     lineSpan: expandLineSpan(chunks),
   };
 }
@@ -164,8 +178,10 @@ export async function benchmarkSearchComparison(options: {
     const started = performance.now();
     const raw = await index.search({ query, topK, rerank: true });
     const results = (dedupeByFile ? dedupeResultsByFile(raw) : raw).slice(0, topK);
-    const snippetResults = applySnippetsToResults(results, query).map((entry) => entry.result);
-    const searchTokens = estimateResultTokens(snippetResults);
+    // Count the MCP tool text body (path headers + snippets), not bare chunk content.
+    const searchTokens = countTokens(
+      formatResultsText(formatResults(query, results, { repoRoot: repoPath, snippet: true })),
+    );
     const expand = miruExpandTokens(index, repoPath, results[0], query);
     return {
       results,
@@ -264,6 +280,7 @@ export function toAgentBenchmarkSummary(block: SearchBenchmarkBlock): AgentBench
     block.accuracy.rank1_match,
   );
   summary.save_pct = block.efficiency.token_savings_pct;
+  summary.search_tok = block.miru.search_tokens;
   if (block.accuracy.miru_only.length > 0) {
     summary.miru_only = block.accuracy.miru_only.slice(0, MAX_AGENT_MIRU_ONLY);
   }
