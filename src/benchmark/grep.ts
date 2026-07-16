@@ -83,8 +83,20 @@ function buildGrepPattern(keywords: string[]): string | null {
 }
 
 function normalizeRepoFile(repoRoot: string, filePath: string): string {
+  const rootNorm = repoRoot.replace(/\\/g, "/").replace(/\/+$/, "");
+  const fileNorm = filePath.replace(/\\/g, "/");
+  const rootPrefix = `${rootNorm}/`;
+  if (fileNorm === rootNorm) {
+    return "";
+  }
+  if (fileNorm.toLowerCase().startsWith(rootPrefix.toLowerCase())) {
+    return fileNorm.slice(rootPrefix.length);
+  }
   const rel = relative(repoRoot, filePath).replace(/\\/g, "/");
-  return rel.startsWith("../") ? filePath.replace(/\\/g, "/") : rel;
+  if (rel.startsWith("../") || /^[A-Za-z]:\//.test(rel)) {
+    return fileNorm;
+  }
+  return rel;
 }
 
 function parsePathLinePrefix(line: string): { path: string; line: number } | null {
