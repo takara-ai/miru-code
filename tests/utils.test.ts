@@ -116,8 +116,8 @@ describe("utils", () => {
       score: "100%",
       chunk: {
         file_path: "src/f.py",
-        absolute_path: expect.stringContaining("src/f.py"),
-        location: expect.stringContaining("src/f.py:1-1"),
+        absolute_path: expect.stringMatching(/src[\\/]+f\.py$/),
+        location: expect.stringMatching(/src[\\/]+f\.py:1-1$/),
       },
     });
   });

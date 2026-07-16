@@ -87,6 +87,32 @@ function normalizeRepoFile(repoRoot: string, filePath: string): string {
   return rel.startsWith("../") ? filePath.replace(/\\/g, "/") : rel;
 }
 
+function parsePathLinePrefix(line: string): { path: string; line: number } | null {
+  for (let i = 0; i < line.length; i++) {
+    const delim = line[i];
+    if (delim !== ":" && delim !== "-") {
+      continue;
+    }
+    let j = i + 1;
+    while (j < line.length && line[j] >= "0" && line[j] <= "9") {
+      j++;
+    }
+    if (j === i + 1 || j >= line.length) {
+      continue;
+    }
+    const trailing = line[j];
+    if (trailing !== ":" && trailing !== "-") {
+      continue;
+    }
+    const lineNo = Number(line.slice(i + 1, j));
+    if (!Number.isFinite(lineNo)) {
+      continue;
+    }
+    return { path: line.slice(0, i), line: lineNo };
+  }
+  return null;
+}
+
 export async function grepSearch(
   repoRoot: string,
   query: string,
@@ -195,11 +221,14 @@ async function findstrRankedMatches(repoRoot: string, keywords: string[], topK: 
     const text = await new Response(proc.stdout).text();
     await proc.exited;
     for (const line of text.split("\n")) {
-      const m = /^(.+?):\d+:/.exec(line);
-      if (!m?.[1]) {
+      const parsed = parsePathLinePrefix(line);
+      if (!parsed?.path) {
         continue;
       }
-      const absPath = `${repoRoot}/${m[1]}`.replace(/\\/g, "/");
+      const pathText = parsed.path.replace(/\\/g, "/");
+      const absPath = /^[A-Za-z]:\//.test(pathText)
+        ? pathText
+        : `${repoRoot}/${pathText}`.replace(/\\/g, "/");
       if (
         absPath.includes("/node_modules/") ||
         absPath.includes("/.git/") ||
