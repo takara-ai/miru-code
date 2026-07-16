@@ -205,11 +205,11 @@ async function grepRankedMatches(repoRoot: string, pattern: string, topK: number
     if (!line) {
       continue;
     }
-    const colon = line.indexOf(":");
-    if (colon < 0) {
+    const split = splitSearchToolLine(line);
+    if (!split) {
       continue;
     }
-    const absPath = line.slice(0, colon);
+    const absPath = split.path;
     counts.set(absPath, (counts.get(absPath) ?? 0) + 1);
   }
   return [...counts.entries()]
@@ -220,6 +220,21 @@ async function grepRankedMatches(repoRoot: string, pattern: string, topK: number
     }))
     .sort((a, b) => b.matchCount - a.matchCount)
     .slice(0, topK);
+}
+
+function splitSearchToolLine(line: string): { path: string; rest: string } | null {
+  if (/^[A-Za-z]:/.test(line)) {
+    const colon = line.indexOf(":", 2);
+    if (colon < 0) {
+      return null;
+    }
+    return { path: line.slice(0, colon), rest: line.slice(colon + 1) };
+  }
+  const colon = line.indexOf(":");
+  if (colon < 0) {
+    return null;
+  }
+  return { path: line.slice(0, colon), rest: line.slice(colon + 1) };
 }
 
 async function findstrRankedMatches(repoRoot: string, keywords: string[], topK: number) {
