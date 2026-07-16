@@ -1,4 +1,4 @@
-import { join, relative, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { chunkSource } from "../chunking/chunking.ts";
 import type { EmbeddingBackend } from "../embeddings/openai.ts";
 import { tokenize } from "../tokens.ts";
@@ -123,8 +123,9 @@ function rebuildBm25(chunks: Chunk[]): BM25Index {
 export function relativePathFromRoot(root: string, absoluteOrRelative: string): string {
   const resolvedRoot = resolve(root);
   const candidate = resolve(resolvedRoot, absoluteOrRelative);
-  if (candidate.startsWith(`${resolvedRoot}/`) || candidate === resolvedRoot) {
-    return normalizeRelativePath(relative(resolvedRoot, candidate));
+  const rel = normalizeRelativePath(relative(resolvedRoot, candidate));
+  if (rel === "" || (!rel.startsWith("../") && rel !== ".." && !isAbsolute(rel))) {
+    return rel;
   }
   return normalizeRelativePath(absoluteOrRelative);
 }

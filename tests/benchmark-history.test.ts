@@ -107,9 +107,10 @@ describe("agent benchmark payloads", () => {
 
 describe("benchmark history aggregates", () => {
   test("recordFromBenchmark omits query text and stores repo + token totals", () => {
+    const repo = normalizeBenchmarkRepoKey("/repo");
     const record = recordFromBenchmark("/repo", block());
     expect(record).toEqual({
-      r: "/repo",
+      r: repo,
       m: 100,
       g: 400,
       s: 300,
@@ -174,7 +175,9 @@ describe("benchmark history aggregates", () => {
       expect(resolveBenchmarkHistoryPath()).toBe(
         join(resolveMiruStateDir(), "benchmark-history.json"),
       );
-      expect(resolveBenchmarkHistoryPath()).toBe("/tmp/miru-state-test/benchmark-history.json");
+      expect(resolveBenchmarkHistoryPath()).toBe(
+        join("/tmp", "miru-state-test", "benchmark-history.json"),
+      );
     } finally {
       if (previous === undefined) {
         delete process.env.MIRU_BENCHMARK_HISTORY_PATH;

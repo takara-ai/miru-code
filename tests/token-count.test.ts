@@ -32,7 +32,7 @@ afterEach(() => {
 describe("token-count", () => {
   test("uses bundled tokenizer by default", () => {
     expect(tokenCountMethod()).toBe("wordpiece");
-    expect(tokenizerJsonPath()).toContain("tokenizer/tokenizer.json");
+    expect(tokenizerJsonPath().replaceAll("\\", "/")).toContain("tokenizer/tokenizer.json");
     expect(countTokens("export async function main() {}")).toBe(8);
   });
 

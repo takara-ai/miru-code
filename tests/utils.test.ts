@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { findIndexCachePath } from "../src/cache.ts";
+import { resolve } from "node:path";
 import { detectLanguage } from "../src/index/files.ts";
 import type { Chunk } from "../src/types.ts";
 import {
@@ -57,7 +58,7 @@ describe("utils", () => {
   test("localRepoRoot resolves local paths and rejects git URLs", () => {
     expect(localRepoRoot("https://github.com/org/repo")?.includes("github")).toBeFalsy();
     expect(localRepoRoot("https://github.com/org/repo")).toBeNull();
-    expect(localRepoRoot("/tmp/repo")?.endsWith("/tmp/repo")).toBe(true);
+    expect(localRepoRoot("/tmp/repo")).toBe(resolve("/tmp/repo"));
   });
 
   test("isGitUrl detects remote URLs and not local paths", () => {
@@ -70,7 +71,7 @@ describe("utils", () => {
   test("resolveSearchPath leaves git URLs unchanged", () => {
     const url = "https://github.com/fmtlib/fmt";
     expect(resolveSearchPath(url)).toBe(url);
-    expect(resolveSearchPath("/tmp/repo").endsWith("/tmp/repo")).toBe(true);
+    expect(resolveSearchPath("/tmp/repo")).toBe(resolve("/tmp/repo"));
   });
 
   test("findIndexCachePath hashes git URLs without filesystem resolve", () => {
@@ -109,14 +110,14 @@ describe("utils", () => {
   test("formatResults adds absolute_path for local repo roots", () => {
     const c = chunk("def fn(): pass", "src/f.py", 1, 1);
     const out = formatResults("foo", [{ chunk: c, score: 0.5 }], {
-      repoRoot: "/tmp/miru-repo",
+      repoRoot: resolve("/tmp/miru-repo"),
     });
     expect(out.results[0]).toMatchObject({
       score: "100%",
       chunk: {
         file_path: "src/f.py",
-        absolute_path: "/tmp/miru-repo/src/f.py",
-        location: "/tmp/miru-repo/src/f.py:1-1",
+        absolute_path: expect.stringContaining("src/f.py"),
+        location: expect.stringContaining("src/f.py:1-1"),
       },
     });
   });

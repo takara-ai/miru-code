@@ -10,6 +10,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import packageJson from "../package.json";
 import type { EmbeddingBackend } from "../src/embeddings/openai.ts";
 import {
@@ -318,6 +319,10 @@ describe("PRD-224: IndexCache watcher must be per cached repo", () => {
 
 describe("PRD-228: file read failures must not be silently counted as empty files", () => {
   test("index profile reports file_errors separately from empty_or_skipped_files", async () => {
+    if (process.platform === "win32") {
+      // Windows does not reliably enforce chmod(000) readability semantics.
+      return;
+    }
     const root = await mkdtemp(join(tmpdir(), "miru-file-errors-"));
     try {
       await mkdir(join(root, "src"), { recursive: true });
@@ -387,7 +392,7 @@ describe("PRD-220 / PRD-227 / PRD-229: fixed regressions", () => {
   });
 
   test("PRD-229: source tree has no SEMBLE_* env var aliases", () => {
-    const srcRoot = new URL("../src", import.meta.url).pathname;
+    const srcRoot = fileURLToPath(new URL("../src", import.meta.url));
     const hits = collectSourceFiles(srcRoot).flatMap((file) => {
       const text = readFileSync(file, "utf8");
       const matches = text.match(/SEMBLE_[A-Z0-9_]+/g) ?? [];

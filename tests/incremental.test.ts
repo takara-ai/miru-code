@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { EmbeddingBackend } from "../src/embeddings/openai.ts";
 import { BM25Index } from "../src/index/bm25.ts";
 import { VectorIndex } from "../src/index/dense.ts";
@@ -29,9 +29,10 @@ function mockEmbeddings(vectorsByText: Record<string, Float32Array>): EmbeddingB
 
 describe("incremental index", () => {
   test("normalizeRelativePath and relativePathFromRoot", () => {
+    const root = resolve("/proj");
     expect(normalizeRelativePath(".\\src\\a.ts")).toBe("src/a.ts");
-    expect(relativePathFromRoot("/proj", "src/a.ts")).toBe("src/a.ts");
-    expect(relativePathFromRoot("/proj", "/proj/src/a.ts")).toBe("src/a.ts");
+    expect(relativePathFromRoot(root, "src/a.ts")).toBe("src/a.ts");
+    expect(relativePathFromRoot(root, join(root, "src", "a.ts"))).toBe("src/a.ts");
   });
 
   test("applyIncrementalFileChanges re-embeds only changed files", async () => {
