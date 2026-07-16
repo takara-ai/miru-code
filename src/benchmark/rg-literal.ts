@@ -2,7 +2,7 @@
 
 import { relative } from "node:path";
 import { countTokens } from "../token-count.ts";
-import { RG_EXCLUDE_ARGS } from "./grep.ts";
+import { RG_EXCLUDE_ARGS, selectBenchmarkSearchTool } from "./grep.ts";
 
 export interface RgLiteralOutput {
   text: string;
@@ -20,17 +20,43 @@ export function parseRgLiteralStats(text: string, repoRoot: string): { n: number
     if (!line || line.startsWith("--")) {
       continue;
     }
-    // path:line:content or path-line-content for context
-    const m = /^(.+?)[:|-](\d+)[:|-]/.exec(line);
-    if (!m?.[1]) {
+    // path:line:content or path-line-content for context, including Windows drive letters.
+    const parsed = parsePathLinePrefix(line);
+    if (!parsed) {
       continue;
     }
-    files.add(relative(repoRoot, m[1]).replaceAll("\\", "/"));
-    if (line.includes(`${m[1]}:${m[2]}:`)) {
+    files.add(relative(repoRoot, parsed.path).replaceAll("\\", "/"));
+    if (line.includes(`${parsed.path}:${parsed.line}:`)) {
       n += 1;
     }
   }
   return { n, files: files.size };
+}
+
+function parsePathLinePrefix(line: string): { path: string; line: number } | null {
+  for (let i = 0; i < line.length; i++) {
+    const delim = line[i];
+    if (delim !== ":" && delim !== "-") {
+      continue;
+    }
+    let j = i + 1;
+    while (j < line.length && line[j] >= "0" && line[j] <= "9") {
+      j++;
+    }
+    if (j === i + 1 || j >= line.length) {
+      continue;
+    }
+    const trailing = line[j];
+    if (trailing !== ":" && trailing !== "-") {
+      continue;
+    }
+    const lineNo = Number(line.slice(i + 1, j));
+    if (!Number.isFinite(lineNo)) {
+      continue;
+    }
+    return { path: line.slice(0, i), line: lineNo };
+  }
+  return null;
 }
 
 export async function rgLiteralOutput(
@@ -44,23 +70,71 @@ export async function rgLiteralOutput(
 ): Promise<RgLiteralOutput> {
   const context = options.context ?? 0;
   const maxCount = options.maxCount ?? 20;
-  const args = ["rg", "-F", "-n", "--no-heading", ...RG_EXCLUDE_ARGS];
-  if (options.ignoreCase) {
-    args.push("-i");
+  const tool = selectBenchmarkSearchTool();
+  if (!tool) {
+    throw new Error("No search tool found in PATH (tried rg, grep, and findstr on Windows)");
   }
-  if (context > 0) {
-    args.push("-C", String(context));
-  }
-  if (maxCount > 0) {
-    args.push("-m", String(maxCount));
-  }
-  args.push(literal, repoRoot);
-
   const start = performance.now();
-  const proc = Bun.spawn(args, { stdout: "pipe", stderr: "pipe" });
+  const proc = Bun.spawn(buildLiteralArgs(tool, repoRoot, literal, context, maxCount, !!options.ignoreCase), {
+    stdout: "pipe",
+    stderr: "pipe",
+    ...(tool === "findstr" ? { cwd: repoRoot } : {}),
+  });
   const text = await new Response(proc.stdout).text();
   await proc.exited;
   const latency_ms = performance.now() - start;
   const stats = parseRgLiteralStats(text, repoRoot);
   return { text, tokens: countTokens(text), latency_ms, ...stats };
+}
+
+function buildLiteralArgs(
+  tool: "rg" | "grep" | "findstr",
+  repoRoot: string,
+  literal: string,
+  context: number,
+  maxCount: number,
+  ignoreCase: boolean,
+): string[] {
+  if (tool === "rg") {
+    const args = ["rg", "-F", "-n", "--no-heading", ...RG_EXCLUDE_ARGS];
+    if (ignoreCase) {
+      args.push("-i");
+    }
+    if (context > 0) {
+      args.push("-C", String(context));
+    }
+    if (maxCount > 0) {
+      args.push("-m", String(maxCount));
+    }
+    args.push(literal, repoRoot);
+    return args;
+  }
+  if (tool === "grep") {
+    const args = [
+      "grep",
+      "-R",
+      "-I",
+      "-F",
+      "-n",
+      "--exclude-dir=node_modules",
+      "--exclude-dir=.git",
+      "--exclude-dir=tokenizer",
+    ];
+    if (ignoreCase) {
+      args.push("-i");
+    }
+    if (context > 0) {
+      args.push("-C", String(context));
+    }
+    if (maxCount > 0) {
+      args.push("-m", String(maxCount));
+    }
+    args.push(literal, repoRoot);
+    return args;
+  }
+  const args = ["findstr", "/S", "/N", "/P", `/C:${literal}`, "*"];
+  if (ignoreCase) {
+    args.splice(4, 0, "/I");
+  }
+  return args;
 }

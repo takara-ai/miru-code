@@ -21,6 +21,9 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
       - name: Lint
         run: bun run lint
 
