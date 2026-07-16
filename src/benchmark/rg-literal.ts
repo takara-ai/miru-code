@@ -61,13 +61,14 @@ function parsePathLinePrefix(line: string): { path: string; line: number } | nul
 
 export async function rgLiteralOutput(
   repoRoot: string,
-  literal: string,
+  literal: string | readonly string[],
   options: {
     context?: number;
     maxCount?: number;
     ignoreCase?: boolean;
   } = {},
 ): Promise<RgLiteralOutput> {
+  const literals = Array.isArray(literal) ? literal : [literal as string];
   const context = options.context ?? 0;
   const maxCount = options.maxCount ?? 20;
   const tool = selectBenchmarkSearchTool();
@@ -76,7 +77,7 @@ export async function rgLiteralOutput(
   }
   const start = performance.now();
   const proc = Bun.spawn(
-    buildLiteralArgs(tool, repoRoot, literal, context, maxCount, !!options.ignoreCase),
+    buildLiteralArgs(tool, repoRoot, literals, context, maxCount, !!options.ignoreCase),
     {
       stdout: "pipe",
       stderr: "pipe",
@@ -90,10 +91,14 @@ export async function rgLiteralOutput(
   return { text, tokens: countTokens(text), latency_ms, ...stats };
 }
 
+/**
+ * OR-matches every literal, mirroring what an agent without `locate` would have to run
+ * to get the same recall as `literals`/`match_variants` (one pattern isn't equivalent).
+ */
 function buildLiteralArgs(
   tool: "rg" | "grep" | "findstr",
   repoRoot: string,
-  literal: string,
+  literals: readonly string[],
   context: number,
   maxCount: number,
   ignoreCase: boolean,
@@ -109,7 +114,10 @@ function buildLiteralArgs(
     if (maxCount > 0) {
       args.push("-m", String(maxCount));
     }
-    args.push(literal, repoRoot);
+    for (const l of literals) {
+      args.push("-e", l);
+    }
+    args.push(repoRoot);
     return args;
   }
   if (tool === "grep") {
@@ -132,10 +140,17 @@ function buildLiteralArgs(
     if (maxCount > 0) {
       args.push("-m", String(maxCount));
     }
-    args.push(literal, repoRoot);
+    for (const l of literals) {
+      args.push("-e", l);
+    }
+    args.push(repoRoot);
     return args;
   }
-  const args = ["findstr", "/S", "/N", "/P", `/C:${literal}`, "*"];
+  const args = ["findstr", "/S", "/N", "/P"];
+  for (const l of literals) {
+    args.push(`/C:${l}`);
+  }
+  args.push("*");
   if (ignoreCase) {
     args.splice(4, 0, "/I");
   }

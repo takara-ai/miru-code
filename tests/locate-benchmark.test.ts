@@ -170,4 +170,40 @@ describe("locate benchmark comparison", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  test("grep baseline searches every match_variants casing, not just the raw literal", async () => {
+    const root = await mkdtemp(join(tmpdir(), "miru-locate-bench-variants-"));
+    try {
+      // Only the snake_case spelling appears — "rateLimit" itself is nowhere in the repo,
+      // so a grep baseline that only searched the raw literal would find nothing here.
+      await writeFile(join(root, "app.ts"), "const rate_limit_window = 5;\n", "utf-8");
+
+      const embeddings = mockEmbeddings();
+      const built = await createIndexFromPath(root, embeddings, ["code"], root);
+      const index = new MiruIndex({
+        embeddings,
+        bm25Index: built.bm25,
+        semanticIndex: built.semantic,
+        chunks: built.chunks,
+        embeddingModel: embeddings.model,
+        root,
+        content: ["code"],
+      });
+
+      const comparison = await benchmarkLocateComparison({
+        literal: "rateLimit",
+        repoPath: root,
+        index,
+        locate: { mode: "count", match_variants: true },
+      });
+
+      expect(comparison.result.n).toBe(1);
+      // If the grep baseline still searched only "rateLimit", it would find zero matches
+      // here and grep_tok would be near-zero — an unfairly cheap baseline that makes a
+      // locate call finding real, variant-only hits look artificially expensive.
+      expect(comparison.benchmark.grep_tok).toBeGreaterThan(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });
