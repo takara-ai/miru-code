@@ -1,4 +1,5 @@
 import {
+  EMBEDDING_AUTH_ERROR_MESSAGE,
   embeddingDimensions,
   resolveEmbeddingBaseUrl,
   resolveEmbeddingDimensions,
@@ -54,7 +55,7 @@ export async function validateEmbeddingApiKey(options: {
       return {
         valid: false,
         status: response.status,
-        message: "Invalid API key (authentication failed).",
+        message: EMBEDDING_AUTH_ERROR_MESSAGE,
       };
     }
     return {

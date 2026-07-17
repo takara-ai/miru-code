@@ -37,7 +37,9 @@ describe("validateEmbeddingApiKey", () => {
     });
     expect(result.valid).toBe(false);
     expect(result.status).toBe(401);
-    expect(result.message).toContain("Invalid API key");
+    expect(result.message).toContain("Not authorized");
+    expect(result.message).toContain("token balance");
+    expect(result.message).not.toContain("unauthorized");
   });
 
   test("rejects empty embedding payloads", async () => {

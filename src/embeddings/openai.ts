@@ -182,12 +182,20 @@ interface EmbeddingClient {
   ): Promise<EmbeddingResponse>;
 }
 
+/** Shown for 401/403 — API often returns "unauthorized" which is unhelpful. */
+export const EMBEDDING_AUTH_ERROR_MESSAGE =
+  "Not authorized. Check your API key and/or token balance.";
+
 class EmbeddingApiError extends Error {
   readonly status: number;
   readonly body: string;
 
   constructor(status: number, body: string) {
-    super(`Embedding API error ${status}: ${body.slice(0, 500)}`);
+    const message =
+      status === 401 || status === 403
+        ? EMBEDDING_AUTH_ERROR_MESSAGE
+        : `Embedding API error ${status}: ${body.slice(0, 500)}`;
+    super(message);
     this.name = "EmbeddingApiError";
     this.status = status;
     this.body = body;
