@@ -474,6 +474,9 @@ async function runCli(argv: string[]): Promise<void> {
     let apiKey: string | undefined;
     let force = false;
     let clear = false;
+    let sagemaker = false;
+    let sagemakerArn: string | undefined;
+    let awsProfile: string | undefined;
     for (let i = 0; i < rest.length; i++) {
       const arg = rest[i];
       if (arg === "--force") {
@@ -482,6 +485,12 @@ async function runCli(argv: string[]): Promise<void> {
         clear = true;
       } else if ((arg === "--key" || arg === "-k") && rest[i + 1]) {
         apiKey = rest[++i];
+      } else if (arg === "--sagemaker") {
+        sagemaker = true;
+      } else if (arg === "--arn" && rest[i + 1]) {
+        sagemakerArn = rest[++i];
+      } else if (arg === "--aws-profile" && rest[i + 1]) {
+        awsProfile = rest[++i];
       }
     }
     if (clear) {
@@ -492,7 +501,20 @@ async function runCli(argv: string[]): Promise<void> {
       await runClearCredentials();
       return;
     }
-    const { newlySaved } = await runSetup({ apiKey, force });
+    if (sagemakerArn) {
+      sagemaker = true;
+    }
+    if (sagemaker && apiKey) {
+      fail("miru setup --sagemaker cannot be combined with --key.");
+      process.exit(1);
+    }
+    const { newlySaved } = await runSetup({
+      apiKey,
+      force,
+      sagemaker,
+      sagemakerArn,
+      awsProfile,
+    });
     if (newlySaved) {
       const offerInstall = canPromptForCredentials() && !apiKey && !force;
       if (offerInstall) {

@@ -4,11 +4,19 @@ import {
   loadStoredCredentials,
   readStoredCredentials,
   resolveCredentialsPath,
+  type StoredSageMakerCredentials,
   saveStoredCredentials,
+  saveStoredSageMakerCredentials,
 } from "./credentials.ts";
+import {
+  isSageMakerConfigured,
+  parseSageMakerEndpointArn,
+  type SageMakerEmbeddingConfig,
+  validateSageMakerConnection,
+} from "./embeddings/sagemaker.ts";
 import { validateEmbeddingApiKey } from "./embeddings/validate.ts";
 import { hasTakaraApiKeyInEnv, resolveEmbeddingApiKey } from "./env.ts";
-import { promptHidden } from "./prompt.ts";
+import { promptHidden, promptText } from "./prompt.ts";
 import { Spinner } from "./spinner.ts";
 
 async function promptApiKey(): Promise<string> {
@@ -26,6 +34,9 @@ export interface RunSetupOptions {
   apiKey?: string;
   force?: boolean;
   skipValidation?: boolean;
+  sagemaker?: boolean;
+  sagemakerArn?: string;
+  awsProfile?: string;
 }
 
 export interface RunSetupResult {
@@ -33,7 +44,97 @@ export interface RunSetupResult {
   newlySaved: boolean;
 }
 
+async function promptSageMakerArn(): Promise<string> {
+  while (true) {
+    const arn = await promptText("SageMaker endpoint ARN");
+    if (!arn) {
+      fail("Endpoint ARN cannot be empty.");
+      continue;
+    }
+    try {
+      parseSageMakerEndpointArn(arn);
+      return arn;
+    } catch (err) {
+      fail(err instanceof Error ? err.message : String(err));
+    }
+  }
+}
+
+async function promptAwsProfile(): Promise<string> {
+  while (true) {
+    const profile = await promptText(
+      "AWS profile name (must already exist in ~/.aws)",
+      process.env.AWS_PROFILE || "miru",
+    );
+    if (profile) {
+      return profile;
+    }
+    fail("AWS profile name cannot be empty.");
+  }
+}
+
+/**
+ * Miru only ever inherits AWS credentials — it never creates, writes, or rotates an
+ * AWS profile. Set one up yourself first (e.g. `aws configure --profile miru`).
+ */
+export async function runSageMakerSetup(options: RunSetupOptions = {}): Promise<RunSetupResult> {
+  writeStderr("");
+  printBrandBanner(process.stderr);
+  divider("─", 48, process.stderr);
+  writeStderr("Miru will connect directly to your self-hosted SageMaker embedding endpoint.");
+  hint("Miru only inherits AWS credentials from a profile you've already configured —");
+  hint("it never creates or writes to ~/.aws. Run `aws configure --profile <name>` first.");
+  writeStderr("");
+
+  const arnInput = options.sagemakerArn ?? (await promptSageMakerArn());
+  const parsed = parseSageMakerEndpointArn(arnInput);
+
+  let profile = options.awsProfile;
+  if (!profile) {
+    if (!canPromptForCredentials()) {
+      throw new Error(
+        "An AWS profile name is required. Pass --aws-profile <name>, or run " +
+          "`miru setup --sagemaker` interactively.",
+      );
+    }
+    profile = await promptAwsProfile();
+  }
+
+  process.env.MIRU_SAGEMAKER_ENDPOINT_ARN = arnInput;
+  process.env.AWS_PROFILE = profile;
+
+  if (!options.skipValidation) {
+    const spinner = new Spinner(`Validating SageMaker endpoint (profile "${profile}")`);
+    spinner.start();
+    const config: SageMakerEmbeddingConfig = {
+      endpointName: parsed.endpointName,
+      region: parsed.region,
+      normalize: true,
+      truncate: true,
+      truncationDirection: "Right",
+    };
+    const result = await validateSageMakerConnection(config);
+    if (!result.valid) {
+      spinner.stop();
+      throw new Error(result.message);
+    }
+    spinner.succeed("SageMaker endpoint validated");
+  }
+
+  const stored: StoredSageMakerCredentials = { endpoint_arn: arnInput, profile };
+  const path = await saveStoredSageMakerCredentials(stored);
+  writeStderr("");
+  success(`Saved SageMaker config to ${path}`);
+  hint("Miru will use this endpoint instead of Takara from now on.");
+  writeStderr("");
+  return { path, newlySaved: true };
+}
+
 export async function runSetup(options: RunSetupOptions = {}): Promise<RunSetupResult> {
+  if (options.sagemaker || options.sagemakerArn) {
+    return runSageMakerSetup(options);
+  }
+
   if (!options.force && hasTakaraApiKeyInEnv()) {
     const path = resolveCredentialsPath();
     const stored = await readStoredCredentials();
@@ -98,6 +199,9 @@ export function canPromptForCredentials(): boolean {
 }
 
 export function hasCredentials(): boolean {
+  if (isSageMakerConfigured()) {
+    return true;
+  }
   try {
     resolveEmbeddingApiKey();
     return true;

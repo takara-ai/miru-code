@@ -5,9 +5,15 @@ import { hasTakaraApiKeyInEnv, normalizeTakaraApiKeyEnv } from "./env.ts";
 const CREDENTIALS_FILENAME = "credentials.json";
 const CREDENTIALS_VERSION = 1;
 
+export interface StoredSageMakerCredentials {
+  endpoint_arn: string;
+  profile?: string;
+}
+
 interface StoredCredentials {
   version: number;
-  takara_api_key: string;
+  takara_api_key?: string;
+  sagemaker?: StoredSageMakerCredentials;
 }
 
 export function resolveCredentialsDir(): string {
@@ -46,7 +52,7 @@ export async function readStoredCredentials(): Promise<StoredCredentials | null>
   }
   try {
     const parsed = JSON.parse(await Bun.file(path).text()) as StoredCredentials;
-    if (parsed.version !== CREDENTIALS_VERSION || !parsed.takara_api_key) {
+    if (parsed.version !== CREDENTIALS_VERSION || (!parsed.takara_api_key && !parsed.sagemaker)) {
       return null;
     }
     return parsed;
@@ -55,27 +61,69 @@ export async function readStoredCredentials(): Promise<StoredCredentials | null>
   }
 }
 
-/** Set TAKARA_API_KEY from the user credentials file when env is unset. */
+function hydrateSageMakerEnv(sagemaker: StoredSageMakerCredentials): void {
+  process.env.MIRU_SAGEMAKER_ENDPOINT_ARN = sagemaker.endpoint_arn;
+  if (sagemaker.profile && !process.env.AWS_PROFILE) {
+    process.env.AWS_PROFILE = sagemaker.profile;
+  }
+}
+
+/** Hydrate TAKARA_API_KEY / SageMaker env vars from the credentials file when env is unset. */
 export async function loadStoredCredentials(): Promise<boolean> {
   normalizeTakaraApiKeyEnv();
-  if (hasTakaraApiKeyInEnv()) {
+  const needsTakara = !hasTakaraApiKeyInEnv();
+  const needsSageMaker = !process.env.MIRU_SAGEMAKER_ENDPOINT_ARN;
+  if (!needsTakara && !needsSageMaker) {
     return false;
   }
+
   const stored = await readStoredCredentials();
   if (!stored) {
     return false;
   }
-  process.env.TAKARA_API_KEY = stored.takara_api_key;
-  return true;
+
+  let changed = false;
+  if (needsTakara && stored.takara_api_key) {
+    process.env.TAKARA_API_KEY = stored.takara_api_key;
+    changed = true;
+  }
+  if (needsSageMaker && stored.sagemaker) {
+    hydrateSageMakerEnv(stored.sagemaker);
+    changed = true;
+  }
+  return changed;
 }
 
 export async function saveStoredCredentials(apiKey: string): Promise<string> {
   const dir = resolveCredentialsDir();
   const path = resolveCredentialsPath();
   await mkdir(dir, { recursive: true, mode: 0o700 });
+  const existing = await readStoredCredentials();
   const payload: StoredCredentials = {
     version: CREDENTIALS_VERSION,
     takara_api_key: apiKey,
+    ...(existing?.sagemaker ? { sagemaker: existing.sagemaker } : {}),
+  };
+  await Bun.write(path, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
+  try {
+    await chmod(path, 0o600);
+  } catch {
+    // Windows may not support Unix mode bits on all filesystems.
+  }
+  return path;
+}
+
+export async function saveStoredSageMakerCredentials(
+  sagemaker: StoredSageMakerCredentials,
+): Promise<string> {
+  const dir = resolveCredentialsDir();
+  const path = resolveCredentialsPath();
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  const existing = await readStoredCredentials();
+  const payload: StoredCredentials = {
+    version: CREDENTIALS_VERSION,
+    ...(existing?.takara_api_key ? { takara_api_key: existing.takara_api_key } : {}),
+    sagemaker,
   };
   await Bun.write(path, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
   try {
@@ -95,8 +143,17 @@ export async function clearStoredCredentials(): Promise<{ cleared: boolean; path
   const stored = await readStoredCredentials();
   await Bun.file(path).delete();
 
-  if (stored && process.env.TAKARA_API_KEY === stored.takara_api_key) {
+  if (stored?.takara_api_key && process.env.TAKARA_API_KEY === stored.takara_api_key) {
     delete process.env.TAKARA_API_KEY;
+  }
+  const sagemaker = stored?.sagemaker;
+  if (sagemaker) {
+    if (process.env.MIRU_SAGEMAKER_ENDPOINT_ARN === sagemaker.endpoint_arn) {
+      delete process.env.MIRU_SAGEMAKER_ENDPOINT_ARN;
+    }
+    if (sagemaker.profile && process.env.AWS_PROFILE === sagemaker.profile) {
+      delete process.env.AWS_PROFILE;
+    }
   }
 
   return { cleared: true, path };

@@ -1,4 +1,5 @@
 import { stdin as input, stdout as output } from "node:process";
+import * as readline from "node:readline/promises";
 
 export interface HiddenPromptState {
   value: string;
@@ -58,6 +59,18 @@ export function applyHiddenPromptChar(
     state: { ...state, value: state.value + char },
     echo: "*",
   };
+}
+
+/** Visible-input prompt (not for secrets — use promptHidden for those). */
+export async function promptText(message: string, defaultValue = ""): Promise<string> {
+  const rl = readline.createInterface({ input, output });
+  try {
+    const suffix = defaultValue ? ` (${defaultValue})` : "";
+    const answer = (await rl.question(`${message}${suffix}: `)).trim();
+    return answer || defaultValue;
+  } finally {
+    rl.close();
+  }
 }
 
 export async function promptHidden(message: string): Promise<string> {

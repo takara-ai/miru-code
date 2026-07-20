@@ -1,5 +1,6 @@
 import { mapPool, resolveWorkerConcurrency } from "../concurrency.ts";
 import { envFirstString, envOptionalInt, resolveEmbeddingApiKey } from "../env.ts";
+import { createSageMakerClient, resolveSageMakerConfig } from "./sagemaker.ts";
 
 export const DEFAULT_EMBEDDING_MODEL = "ds1-miru-int8";
 export const DEFAULT_EMBEDDING_BASE_URL = "https://infer.takara.ai/v1";
@@ -31,11 +32,25 @@ export interface EmbeddingBackend {
   embedQuery(text: string): Promise<Float32Array>;
 }
 
-export function resolveEmbeddingModel(): string {
+/** SageMaker self-hosted mode has no configurable model name — the endpoint owns that choice. */
+export function sageMakerModelId(endpointName: string): string {
+  return `sagemaker:${endpointName}`;
+}
+
+/** Takara model name, ignoring SageMaker config — for code that talks to Takara specifically. */
+export function resolveTakaraEmbeddingModel(): string {
   return envFirstString(
     ["MIRU_OPENAI_EMBEDDING_MODEL", "OPENAI_EMBEDDING_MODEL"],
     DEFAULT_EMBEDDING_MODEL,
   );
+}
+
+export function resolveEmbeddingModel(): string {
+  const sageMaker = resolveSageMakerConfig();
+  if (sageMaker) {
+    return sageMakerModelId(sageMaker.endpointName);
+  }
+  return resolveTakaraEmbeddingModel();
 }
 
 export function resolveMaxEmbedChars(): number {
@@ -127,16 +142,16 @@ export function resolveEmbeddingBaseUrl(): string {
   ).replace(/\/$/, "");
 }
 
-interface Int8Embedding {
+export interface Int8Embedding {
   dtype: "i8";
   values: number[];
   scale: number;
   zero_point: number;
 }
 
-type EmbeddingPayload = number[] | Int8Embedding;
+export type EmbeddingPayload = number[] | Int8Embedding;
 
-interface EmbeddingResponseItem {
+export interface EmbeddingResponseItem {
   index: number;
   embedding: EmbeddingPayload;
 }
@@ -170,11 +185,11 @@ export function dequantizeEmbedding(embedding: EmbeddingPayload): Float32Array {
   throw new Error("Embedding API returned unsupported embedding format");
 }
 
-interface EmbeddingResponse {
+export interface EmbeddingResponse {
   data: EmbeddingResponseItem[];
 }
 
-interface EmbeddingClient {
+export interface EmbeddingClient {
   createEmbeddings(
     input: string[] | string,
     model: string,
@@ -510,8 +525,25 @@ function normalize(vec: Float32Array): Float32Array {
 }
 
 let defaultBackend: OpenAIEmbeddingBackend | null = null;
+let sageMakerBackend: OpenAIEmbeddingBackend | null = null;
 
 export function getEmbeddingBackend(model?: string): OpenAIEmbeddingBackend {
+  // Self-hosted mode: an endpoint ARN/name overrides Takara entirely, ignoring any
+  // explicit `model` override since the deployed endpoint is the only model available.
+  // Cached separately from the Takara singleton so the two never shadow each other.
+  const sageMaker = resolveSageMakerConfig();
+  if (sageMaker) {
+    if (!sageMakerBackend) {
+      const sageMakerModel = sageMakerModelId(sageMaker.endpointName);
+      sageMakerBackend = new OpenAIEmbeddingBackend({
+        model: sageMakerModel,
+        client: createSageMakerClient(sageMaker),
+        dimensions: resolveEmbeddingDimensions(sageMakerModel),
+      });
+    }
+    return sageMakerBackend;
+  }
+
   if (model) {
     return new OpenAIEmbeddingBackend({
       model,

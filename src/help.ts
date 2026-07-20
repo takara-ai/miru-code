@@ -67,6 +67,24 @@ export function printEnvHelp(): void {
   writeStdout("  MIRU_TOKENIZER_JSON");
   writeStdout("      Path to tokenizer.json (default: <package>/tokenizer/tokenizer.json)");
   writeStdout("");
+  section("Self-hosted (AWS SageMaker)");
+  writeStdout("  MIRU_SAGEMAKER_ENDPOINT_ARN");
+  writeStdout("      arn:aws:sagemaker:<region>:<account-id>:endpoint/<name> — set this to");
+  writeStdout("      bypass Takara entirely and embed via your own SageMaker endpoint.");
+  writeStdout("  MIRU_SAGEMAKER_ENDPOINT_NAME / MIRU_SAGEMAKER_REGION");
+  writeStdout("      Alternative to the ARN when you'd rather name the endpoint + region");
+  writeStdout("      directly (falls back to AWS_REGION / AWS_DEFAULT_REGION).");
+  writeStdout("  MIRU_SAGEMAKER_NORMALIZE / MIRU_SAGEMAKER_TRUNCATE");
+  writeStdout("      Default: true");
+  writeStdout("  MIRU_SAGEMAKER_TRUNCATION_DIRECTION");
+  writeStdout('      "Left" | "Right" (default: Right)');
+  writeStdout("  MIRU_SAGEMAKER_PROMPT_NAME");
+  writeStdout("      Optional prompt_name passed to the endpoint");
+  writeStdout("  AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN / AWS_PROFILE");
+  writeStdout("      Standard AWS credential resolution — nothing Miru-specific to set");
+  writeStdout("");
+  hint("Run `miru setup --sagemaker --arn <arn> --aws-profile <name>` to store this.");
+  writeStdout("");
 }
 
 export function printFullHelp(): void {
@@ -126,13 +144,22 @@ export function printCommandHelp(command: string): void {
       writeStdout("");
       return;
     case "setup":
-      commandHeader("setup", "Store and validate your Takara API key.");
+      commandHeader("setup", "Store and validate Takara or self-hosted SageMaker credentials.");
       section("Usage");
       writeStdout("  miru setup [--key TOKEN] [--force] [--clear]");
-      section("Options");
+      writeStdout("  miru setup --sagemaker --arn ENDPOINT_ARN --aws-profile NAME");
+      section("Options (Takara)");
       writeStdout("  --key, -k TOKEN     Non-interactive key entry");
       writeStdout("  --force             Replace an existing stored key");
       writeStdout("  --clear             Remove stored credentials");
+      section("Options (SageMaker)");
+      writeStdout("  --sagemaker         Switch setup to self-hosted SageMaker mode");
+      writeStdout("  --arn ARN           Endpoint ARN (implies --sagemaker)");
+      writeStdout("  --aws-profile NAME  AWS profile to inherit credentials from");
+      writeStdout("");
+      hint("Miru only inherits AWS credentials — it never creates or writes AWS config.");
+      hint("Set up the profile yourself first, e.g. `aws configure --profile miru`,");
+      hint("then point --aws-profile at it. Requires both --arn and --aws-profile.");
       writeStdout("");
       return;
     case "install":
