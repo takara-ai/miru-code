@@ -47,37 +47,46 @@ export class BM25Index {
   private postings = new Map<string, PostingsList>();
   private avgDocLength = 0;
   private numDocs = 0;
+  private totalLen = 0;
+
+  /** Append one tokenized document. Safe to call incrementally while indexing. */
+  addDocument(doc: string[]): number {
+    const docIndex = this.numDocs;
+    this.numDocs += 1;
+    this.docLengths.push(doc.length);
+    this.totalLen += doc.length;
+    this.avgDocLength = this.totalLen / this.numDocs;
+
+    const tf = new Map<string, number>();
+    for (const term of doc) {
+      tf.set(term, (tf.get(term) ?? 0) + 1);
+    }
+    for (const [term, count] of tf) {
+      this.docFreq.set(term, (this.docFreq.get(term) ?? 0) + 1);
+      let list = this.postings.get(term);
+      if (!list) {
+        list = [];
+        this.postings.set(term, list);
+      }
+      list.push([docIndex, count]);
+    }
+    return docIndex;
+  }
 
   index(tokenizedDocs: string[][]): void {
-    this.numDocs = tokenizedDocs.length;
+    this.numDocs = 0;
     this.docFreq.clear();
     this.docLengths = [];
     this.postings.clear();
+    this.totalLen = 0;
+    this.avgDocLength = 0;
 
-    let totalLen = 0;
-    for (let docIndex = 0; docIndex < tokenizedDocs.length; docIndex++) {
-      const doc = tokenizedDocs[docIndex];
+    for (const doc of tokenizedDocs) {
       if (!doc) {
         continue;
       }
-      this.docLengths.push(doc.length);
-      totalLen += doc.length;
-
-      const tf = new Map<string, number>();
-      for (const term of doc) {
-        tf.set(term, (tf.get(term) ?? 0) + 1);
-      }
-      for (const [term, count] of tf) {
-        this.docFreq.set(term, (this.docFreq.get(term) ?? 0) + 1);
-        let list = this.postings.get(term);
-        if (!list) {
-          list = [];
-          this.postings.set(term, list);
-        }
-        list.push([docIndex, count]);
-      }
+      this.addDocument(doc);
     }
-    this.avgDocLength = this.numDocs > 0 ? totalLen / this.numDocs : 0;
   }
 
   private queryTerms(queryTokens: string[]): { term: string; idf: number }[] {
@@ -222,6 +231,7 @@ export class BM25Index {
       idx.docLengths = data.docLengths;
       idx.avgDocLength = data.avgDocLength;
       idx.numDocs = data.numDocs;
+      idx.totalLen = data.avgDocLength * data.numDocs;
 
       for (const [term, list] of Object.entries(data.postings)) {
         idx.postings.set(term, list);

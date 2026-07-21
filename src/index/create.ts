@@ -2,24 +2,33 @@ import { relative, resolve } from "node:path";
 import { chunkSource } from "../chunking/chunking.ts";
 import { ensureParserInit } from "../chunking/grammars.ts";
 import { resolveWorkerConcurrency } from "../concurrency.ts";
-import type { EmbeddingBackend } from "../embeddings/openai.ts";
+import {
+  appendEmbeddingWindowJobs,
+  assignEmbeddingWindowVectors,
+  type EmbeddingBackend,
+  type EmbeddingWindowJob,
+  embedTextsWithBackend,
+  poolEmbeddingWindowBuckets,
+  resolveEmbeddingBatchSize,
+  resolveMaxEmbedChars,
+} from "../embeddings/openai.ts";
 import { envOptionalInt } from "../env.ts";
 import { searchImprovementsEnabled } from "../ranking/features.ts";
-import { tokenize } from "../tokens.ts";
 import { type Chunk, type ContentType, defaultContentTypes } from "../types.ts";
 import { BM25Index } from "./bm25.ts";
 import { loadRootEntryChunks } from "./entry-chunks.ts";
 import { walkFiles } from "./file-walker.ts";
 import { detectLanguage, getExtensions, getFileStatus, readFileText } from "./files.ts";
 import type { SemanticIndex } from "./semantic-index.ts";
-import { enrichForBm25 } from "./sparse.ts";
+import { addChunkToBm25 } from "./sparse.ts";
 import { buildSemanticIndex } from "./vector-storage.ts";
 
-const DEFAULT_PIPELINE_EMBED_BATCH = 64;
-const DEFAULT_PIPELINE_EMBED_INFLIGHT = 8;
+/** Keep enough embed HTTP calls in flight to saturate the serverless endpoint. */
+const DEFAULT_PIPELINE_EMBED_INFLIGHT = 16;
 
+/** One knob: same as embedding API batch size unless explicitly overridden. */
 function resolvePipelineEmbedBatch(): number {
-  return envOptionalInt(["MIRU_PIPELINE_EMBED_BATCH"], 1) ?? DEFAULT_PIPELINE_EMBED_BATCH;
+  return envOptionalInt(["MIRU_PIPELINE_EMBED_BATCH"], 1) ?? resolveEmbeddingBatchSize();
 }
 
 function resolvePipelineEmbedInflight(): number {
@@ -40,6 +49,7 @@ export async function createIndexFromPath(
   const started = performance.now();
   let fileProcessMs = 0;
   let embedBackpressureWaitMs = 0;
+  let bm25BuildMs = 0;
   let fileEnumerated = 0;
   let fileTasks = 0;
   let emptyFileTasks = 0;
@@ -57,14 +67,16 @@ export async function createIndexFromPath(
   const fileConcurrency = resolveWorkerConcurrency();
   const embedBatchSize = resolvePipelineEmbedBatch();
   const maxEmbedInflight = resolvePipelineEmbedInflight();
+  const maxEmbedChars = resolveMaxEmbedChars();
   const maxIndexFiles = resolveMaxIndexFiles();
-  const readyBySeq = new Map<number, Chunk[]>();
-  const pendingEmbedChunks: Chunk[] = [];
-  const emittedChunkBatches: Chunk[][] = [];
-  const embedInFlight = new Set<Promise<Float32Array[]>>();
-  const embedPromises: Promise<Float32Array[]>[] = [];
-  let fileSeq = 0;
-  let nextEmitSeq = 0;
+  const emittedChunks: Chunk[] = [];
+  const windowVectorsByChunk: Float32Array[][] = [];
+  const pendingWindows: EmbeddingWindowJob[] = [];
+  const embedInFlight = new Set<Promise<void>>();
+  const embedPromises: Promise<void>[] = [];
+  const bm25 = new BM25Index();
+  let emittedApiBatches = 0;
+  let bm25Cursor = 0;
 
   const processFile = async (filePath: string): Promise<Chunk[]> => {
     const t = performance.now();
@@ -86,35 +98,64 @@ export async function createIndexFromPath(
     }
   };
 
-  const flushReadySequentialChunks = (): void => {
-    while (readyBySeq.has(nextEmitSeq)) {
-      const chunks = readyBySeq.get(nextEmitSeq);
-      readyBySeq.delete(nextEmitSeq);
-      if (chunks) {
-        pendingEmbedChunks.push(...chunks);
+  /** Burn idle time tokenizing + building BM25 while embeds are in flight. */
+  const progressBm25 = (budgetMs = 8): void => {
+    const t0 = performance.now();
+    while (bm25Cursor < emittedChunks.length && performance.now() - t0 < budgetMs) {
+      const chunk = emittedChunks[bm25Cursor];
+      if (!chunk) {
+        break;
       }
-      nextEmitSeq++;
+      const tDoc = performance.now();
+      addChunkToBm25(bm25, chunk);
+      bm25BuildMs += performance.now() - tDoc;
+      bm25Cursor++;
+    }
+  };
+
+  const enqueueChunks = (chunks: Chunk[]): void => {
+    for (const chunk of chunks) {
+      const chunkIndex = emittedChunks.length;
+      emittedChunks.push(chunk);
+      windowVectorsByChunk.push([]);
+      appendEmbeddingWindowJobs(pendingWindows, chunkIndex, chunk.content, maxEmbedChars);
     }
   };
 
   const maybeScheduleEmbed = async (force = false): Promise<void> => {
-    while (
-      pendingEmbedChunks.length > 0 &&
-      (force || pendingEmbedChunks.length >= embedBatchSize)
-    ) {
+    while (pendingWindows.length > 0 && (force || pendingWindows.length >= embedBatchSize)) {
       if (embedInFlight.size >= maxEmbedInflight) {
         const waitStart = performance.now();
-        await Promise.race(embedInFlight);
+        // Use backpressure stalls to advance BM25 on the main thread.
+        while (embedInFlight.size >= maxEmbedInflight) {
+          progressBm25(10);
+          await Promise.race([Promise.race(embedInFlight), Bun.sleep(0)]);
+        }
         embedBackpressureWaitMs += performance.now() - waitStart;
         continue;
       }
 
-      const take = force
-        ? pendingEmbedChunks.length
-        : Math.min(embedBatchSize, pendingEmbedChunks.length);
-      const batch = pendingEmbedChunks.splice(0, take);
-      emittedChunkBatches.push(batch);
-      const promise = embeddings.embedDocuments(batch.map((chunk) => chunk.content));
+      const take = Math.min(embedBatchSize, pendingWindows.length);
+      if (!force && take < embedBatchSize) {
+        break;
+      }
+
+      const batch = pendingWindows.splice(0, take);
+      emittedApiBatches++;
+      const promise = (async () => {
+        const vectors = await embedTextsWithBackend(
+          embeddings,
+          batch.map((job) => job.text),
+        );
+        if (vectors.length !== batch.length) {
+          throw new Error(
+            `Embedding API returned ${vectors.length} vectors for ${batch.length} inputs`,
+          );
+        }
+        assignEmbeddingWindowVectors(batch, vectors, windowVectorsByChunk);
+        // After each batch returns, spend a little time on BM25.
+        progressBm25(5);
+      })();
       embedPromises.push(promise);
       embedInFlight.add(promise);
       promise.finally(() => {
@@ -125,11 +166,13 @@ export async function createIndexFromPath(
 
   const runningFiles = new Set<Promise<void>>();
 
-  const startFileTask = (filePath: string, seq: number): void => {
+  const startFileTask = (filePath: string): void => {
     const task = (async () => {
       const chunks = await processFile(filePath);
-      readyBySeq.set(seq, chunks);
-      flushReadySequentialChunks();
+      // Enqueue as soon as the file is ready (no sequential barrier) so the
+      // embed pipeline fills immediately under concurrency.
+      enqueueChunks(chunks);
+      progressBm25(3);
       await maybeScheduleEmbed(false);
     })().finally(() => {
       runningFiles.delete(task);
@@ -143,50 +186,62 @@ export async function createIndexFromPath(
       throw new Error(`Index file budget exceeded: max ${maxIndexFiles} files per operation`);
     }
     while (runningFiles.size >= fileConcurrency) {
+      progressBm25(5);
       await Promise.race(runningFiles);
     }
     fileTasks++;
-    startFileTask(filePath, fileSeq++);
+    startFileTask(filePath);
   }
 
   while (runningFiles.size > 0) {
+    progressBm25(5);
     await Promise.race(runningFiles);
   }
 
   if (searchImprovementsEnabled()) {
     const entryChunks = await loadRootEntryChunks(resolved, displayRoot ? root : undefined);
     if (entryChunks.length > 0) {
-      readyBySeq.set(fileSeq++, entryChunks);
-      flushReadySequentialChunks();
+      enqueueChunks(entryChunks);
     }
   }
 
-  flushReadySequentialChunks();
+  const embedsDrainedAt = performance.now();
   await maybeScheduleEmbed(true);
   await Promise.all(embedPromises);
+  // Finish any BM25 docs not yet processed during idle gaps.
+  while (bm25Cursor < emittedChunks.length) {
+    progressBm25(50);
+  }
+  const embedsDoneAt = performance.now();
 
-  const chunks = emittedChunkBatches.flat();
+  const chunks = emittedChunks;
 
   if (chunks.length === 0) {
     throw new Error(`No supported files found under ${path}.`);
   }
 
-  const vectors = (await Promise.all(embedPromises)).flat();
-  const bm25 = new BM25Index();
-  bm25.index(chunks.map((c) => tokenize(enrichForBm25(c))));
+  const poolStarted = performance.now();
+  const vectors = poolEmbeddingWindowBuckets(windowVectorsByChunk);
+  const poolMs = performance.now() - poolStarted;
+
+  const semanticStarted = performance.now();
   const semantic = buildSemanticIndex(vectors);
+  const semanticMs = performance.now() - semanticStarted;
 
   if (profile) {
     const finished = performance.now();
+    const wall = finished - started;
     const embedStats =
       "getStats" in embeddings && typeof embeddings.getStats === "function"
         ? embeddings.getStats()
         : null;
+    const pipelineWallMs = embedsDrainedAt - started;
+    const embedDrainMs = embedsDoneAt - embedsDrainedAt;
     console.error(
       JSON.stringify({
         profile: "index_build",
         path: resolved,
-        elapsed_ms: finished - started,
+        elapsed_ms: wall,
         file_enumerated: fileEnumerated,
         file_tasks: fileTasks,
         empty_or_skipped_files: emptyFileTasks,
@@ -197,11 +252,26 @@ export async function createIndexFromPath(
           file_concurrency: fileConcurrency,
           embed_batch_size: embedBatchSize,
           embed_inflight: maxEmbedInflight,
-          emitted_batches: emittedChunkBatches.length,
+          emitted_batches: emittedApiBatches,
+          max_embed_chars: maxEmbedChars,
         },
         stage_ms: {
           file_process_total: fileProcessMs,
           embed_backpressure_wait: embedBackpressureWaitMs,
+          bm25_build_cpu: bm25BuildMs,
+          wall_pipeline: pipelineWallMs,
+          wall_embed_drain: embedDrainMs,
+          wall_pool_windows: poolMs,
+          wall_bm25: 0,
+          wall_semantic: semanticMs,
+          wall_post: poolMs + semanticMs,
+        },
+        wall_pct: {
+          pipeline_overlap: +((100 * pipelineWallMs) / wall).toFixed(1),
+          embed_drain: +((100 * embedDrainMs) / wall).toFixed(1),
+          pool_windows: +((100 * poolMs) / wall).toFixed(1),
+          bm25: 0,
+          semantic: +((100 * semanticMs) / wall).toFixed(1),
         },
         embedding_transport: embedStats,
       }),

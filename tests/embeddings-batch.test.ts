@@ -116,6 +116,31 @@ describe("OpenAIEmbeddingBackend batching", () => {
     }
   });
 
+  test("embedInputs sends exactly the provided batch size", async () => {
+    const requestSizes: number[] = [];
+    const backend = new OpenAIEmbeddingBackend({
+      model: "test-embed-model",
+      dimensions: 4,
+      batchSize: 120,
+      maxEmbedChars: 1300,
+      client: {
+        async createEmbeddings(input) {
+          const texts = Array.isArray(input) ? input : [input];
+          requestSizes.push(texts.length);
+          return {
+            data: texts.map((_, index) => ({
+              index,
+              embedding: oneHot(4, index % 4),
+            })),
+          };
+        },
+      },
+    });
+
+    await backend.embedInputs(Array.from({ length: 120 }, (_, i) => `w${i}`));
+    expect(requestSizes).toEqual([120]);
+  });
+
   test("rejects duplicate embedding indices from API", async () => {
     const backend = new OpenAIEmbeddingBackend({
       model: "test-embed-model",
