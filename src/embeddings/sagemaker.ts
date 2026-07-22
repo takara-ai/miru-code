@@ -1,9 +1,14 @@
-import {
-  InvokeEndpointCommand,
-  type InvokeEndpointCommandOutput,
-  SageMakerRuntimeClient,
-} from "@aws-sdk/client-sagemaker-runtime";
 import type { EmbeddingClient, EmbeddingPayload, EmbeddingResponse } from "./openai.ts";
+
+type SageMakerRuntimeModule = typeof import("@aws-sdk/client-sagemaker-runtime");
+
+/** Lazily loaded so Takara-only MCP/CLI processes never pay the AWS SDK startup cost. */
+let sageMakerRuntimePromise: Promise<SageMakerRuntimeModule> | null = null;
+
+function loadSageMakerRuntime(): Promise<SageMakerRuntimeModule> {
+  sageMakerRuntimePromise ??= import("@aws-sdk/client-sagemaker-runtime");
+  return sageMakerRuntimePromise;
+}
 
 /** arn:aws:sagemaker:<region>:<account-id>:endpoint/<endpoint-name> (also covers aws-cn/aws-us-gov). */
 const ENDPOINT_ARN_PATTERN = /^arn:aws[a-z0-9-]*:sagemaker:([a-z0-9-]+):(\d{12}):endpoint\/(.+)$/;
@@ -192,7 +197,7 @@ function buildRequestBody(
 }
 
 export function createSageMakerClient(config: SageMakerEmbeddingConfig): EmbeddingClient {
-  const client = new SageMakerRuntimeClient({ region: config.region });
+  let client: InstanceType<SageMakerRuntimeModule["SageMakerRuntimeClient"]> | null = null;
 
   return {
     async createEmbeddings(
@@ -200,9 +205,12 @@ export function createSageMakerClient(config: SageMakerEmbeddingConfig): Embeddi
       _model: string,
       dimensions?: number,
     ): Promise<EmbeddingResponse> {
+      const { InvokeEndpointCommand, SageMakerRuntimeClient } = await loadSageMakerRuntime();
+      client ??= new SageMakerRuntimeClient({ region: config.region });
+
       const body = buildRequestBody(config, input, dimensions);
 
-      let response: InvokeEndpointCommandOutput;
+      let response: Awaited<ReturnType<typeof client.send>>;
       try {
         response = await client.send(
           new InvokeEndpointCommand({
