@@ -64,6 +64,7 @@
     "benchmark:quantization": "bun run scripts/benchmark-quantization.ts",
     "benchmark:tokenizer-ab": "bun run scripts/tokenizer-ab.ts",
     "sagemaker:auth-check": "bun run scripts/sagemaker-auth-check.ts",
+    "sagemaker:create-invoke-user": "bun run scripts/create-sagemaker-invoke-user.ts",
     "benchmark:embedding-latency": "bun run scripts/embedding-latency-ab.ts"
   },
   "dependencies": {

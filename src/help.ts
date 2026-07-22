@@ -84,7 +84,8 @@ export function printEnvHelp(): void {
   writeStdout("      Standard AWS credential resolution — nothing Miru-specific to set");
   writeStdout("");
   hint("Enterprise self-hosted setup: docs/self-hosted-sagemaker.md");
-  hint("Run `miru setup --sagemaker --arn <arn> --aws-profile <name>` to store this.");
+  hint("Admin runbook: bun run sagemaker:create-invoke-user -- --endpoint-arn <arn>");
+  hint("Then: miru setup --sagemaker --arn <arn> --profile <name>");
   hint("Setup confirms auth, saves SageMaker config, and removes any stored Takara API key.");
   writeStdout("");
 }
@@ -149,7 +150,7 @@ export function printCommandHelp(command: string): void {
       commandHeader("setup", "Store and validate Takara or self-hosted SageMaker credentials.");
       section("Usage");
       writeStdout("  miru setup [--key TOKEN] [--force] [--clear]");
-      writeStdout("  miru setup --sagemaker --arn ENDPOINT_ARN --aws-profile NAME");
+      writeStdout("  miru setup --sagemaker --arn ENDPOINT_ARN --profile NAME");
       section("Options (Takara)");
       writeStdout("  --key, -k TOKEN     Non-interactive key entry");
       writeStdout("  --force             Replace an existing stored key");
@@ -157,14 +158,14 @@ export function printCommandHelp(command: string): void {
       section("Options (SageMaker)");
       writeStdout("  --sagemaker         Switch setup to self-hosted SageMaker mode");
       writeStdout("  --arn ARN           Endpoint ARN (implies --sagemaker)");
-      writeStdout("  --aws-profile NAME  AWS profile to inherit credentials from");
+      writeStdout("  --profile NAME       AWS profile to inherit credentials from");
       writeStdout("");
-      hint("Switching modes: see docs/self-hosted-sagemaker.md.");
+      hint("Enterprise guide: docs/self-hosted-sagemaker.md (Marketplace + invoke-user runbook).");
       hint("Takara and SageMaker are mutually exclusive — setup for one removes the other.");
       hint("SageMaker setup invokes the endpoint once (auth + embedding check), then saves.");
-      hint("Miru only inherits AWS credentials — it never creates or writes ~/.aws.");
-      hint("Example: aws configure --profile miru");
-      hint("         miru setup --sagemaker --arn <arn> --aws-profile miru");
+      hint("Miru only inherits AWS credentials — it never creates IAM users or writes ~/.aws.");
+      hint("Admin runbook (repo): bun run sagemaker:create-invoke-user -- --endpoint-arn <arn>");
+      hint("Then: miru setup --sagemaker --arn <arn> --profile miru");
       writeStdout("");
       return;
     case "install":

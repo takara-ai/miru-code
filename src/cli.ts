@@ -476,7 +476,7 @@ async function runCli(argv: string[]): Promise<void> {
     let clear = false;
     let sagemaker = false;
     let sagemakerArn: string | undefined;
-    let awsProfile: string | undefined;
+    let profile: string | undefined;
     for (let i = 0; i < rest.length; i++) {
       const arg = rest[i];
       if (arg === "--force") {
@@ -489,8 +489,8 @@ async function runCli(argv: string[]): Promise<void> {
         sagemaker = true;
       } else if (arg === "--arn" && rest[i + 1]) {
         sagemakerArn = rest[++i];
-      } else if (arg === "--aws-profile" && rest[i + 1]) {
-        awsProfile = rest[++i];
+      } else if (arg === "--profile" && rest[i + 1]) {
+        profile = rest[++i];
       }
     }
     if (clear) {
@@ -513,7 +513,7 @@ async function runCli(argv: string[]): Promise<void> {
       force,
       sagemaker,
       sagemakerArn,
-      awsProfile,
+      profile,
     });
     if (newlySaved) {
       const offerInstall = canPromptForCredentials() && !apiKey && !force;

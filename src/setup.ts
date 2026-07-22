@@ -36,7 +36,7 @@ export interface RunSetupOptions {
   skipValidation?: boolean;
   sagemaker?: boolean;
   sagemakerArn?: string;
-  awsProfile?: string;
+  profile?: string;
 }
 
 export interface RunSetupResult {
@@ -90,11 +90,11 @@ export async function runSageMakerSetup(options: RunSetupOptions = {}): Promise<
   const arnInput = options.sagemakerArn ?? (await promptSageMakerArn());
   const parsed = parseSageMakerEndpointArn(arnInput);
 
-  let profile = options.awsProfile;
+  let profile = options.profile;
   if (!profile) {
     if (!canPromptForCredentials()) {
       throw new Error(
-        "An AWS profile name is required. Pass --aws-profile <name>, or run " +
+        "An AWS profile name is required. Pass --profile <name>, or run " +
           "`miru setup --sagemaker` interactively.",
       );
     }
