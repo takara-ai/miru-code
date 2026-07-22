@@ -83,7 +83,9 @@ export function printEnvHelp(): void {
   writeStdout("  AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN / AWS_PROFILE");
   writeStdout("      Standard AWS credential resolution — nothing Miru-specific to set");
   writeStdout("");
+  hint("Enterprise self-hosted setup: docs/self-hosted-sagemaker.md");
   hint("Run `miru setup --sagemaker --arn <arn> --aws-profile <name>` to store this.");
+  hint("Setup confirms auth, saves SageMaker config, and removes any stored Takara API key.");
   writeStdout("");
 }
 
@@ -157,9 +159,12 @@ export function printCommandHelp(command: string): void {
       writeStdout("  --arn ARN           Endpoint ARN (implies --sagemaker)");
       writeStdout("  --aws-profile NAME  AWS profile to inherit credentials from");
       writeStdout("");
-      hint("Miru only inherits AWS credentials — it never creates or writes AWS config.");
-      hint("Set up the profile yourself first, e.g. `aws configure --profile miru`,");
-      hint("then point --aws-profile at it. Requires both --arn and --aws-profile.");
+      hint("Switching modes: see docs/self-hosted-sagemaker.md.");
+      hint("Takara and SageMaker are mutually exclusive — setup for one removes the other.");
+      hint("SageMaker setup invokes the endpoint once (auth + embedding check), then saves.");
+      hint("Miru only inherits AWS credentials — it never creates or writes ~/.aws.");
+      hint("Example: aws configure --profile miru");
+      hint("         miru setup --sagemaker --arn <arn> --aws-profile miru");
       writeStdout("");
       return;
     case "install":

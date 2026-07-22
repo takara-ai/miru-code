@@ -38,6 +38,7 @@
     "src",
     "grammars",
     "tokenizer",
+    "docs",
     "README.md",
     "LICENSE"
   ],

@@ -238,6 +238,8 @@ Miru sends **file contents** to the [Takara inference API](https://takara.ai) wh
 
 If you index proprietary code, make sure that sending snippets to Takara's endpoint fits your security and compliance requirements. `MIRU_WORKSPACE_ROOT` is an opt-in boundary for MCP local `repo` paths only, and restricts indexing to a single workspace directory when set.
 
+Enterprise self-hosted embeddings (no Takara egress): see [docs/self-hosted-sagemaker.md](docs/self-hosted-sagemaker.md).
+
 ## Benchmark mode
 
 Optional measurement of how many tokens Miru saves versus a simple Grep workflow (ripgrep + reading the top matched file). Useful when evaluating Miru; leave it off day-to-day. Only local repo paths are compared — git URL repos skip the comparison and return `benchmark_skipped: "local_repo_only"`.

@@ -1,4 +1,4 @@
-import { divider, fail, hint, info, printBrandBanner, success, writeStderr } from "./cli-ui.ts";
+import { divider, fail, hint, info, printBrandBanner, success, writeStdout } from "./cli-ui.ts";
 import {
   clearStoredCredentials,
   loadStoredCredentials,
@@ -78,13 +78,14 @@ async function promptAwsProfile(): Promise<string> {
  * AWS profile. Set one up yourself first (e.g. `aws configure --profile miru`).
  */
 export async function runSageMakerSetup(options: RunSetupOptions = {}): Promise<RunSetupResult> {
-  writeStderr("");
+  writeStdout("");
   printBrandBanner(process.stderr);
   divider("─", 48, process.stderr);
-  writeStderr("Miru will connect directly to your self-hosted SageMaker embedding endpoint.");
+  writeStdout("Miru will connect directly to your self-hosted SageMaker embedding endpoint.");
   hint("Miru only inherits AWS credentials from a profile you've already configured —");
   hint("it never creates or writes to ~/.aws. Run `aws configure --profile <name>` first.");
-  writeStderr("");
+  hint("This replaces any stored Takara API key — only one embedding mode is active at a time.");
+  writeStdout("");
 
   const arnInput = options.sagemakerArn ?? (await promptSageMakerArn());
   const parsed = parseSageMakerEndpointArn(arnInput);
@@ -122,11 +123,16 @@ export async function runSageMakerSetup(options: RunSetupOptions = {}): Promise<
   }
 
   const stored: StoredSageMakerCredentials = { endpoint_arn: arnInput, profile };
+  const hadTakaraKey = Boolean((await readStoredCredentials())?.takara_api_key);
   const path = await saveStoredSageMakerCredentials(stored);
-  writeStderr("");
+  writeStdout("");
   success(`Saved SageMaker config to ${path}`);
-  hint("Miru will use this endpoint instead of Takara from now on.");
-  writeStderr("");
+  if (hadTakaraKey) {
+    hint("Removed the stored Takara API key — Miru now embeds only via SageMaker.");
+  } else {
+    hint("Miru will embed via this SageMaker endpoint (Takara is not used).");
+  }
+  writeStdout("");
   return { path, newlySaved: true };
 }
 
@@ -148,20 +154,21 @@ export async function runSetup(options: RunSetupOptions = {}): Promise<RunSetupR
 
   if (!options.force) {
     const stored = await readStoredCredentials();
-    if (stored && !options.apiKey) {
+    if (stored?.takara_api_key && !options.apiKey) {
       info(`API key already stored at ${resolveCredentialsPath()}. Use --force to replace.`);
       process.env.TAKARA_API_KEY = stored.takara_api_key;
       return { path: resolveCredentialsPath(), newlySaved: false };
     }
   }
 
-  writeStderr("");
+  writeStdout("");
   // stderr banner: setup runs before stdout may be a TTY (e.g. piped miru search).
   printBrandBanner(process.stderr);
   divider("─", 48, process.stderr);
-  writeStderr("Miru needs a Takara API key for code embeddings.");
+  writeStdout("Miru needs a Takara API key for code embeddings.");
   hint("Get a bearer token from Takara, then enter it below.");
-  writeStderr("");
+  hint("This replaces any stored SageMaker endpoint — only one embedding mode is active at a time.");
+  writeStdout("");
 
   const apiKey = options.apiKey ?? (await promptApiKey());
 
@@ -176,22 +183,27 @@ export async function runSetup(options: RunSetupOptions = {}): Promise<RunSetupR
     spinner.succeed("API key validated");
   }
 
+  const hadSageMaker = Boolean((await readStoredCredentials())?.sagemaker);
   const path = await saveStoredCredentials(apiKey);
   process.env.TAKARA_API_KEY = apiKey;
-  writeStderr("");
+  writeStdout("");
   success(`Saved credentials to ${path}`);
-  hint("MCP loads this key from credentials.json automatically.");
-  writeStderr("");
+  if (hadSageMaker) {
+    hint("Removed the stored SageMaker endpoint — Miru now embeds only via Takara.");
+  } else {
+    hint("MCP loads this key from credentials.json automatically.");
+  }
+  writeStdout("");
   return { path, newlySaved: true };
 }
 
 export async function runClearCredentials(): Promise<void> {
   const { cleared, path } = await clearStoredCredentials();
   if (cleared) {
-    success(`Removed stored API key from ${path}`);
+    success(`Removed stored credentials from ${path}`);
     return;
   }
-  info(`No stored API key at ${path}`);
+  info(`No stored credentials at ${path}`);
 }
 
 export function canPromptForCredentials(): boolean {
@@ -226,7 +238,7 @@ export async function ensureCredentials(options?: { interactive?: boolean }): Pr
 
   const wantsPrompt = options?.interactive ?? true;
   if (wantsPrompt && canPromptForCredentials()) {
-    writeStderr("");
+    writeStdout("");
     info("No Takara API key found.");
     hint("Miru needs one for embeddings — enter it below (same as `miru setup`).");
     await runSetup();
@@ -234,10 +246,10 @@ export async function ensureCredentials(options?: { interactive?: boolean }): Pr
     return;
   }
 
-  writeStderr("");
+  writeStdout("");
   // Brand on stderr when credentials are missing in non-interactive mode (stdout may not be a TTY).
   printBrandBanner(process.stderr);
-  writeStderr("");
+  writeStdout("");
 
   throw new Error(
     "Takara API key required. Run `miru setup` in a terminal, or set TAKARA_API_KEY " +

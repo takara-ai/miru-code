@@ -99,16 +99,25 @@ export async function saveStoredCredentials(apiKey: string): Promise<string> {
   const path = resolveCredentialsPath();
   await mkdir(dir, { recursive: true, mode: 0o700 });
   const existing = await readStoredCredentials();
+  // Takara and SageMaker modes are mutually exclusive — saving a key drops any stored endpoint.
+  const previousSageMaker = existing?.sagemaker;
   const payload: StoredCredentials = {
     version: CREDENTIALS_VERSION,
     takara_api_key: apiKey,
-    ...(existing?.sagemaker ? { sagemaker: existing.sagemaker } : {}),
   };
   await Bun.write(path, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
   try {
     await chmod(path, 0o600);
   } catch {
     // Windows may not support Unix mode bits on all filesystems.
+  }
+  if (previousSageMaker) {
+    if (process.env.MIRU_SAGEMAKER_ENDPOINT_ARN === previousSageMaker.endpoint_arn) {
+      delete process.env.MIRU_SAGEMAKER_ENDPOINT_ARN;
+    }
+    if (previousSageMaker.profile && process.env.AWS_PROFILE === previousSageMaker.profile) {
+      delete process.env.AWS_PROFILE;
+    }
   }
   return path;
 }
@@ -120,9 +129,10 @@ export async function saveStoredSageMakerCredentials(
   const path = resolveCredentialsPath();
   await mkdir(dir, { recursive: true, mode: 0o700 });
   const existing = await readStoredCredentials();
+  // Takara and SageMaker modes are mutually exclusive — saving an endpoint drops any stored key.
+  const previousTakaraKey = existing?.takara_api_key;
   const payload: StoredCredentials = {
     version: CREDENTIALS_VERSION,
-    ...(existing?.takara_api_key ? { takara_api_key: existing.takara_api_key } : {}),
     sagemaker,
   };
   await Bun.write(path, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
@@ -130,6 +140,9 @@ export async function saveStoredSageMakerCredentials(
     await chmod(path, 0o600);
   } catch {
     // Windows may not support Unix mode bits on all filesystems.
+  }
+  if (previousTakaraKey && process.env.TAKARA_API_KEY === previousTakaraKey) {
+    delete process.env.TAKARA_API_KEY;
   }
   return path;
 }
