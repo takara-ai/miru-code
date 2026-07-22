@@ -140,7 +140,7 @@ function filterChunksByGlob(
     if (includeMatcher && !includeMatcher.ignores(path)) {
       return false;
     }
-    if (excludeMatcher && excludeMatcher.ignores(path)) {
+    if (excludeMatcher?.ignores(path)) {
       return false;
     }
     return true;

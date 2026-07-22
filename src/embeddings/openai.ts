@@ -4,7 +4,7 @@ import { createSageMakerClient, resolveSageMakerConfig } from "./sagemaker.ts";
 
 export const DEFAULT_EMBEDDING_MODEL = "ds1-miru-int8";
 export const DEFAULT_EMBEDDING_BASE_URL = "https://infer.takara.ai/v1";
-const DEFAULT_BATCH_SIZE = 32;
+const DEFAULT_BATCH_SIZE = 360;
 const DEFAULT_MAX_EMBED_CHARS = 1300;
 const WINDOW_OVERLAP_CHARS = 120;
 
@@ -30,6 +30,12 @@ export interface EmbeddingBackend {
   readonly dimensions: number;
   embedDocuments(texts: string[]): Promise<Float32Array[]>;
   embedQuery(text: string): Promise<Float32Array>;
+  /**
+   * Embed already-windowed strings with no further splitting into windows.
+   * Callers should pass at most one API batch (`resolveEmbeddingBatchSize()`).
+   * Falls back to `embedDocuments` when omitted (test mocks).
+   */
+  embedInputs?(texts: string[]): Promise<Float32Array[]>;
 }
 
 /** SageMaker self-hosted mode has no configurable model name — the endpoint owns that choice. */
@@ -57,7 +63,7 @@ export function resolveMaxEmbedChars(): number {
   return envOptionalInt(["MIRU_MAX_EMBED_CHARS"], 256) ?? DEFAULT_MAX_EMBED_CHARS;
 }
 
-function splitIntoWindows(text: string, maxChars: number): string[] {
+export function splitIntoWindows(text: string, maxChars: number): string[] {
   if (text.length <= maxChars) {
     return [text];
   }
@@ -94,6 +100,128 @@ export function sanitizeEmbeddingInput(text: string): string {
     return out.replaceAll("\\", "/");
   }
   return out;
+}
+
+/** One embedding API input tied back to its source document/chunk. */
+export interface EmbeddingWindowJob {
+  docIndex: number;
+  text: string;
+}
+
+export function appendEmbeddingWindowJobs(
+  jobs: EmbeddingWindowJob[],
+  docIndex: number,
+  text: string,
+  maxChars: number,
+): void {
+  for (const windowText of splitIntoWindows(text, maxChars).map(sanitizeEmbeddingInput)) {
+    jobs.push({ docIndex, text: windowText });
+  }
+}
+
+export function buildEmbeddingWindowJobs(
+  texts: string[],
+  maxChars: number,
+): { jobs: EmbeddingWindowJob[]; buckets: Float32Array[][] } {
+  const jobs: EmbeddingWindowJob[] = [];
+  const buckets: Float32Array[][] = texts.map(() => []);
+  for (let docIndex = 0; docIndex < texts.length; docIndex++) {
+    const text = texts[docIndex];
+    if (text === undefined) {
+      continue;
+    }
+    appendEmbeddingWindowJobs(jobs, docIndex, text, maxChars);
+  }
+  return { jobs, buckets };
+}
+
+export function batchEmbeddingWindowJobs(
+  jobs: EmbeddingWindowJob[],
+  batchSize: number,
+): EmbeddingWindowJob[][] {
+  const batches: EmbeddingWindowJob[][] = [];
+  for (let i = 0; i < jobs.length; i += batchSize) {
+    batches.push(jobs.slice(i, i + batchSize));
+  }
+  return batches;
+}
+
+export function assignEmbeddingWindowVectors(
+  jobs: EmbeddingWindowJob[],
+  vectors: Float32Array[],
+  buckets: Float32Array[][],
+): void {
+  for (let i = 0; i < jobs.length; i++) {
+    const job = jobs[i];
+    const vector = vectors[i];
+    if (job === undefined || vector === undefined) {
+      continue;
+    }
+    const bucket = buckets[job.docIndex];
+    if (bucket) {
+      bucket.push(vector);
+    }
+  }
+}
+
+function normalize(vec: Float32Array): Float32Array {
+  let norm = 0;
+  for (let i = 0; i < vec.length; i++) {
+    const value = vec[i] ?? 0;
+    norm += value * value;
+  }
+  norm = Math.sqrt(norm);
+  if (norm === 0) {
+    return vec;
+  }
+  const out = new Float32Array(vec.length);
+  for (let i = 0; i < vec.length; i++) {
+    out[i] = (vec[i] ?? 0) / norm;
+  }
+  return out;
+}
+
+export function poolWindowVectors(vectors: Float32Array[]): Float32Array {
+  if (vectors.length === 0) {
+    throw new Error("Embedding API returned no vectors");
+  }
+  const first = vectors[0];
+  if (!first) {
+    throw new Error("Embedding API returned no vectors");
+  }
+  if (vectors.length === 1) {
+    return normalize(first);
+  }
+  const pooled = new Float32Array(first.length);
+  for (const vec of vectors) {
+    for (let i = 0; i < pooled.length; i++) {
+      pooled[i] += vec[i] ?? 0;
+    }
+  }
+  for (let i = 0; i < pooled.length; i++) {
+    pooled[i] /= vectors.length;
+  }
+  return normalize(pooled);
+}
+
+export function poolEmbeddingWindowBuckets(buckets: Float32Array[][]): Float32Array[] {
+  return buckets.map((vectors, index) => {
+    if (vectors.length === 0) {
+      throw new Error(`Missing embedding vectors for document ${index}`);
+    }
+    return poolWindowVectors(vectors);
+  });
+}
+
+/** Prefer embedInputs when available; fall back for test mocks. */
+export async function embedTextsWithBackend(
+  embeddings: EmbeddingBackend,
+  texts: string[],
+): Promise<Float32Array[]> {
+  if (embeddings.embedInputs) {
+    return embeddings.embedInputs(texts);
+  }
+  return embeddings.embedDocuments(texts);
 }
 
 const TRANSIENT_EMBED_STATUSES = new Set([429, 500, 502, 503, 504]);
@@ -289,56 +417,38 @@ export class OpenAIEmbeddingBackend implements EmbeddingBackend {
     };
   }
 
+  /** Embed pre-windowed inputs; issues a single API request (may 413-split). */
+  async embedInputs(texts: string[]): Promise<Float32Array[]> {
+    if (texts.length === 0) {
+      return [];
+    }
+    const vectors = await this.embedBatchRawWithRetry(texts.map(sanitizeEmbeddingInput));
+    for (const vec of vectors) {
+      if (this.dimensions === 0 && vec.length > 0) {
+        this.dimensions = vec.length;
+      }
+    }
+    return vectors;
+  }
+
   async embedDocuments(texts: string[]): Promise<Float32Array[]> {
     if (texts.length === 0) {
       return [];
     }
 
-    interface WindowJob {
-      docIndex: number;
-      text: string;
-    }
-
-    const jobs: WindowJob[] = [];
-    const windowVectors: Float32Array[][] = texts.map(() => []);
-
-    for (let docIndex = 0; docIndex < texts.length; docIndex++) {
-      const text = texts[docIndex];
-      if (text === undefined) {
-        continue;
-      }
-      const windows = splitIntoWindows(text, this.maxEmbedChars).map(sanitizeEmbeddingInput);
-      for (const text of windows) {
-        jobs.push({ docIndex, text });
-      }
-    }
-
+    const { jobs, buckets } = buildEmbeddingWindowJobs(texts, this.maxEmbedChars);
     if (jobs.length === 0) {
       return texts.map(() => new Float32Array(0));
     }
 
-    const batches: WindowJob[][] = [];
-    for (let i = 0; i < jobs.length; i += this.batchSize) {
-      batches.push(jobs.slice(i, i + this.batchSize));
-    }
-
+    const batches = batchEmbeddingWindowJobs(jobs, this.batchSize);
     const concurrency = resolveWorkerConcurrency();
     await mapPool(batches, concurrency, async (batch) => {
-      const vectors = await this.embedBatchRawWithRetry(batch.map((job) => job.text));
-      for (let i = 0; i < batch.length; i++) {
-        const job = batch[i];
-        const vector = vectors[i];
-        if (job === undefined || vector === undefined) {
-          continue;
-        }
-        const bucket = windowVectors[job.docIndex];
-        if (bucket) {
-          bucket.push(vector);
-        }
-      }
+      const vectors = await this.embedInputs(batch.map((job) => job.text));
+      assignEmbeddingWindowVectors(batch, vectors, buckets);
     });
 
-    const out = windowVectors.map((vectors) => poolWindowVectors(vectors));
+    const out = poolEmbeddingWindowBuckets(buckets);
     for (const vec of out) {
       if (this.dimensions === 0 && vec.length > 0) {
         this.dimensions = vec.length;
@@ -482,46 +592,6 @@ function vectorsFromResponse(data: EmbeddingResponseItem[], expected: number): F
     }
     return vec;
   });
-}
-
-function poolWindowVectors(vectors: Float32Array[]): Float32Array {
-  if (vectors.length === 0) {
-    throw new Error("Embedding API returned no vectors");
-  }
-  const first = vectors[0];
-  if (!first) {
-    throw new Error("Embedding API returned no vectors");
-  }
-  if (vectors.length === 1) {
-    return normalize(first);
-  }
-  const pooled = new Float32Array(first.length);
-  for (const vec of vectors) {
-    for (let i = 0; i < pooled.length; i++) {
-      pooled[i] += vec[i] ?? 0;
-    }
-  }
-  for (let i = 0; i < pooled.length; i++) {
-    pooled[i] /= vectors.length;
-  }
-  return normalize(pooled);
-}
-
-function normalize(vec: Float32Array): Float32Array {
-  let norm = 0;
-  for (let i = 0; i < vec.length; i++) {
-    const value = vec[i] ?? 0;
-    norm += value * value;
-  }
-  norm = Math.sqrt(norm);
-  if (norm === 0) {
-    return vec;
-  }
-  const out = new Float32Array(vec.length);
-  for (let i = 0; i < vec.length; i++) {
-    out[i] = (vec[i] ?? 0) / norm;
-  }
-  return out;
 }
 
 let defaultBackend: OpenAIEmbeddingBackend | null = null;

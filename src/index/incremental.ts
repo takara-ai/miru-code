@@ -1,12 +1,11 @@
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { chunkSource } from "../chunking/chunking.ts";
 import type { EmbeddingBackend } from "../embeddings/openai.ts";
-import { tokenize } from "../tokens.ts";
 import type { Chunk, ContentType } from "../types.ts";
-import { BM25Index } from "./bm25.ts";
+import type { BM25Index } from "./bm25.ts";
 import { detectLanguage, getExtensions, getFileStatus, readFileText } from "./files.ts";
 import type { SemanticIndex } from "./semantic-index.ts";
-import { enrichForBm25 } from "./sparse.ts";
+import { buildBm25FromChunks } from "./sparse.ts";
 import { buildSemanticIndex } from "./vector-storage.ts";
 import { vectorAt } from "./vectors.ts";
 
@@ -64,7 +63,7 @@ export async function applyIncrementalFileChanges(options: {
   if (targets.size === 0) {
     return {
       chunks: options.chunks,
-      bm25: rebuildBm25(options.chunks),
+      bm25: buildBm25FromChunks(options.chunks),
       semantic: options.semanticIndex,
     };
   }
@@ -108,15 +107,9 @@ export async function applyIncrementalFileChanges(options: {
 
   return {
     chunks,
-    bm25: rebuildBm25(chunks),
+    bm25: buildBm25FromChunks(chunks),
     semantic: buildSemanticIndex(vectors),
   };
-}
-
-function rebuildBm25(chunks: Chunk[]): BM25Index {
-  const bm25 = new BM25Index();
-  bm25.index(chunks.map((c) => tokenize(enrichForBm25(c))));
-  return bm25;
 }
 
 /** Map an absolute changed path to a repo-relative path for chunk keys. */
