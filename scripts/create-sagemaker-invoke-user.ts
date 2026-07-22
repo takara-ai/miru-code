@@ -169,9 +169,7 @@ async function main(): Promise<void> {
   console.log(`IAM user: ${userName}`);
   console.log("");
   console.log("Next — point Miru at the endpoint (purges any stored Takara API key):");
-  console.log(
-    `  miru setup --sagemaker --arn ${args.endpointArn} --profile ${args.profile}`,
-  );
+  console.log(`  miru setup --sagemaker --arn ${args.endpointArn} --profile ${args.profile}`);
   console.log("");
   console.log("Optional smoke test:");
   console.log(`  bun run sagemaker:auth-check -- --arn ${args.endpointArn}`);

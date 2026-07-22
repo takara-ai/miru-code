@@ -167,7 +167,9 @@ export async function runSetup(options: RunSetupOptions = {}): Promise<RunSetupR
   divider("─", 48, process.stderr);
   writeStdout("Miru needs a Takara API key for code embeddings.");
   hint("Get a bearer token from Takara, then enter it below.");
-  hint("This replaces any stored SageMaker endpoint — only one embedding mode is active at a time.");
+  hint(
+    "This replaces any stored SageMaker endpoint — only one embedding mode is active at a time.",
+  );
   writeStdout("");
 
   const apiKey = options.apiKey ?? (await promptApiKey());

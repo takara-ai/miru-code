@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-async function runProbe(source: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+async function runProbe(
+  source: string,
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const proc = Bun.spawn({
     cmd: ["bun", "-e", source],
     cwd: repoRoot,
