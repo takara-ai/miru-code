@@ -38,6 +38,7 @@ import { MiruIndex } from "./miru-index.ts";
 import {
   canPromptForCredentials,
   ensureCredentials,
+  parseSetupCliArgs,
   runClearCredentials,
   runSetup,
 } from "./setup.ts";
@@ -471,52 +472,28 @@ async function runCli(argv: string[]): Promise<void> {
   }
 
   if (command === "setup") {
-    let apiKey: string | undefined;
-    let force = false;
-    let clear = false;
-    let sagemaker = false;
-    let sagemakerArn: string | undefined;
-    let profile: string | undefined;
-    for (let i = 0; i < rest.length; i++) {
-      const arg = rest[i];
-      if (arg === "--force") {
-        force = true;
-      } else if (arg === "--clear") {
-        clear = true;
-      } else if ((arg === "--key" || arg === "-k") && rest[i + 1]) {
-        apiKey = rest[++i];
-      } else if (arg === "--sagemaker") {
-        sagemaker = true;
-      } else if (arg === "--arn" && rest[i + 1]) {
-        sagemakerArn = rest[++i];
-      } else if (arg === "--profile" && rest[i + 1]) {
-        profile = rest[++i];
-      }
+    const { args, error } = parseSetupCliArgs(rest);
+    if (error === "clear_with_key") {
+      fail("miru setup --clear cannot be combined with --key.");
+      process.exit(1);
     }
-    if (clear) {
-      if (apiKey) {
-        fail("miru setup --clear cannot be combined with --key.");
-        process.exit(1);
-      }
-      await runClearCredentials();
-      return;
-    }
-    if (sagemakerArn) {
-      sagemaker = true;
-    }
-    if (sagemaker && apiKey) {
+    if (error === "sagemaker_with_key") {
       fail("miru setup --sagemaker cannot be combined with --key.");
       process.exit(1);
     }
+    if (args.clear) {
+      await runClearCredentials();
+      return;
+    }
     const { newlySaved } = await runSetup({
-      apiKey,
-      force,
-      sagemaker,
-      sagemakerArn,
-      profile,
+      apiKey: args.apiKey,
+      force: args.force,
+      sagemaker: args.sagemaker,
+      sagemakerArn: args.sagemakerArn,
+      profile: args.profile,
     });
     if (newlySaved) {
-      const offerInstall = canPromptForCredentials() && !apiKey && !force;
+      const offerInstall = canPromptForCredentials() && !args.apiKey && !args.force;
       if (offerInstall) {
         const install = await promptConfirm("Configure Miru in your coding agent now?");
         if (install) {

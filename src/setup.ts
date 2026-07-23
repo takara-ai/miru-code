@@ -44,6 +44,68 @@ export interface RunSetupResult {
   newlySaved: boolean;
 }
 
+export interface ParsedSetupCliArgs {
+  apiKey?: string;
+  force: boolean;
+  clear: boolean;
+  sagemaker: boolean;
+  sagemakerArn?: string;
+  profile?: string;
+}
+
+export type SetupCliArgError = "clear_with_key" | "sagemaker_with_key";
+
+/** Parse `miru setup` argv (everything after the `setup` command). */
+export function parseSetupCliArgs(rest: string[]): {
+  args: ParsedSetupCliArgs;
+  error?: SetupCliArgError;
+} {
+  let apiKey: string | undefined;
+  let force = false;
+  let clear = false;
+  let sagemaker = false;
+  let sagemakerArn: string | undefined;
+  let profile: string | undefined;
+
+  for (let i = 0; i < rest.length; i++) {
+    const arg = rest[i];
+    if (arg === "--force") {
+      force = true;
+    } else if (arg === "--clear") {
+      clear = true;
+    } else if ((arg === "--key" || arg === "-k") && rest[i + 1]) {
+      apiKey = rest[++i];
+    } else if (arg === "--sagemaker") {
+      sagemaker = true;
+    } else if (arg === "--arn" && rest[i + 1]) {
+      sagemakerArn = rest[++i];
+    } else if (arg === "--profile" && rest[i + 1]) {
+      profile = rest[++i];
+    }
+  }
+
+  if (sagemakerArn) {
+    sagemaker = true;
+  }
+
+  const args: ParsedSetupCliArgs = {
+    apiKey,
+    force,
+    clear,
+    sagemaker,
+    sagemakerArn,
+    profile,
+  };
+
+  if (clear && apiKey) {
+    return { args, error: "clear_with_key" };
+  }
+  if (sagemaker && apiKey) {
+    return { args, error: "sagemaker_with_key" };
+  }
+  return { args };
+}
+
 async function promptSageMakerArn(): Promise<string> {
   while (true) {
     const arn = await promptText("SageMaker endpoint ARN");
