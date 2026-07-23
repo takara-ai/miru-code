@@ -120,8 +120,6 @@ describe("setup credentials", () => {
   test("runSageMakerSetup purges a stored Takara API key", async () => {
     credDir = await mkdtemp(join(tmpdir(), "miru-setup-sm-purge-"));
     process.env.MIRU_CREDENTIALS_DIR = credDir;
-    delete process.env.MIRU_SAGEMAKER_ENDPOINT_ARN;
-    delete process.env.AWS_PROFILE;
     await saveStoredCredentials("takara-token");
     process.env.TAKARA_API_KEY = "takara-token";
 
@@ -137,7 +135,8 @@ describe("setup credentials", () => {
     expect(stored?.takara_api_key).toBeUndefined();
     expect(stored?.sagemaker).toEqual({ endpoint_arn: arn, profile: "miru" });
     expect(process.env.TAKARA_API_KEY).toBeUndefined();
-    expect(process.env.MIRU_SAGEMAKER_ENDPOINT_ARN).toBe(arn);
+    // Cast: delete/assign on process.env narrows the property under Bun's Env types.
+    expect(process.env.MIRU_SAGEMAKER_ENDPOINT_ARN as string | undefined).toBe(arn);
   });
 
   test("runSetup purges a stored SageMaker endpoint", async () => {

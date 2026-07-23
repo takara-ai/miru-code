@@ -1,3 +1,4 @@
+import type { InvokeEndpointCommandOutput } from "@aws-sdk/client-sagemaker-runtime";
 import type { EmbeddingClient, EmbeddingPayload, EmbeddingResponse } from "./openai.ts";
 
 type SageMakerRuntimeModule = typeof import("@aws-sdk/client-sagemaker-runtime");
@@ -210,7 +211,7 @@ export function createSageMakerClient(config: SageMakerEmbeddingConfig): Embeddi
 
       const body = buildRequestBody(config, input, dimensions);
 
-      let response: Awaited<ReturnType<typeof client.send>>;
+      let response: InvokeEndpointCommandOutput;
       try {
         response = await client.send(
           new InvokeEndpointCommand({
