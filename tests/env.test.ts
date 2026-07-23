@@ -29,7 +29,7 @@ describe("resolveEmbeddingApiKey", () => {
     const prev = process.env.TAKARA_API_KEY;
     try {
       delete process.env.TAKARA_API_KEY;
-      expect(() => resolveEmbeddingApiKey()).toThrow(/Takara API key required/);
+      expect(() => resolveEmbeddingApiKey()).toThrow(/Takara credentials required/);
     } finally {
       if (prev === undefined) {
         delete process.env.TAKARA_API_KEY;
@@ -45,7 +45,7 @@ describe("resolveEmbeddingApiKey", () => {
       process.env.TAKARA_API_KEY = "$" + "{TAKARA_API_KEY}";
       expect(isUsableTakaraApiKey(process.env.TAKARA_API_KEY)).toBe(false);
       expect(hasTakaraApiKeyInEnv()).toBe(false);
-      expect(() => resolveEmbeddingApiKey()).toThrow(/Takara API key required/);
+      expect(() => resolveEmbeddingApiKey()).toThrow(/Takara credentials required/);
       normalizeTakaraApiKeyEnv();
       expect(process.env.TAKARA_API_KEY).toBeUndefined();
     } finally {
