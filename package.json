@@ -38,6 +38,7 @@
     "src",
     "grammars",
     "tokenizer",
+    "docs",
     "README.md",
     "LICENSE"
   ],
@@ -61,9 +62,13 @@
     "benchmark:literal": "bun run scripts/benchmark-literal-tokens.ts",
     "benchmark:quality": "bun run scripts/benchmark-quality.ts",
     "benchmark:quantization": "bun run scripts/benchmark-quantization.ts",
-    "benchmark:tokenizer-ab": "bun run scripts/tokenizer-ab.ts"
+    "benchmark:tokenizer-ab": "bun run scripts/tokenizer-ab.ts",
+    "sagemaker:auth-check": "bun run scripts/sagemaker-auth-check.ts",
+    "sagemaker:create-invoke-user": "bun run scripts/create-sagemaker-invoke-user.ts",
+    "benchmark:embedding-latency": "bun run scripts/embedding-latency-ab.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-sagemaker-runtime": "^3.1090.0",
     "ignore": "^7.0.5",
     "web-tree-sitter": "^0.26.9",
     "zod": "^4.4.3"

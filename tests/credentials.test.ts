@@ -9,6 +9,7 @@ import {
   resolveCredentialsDir,
   resolveMiruStateDir,
   saveStoredCredentials,
+  saveStoredSageMakerCredentials,
 } from "../src/credentials.ts";
 import { TAKARA_API_KEY_ENV } from "../src/env.ts";
 
@@ -28,13 +29,22 @@ function clearTakaraApiKey(): void {
   delete process.env[TAKARA_API_KEY_ENV];
 }
 
+function clearSageMakerEnv(): void {
+  delete process.env.MIRU_SAGEMAKER_ENDPOINT_ARN;
+  delete process.env.AWS_PROFILE;
+}
+
 describe("credentials", () => {
   let credDir: string;
   const prevDir = process.env.MIRU_CREDENTIALS_DIR;
   let takaraApiKeySnapshot: string | undefined;
+  let sageMakerArnSnapshot: string | undefined;
+  let awsProfileSnapshot: string | undefined;
 
   beforeEach(() => {
     takaraApiKeySnapshot = snapshotTakaraApiKey();
+    sageMakerArnSnapshot = process.env.MIRU_SAGEMAKER_ENDPOINT_ARN;
+    awsProfileSnapshot = process.env.AWS_PROFILE;
   });
 
   afterEach(async () => {
@@ -47,6 +57,16 @@ describe("credentials", () => {
       process.env.MIRU_CREDENTIALS_DIR = prevDir;
     }
     restoreTakaraApiKey(takaraApiKeySnapshot);
+    if (sageMakerArnSnapshot === undefined) {
+      delete process.env.MIRU_SAGEMAKER_ENDPOINT_ARN;
+    } else {
+      process.env.MIRU_SAGEMAKER_ENDPOINT_ARN = sageMakerArnSnapshot;
+    }
+    if (awsProfileSnapshot === undefined) {
+      delete process.env.AWS_PROFILE;
+    } else {
+      process.env.AWS_PROFILE = awsProfileSnapshot;
+    }
   });
 
   test("saveStoredCredentials writes versioned file with restricted mode", async () => {
@@ -156,5 +176,43 @@ describe("credentials", () => {
     const result = await clearStoredCredentials();
     expect(result.cleared).toBe(true);
     expect(process.env.TAKARA_API_KEY).toBe("env-token");
+  });
+
+  test("saving SageMaker credentials removes stored Takara API key", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-cred-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    clearTakaraApiKey();
+    clearSageMakerEnv();
+
+    await saveStoredCredentials("takara-token");
+    process.env.TAKARA_API_KEY = "takara-token";
+
+    const arn = "arn:aws:sagemaker:us-east-1:123456789012:endpoint/miru-test";
+    await saveStoredSageMakerCredentials({ endpoint_arn: arn, profile: "miru" });
+
+    const stored = await readStoredCredentials();
+    expect(stored?.takara_api_key).toBeUndefined();
+    expect(stored?.sagemaker).toEqual({ endpoint_arn: arn, profile: "miru" });
+    expect(process.env.TAKARA_API_KEY).toBeUndefined();
+  });
+
+  test("saving Takara credentials removes stored SageMaker endpoint", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-cred-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    clearTakaraApiKey();
+    clearSageMakerEnv();
+
+    const arn = "arn:aws:sagemaker:us-east-1:123456789012:endpoint/miru-test";
+    await saveStoredSageMakerCredentials({ endpoint_arn: arn, profile: "miru" });
+    process.env.MIRU_SAGEMAKER_ENDPOINT_ARN = arn;
+    process.env.AWS_PROFILE = "miru";
+
+    await saveStoredCredentials("takara-token");
+
+    const stored = await readStoredCredentials();
+    expect(stored?.sagemaker).toBeUndefined();
+    expect(stored?.takara_api_key).toBe("takara-token");
+    expect(process.env.MIRU_SAGEMAKER_ENDPOINT_ARN).toBeUndefined();
+    expect(process.env.AWS_PROFILE).toBeUndefined();
   });
 });
