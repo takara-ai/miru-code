@@ -20,22 +20,17 @@ export async function cloneGitRepository(url: string, ref?: string | null): Prom
       stdout: "pipe",
       stderr: "pipe",
       stdin: "ignore",
+      timeout: timeoutSec * 1000,
     });
   } catch {
     await rm(dir, { recursive: true, force: true });
     throw new Error("git is not installed or not on PATH");
   }
 
-  let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    proc.kill();
-  }, timeoutSec * 1000);
-
   const code = await proc.exited;
-  clearTimeout(timer);
 
-  if (timedOut) {
+  // Prefer signalCode over killed — Bun may set killed=true after a normal exit.
+  if (proc.signalCode != null) {
     await rm(dir, { recursive: true, force: true });
     throw new Error(`git clone timed out for ${url} (limit: ${timeoutSec}s)`);
   }

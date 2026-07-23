@@ -202,6 +202,10 @@ export function printCommandHelp(command: string): void {
       writeStdout("to a Grep baseline (rg search + read of the top matched file),");
       writeStdout("not bare chunk content and not the agent's full tool chain.");
       writeStdout("Local paths only — git URL repos skip comparison with benchmark_skipped.");
+      writeStdout(
+        "Cap each rg/grep spawn with MIRU_BENCHMARK_SEARCH_TIMEOUT (seconds, default 10).",
+      );
+      writeStdout("On timeout Miru still returns results with benchmark_skipped=grep_timeout.");
       writeStdout("");
       return;
     case "init":

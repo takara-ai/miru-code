@@ -1,6 +1,7 @@
 /** Native grep baseline for Miru benchmark comparisons. */
 
 import { relative } from "node:path";
+import { envOptionalInt } from "../env.ts";
 import { countTokens } from "../token-count.ts";
 
 const STOPWORDS = new Set(
@@ -11,6 +12,9 @@ const STOPWORDS = new Set(
 
 export const GREP_LINES_PER_FILE = 3;
 export const GREP_CONTEXT = 2;
+
+/** Default cap for each rg/grep/findstr spawn in benchmark mode (seconds). */
+const DEFAULT_BENCHMARK_SEARCH_TIMEOUT_SEC = 10;
 
 /** Shared `-g` excludes for ripgrep baselines (search + locate). */
 export const RG_EXCLUDE_ARGS = [
@@ -23,6 +27,44 @@ export const RG_EXCLUDE_ARGS = [
   "-g",
   "!tokenizer/**",
 ] as const;
+
+export class BenchmarkSearchTimeoutError extends Error {
+  constructor(timeoutSec: number) {
+    super(`Benchmark search timed out after ${timeoutSec}s`);
+    this.name = "BenchmarkSearchTimeoutError";
+  }
+}
+
+/** `Bun.spawn` for benchmark baselines, killed after MIRU_BENCHMARK_SEARCH_TIMEOUT. */
+export async function spawnBenchmarkSearch(args: string[], cwd?: string): Promise<string> {
+  const timeoutSec =
+    envOptionalInt(["MIRU_BENCHMARK_SEARCH_TIMEOUT"], 1) ?? DEFAULT_BENCHMARK_SEARCH_TIMEOUT_SEC;
+  const proc = Bun.spawn(args, {
+    stdout: "pipe",
+    stderr: "pipe",
+    cwd,
+    timeout: timeoutSec * 1000,
+  });
+  const text = await new Response(proc.stdout).text();
+  await proc.exited;
+  // Prefer signalCode over killed — Bun may set killed=true after a normal exit.
+  if (proc.signalCode != null) {
+    throw new BenchmarkSearchTimeoutError(timeoutSec);
+  }
+  return text;
+}
+
+/** Run a Grep baseline; return null on timeout so Miru results can still be returned. */
+export async function withGrepTimeoutFallback<T>(run: () => Promise<T>): Promise<T | null> {
+  try {
+    return await run();
+  } catch (err) {
+    if (err instanceof BenchmarkSearchTimeoutError) {
+      return null;
+    }
+    throw err;
+  }
+}
 
 export interface GrepFileHit {
   file: string;
@@ -172,34 +214,31 @@ export async function grepSearch(
 }
 
 async function rgRankedMatches(repoRoot: string, pattern: string, topK: number) {
-  const countProc = Bun.spawn(
-    ["rg", "-i", "--count-matches", pattern, repoRoot, ...RG_EXCLUDE_ARGS],
-    { stdout: "pipe", stderr: "pipe" },
-  );
-  const countText = await new Response(countProc.stdout).text();
-  await countProc.exited;
+  const countText = await spawnBenchmarkSearch([
+    "rg",
+    "-i",
+    "--count-matches",
+    pattern,
+    repoRoot,
+    ...RG_EXCLUDE_ARGS,
+  ]);
   return parseCountMatches(repoRoot, countText, topK);
 }
 
 async function grepRankedMatches(repoRoot: string, pattern: string, topK: number) {
-  const countProc = Bun.spawn(
-    [
-      "grep",
-      "-R",
-      "-I",
-      "-i",
-      "-E",
-      "-o",
-      "--exclude-dir=node_modules",
-      "--exclude-dir=.git",
-      "--exclude-dir=tokenizer",
-      pattern,
-      repoRoot,
-    ],
-    { stdout: "pipe", stderr: "pipe" },
-  );
-  const countText = await new Response(countProc.stdout).text();
-  await countProc.exited;
+  const countText = await spawnBenchmarkSearch([
+    "grep",
+    "-R",
+    "-I",
+    "-i",
+    "-E",
+    "-o",
+    "--exclude-dir=node_modules",
+    "--exclude-dir=.git",
+    "--exclude-dir=tokenizer",
+    pattern,
+    repoRoot,
+  ]);
   const counts = new Map<string, number>();
   for (const line of countText.split("\n")) {
     if (!line) {
@@ -240,13 +279,10 @@ function splitSearchToolLine(line: string): { path: string; rest: string } | nul
 async function findstrRankedMatches(repoRoot: string, keywords: string[], topK: number) {
   const counts = new Map<string, number>();
   for (const keyword of keywords) {
-    const proc = Bun.spawn(["findstr", "/S", "/N", "/I", "/P", `/C:${keyword}`, "*"], {
-      stdout: "pipe",
-      stderr: "pipe",
-      cwd: repoRoot,
-    });
-    const text = await new Response(proc.stdout).text();
-    await proc.exited;
+    const text = await spawnBenchmarkSearch(
+      ["findstr", "/S", "/N", "/I", "/P", `/C:${keyword}`, "*"],
+      repoRoot,
+    );
     for (const line of text.split("\n")) {
       const parsed = parsePathLinePrefix(line);
       if (!parsed?.path) {
@@ -302,51 +338,42 @@ function parseCountMatches(repoRoot: string, countText: string, topK: number) {
 }
 
 async function rgFilePreview(absPath: string, pattern: string): Promise<string> {
-  const proc = Bun.spawn(
-    [
-      "rg",
-      "-i",
-      "-n",
-      "-C",
-      String(GREP_CONTEXT),
-      "-m",
-      String(GREP_LINES_PER_FILE),
-      pattern,
-      absPath,
-    ],
-    { stdout: "pipe", stderr: "pipe" },
-  );
-  const output = await new Response(proc.stdout).text();
-  await proc.exited;
-  return output;
+  return spawnBenchmarkSearch([
+    "rg",
+    "-i",
+    "-n",
+    "-C",
+    String(GREP_CONTEXT),
+    "-m",
+    String(GREP_LINES_PER_FILE),
+    pattern,
+    absPath,
+  ]);
 }
 
 async function grepFilePreview(absPath: string, pattern: string): Promise<string> {
-  const proc = Bun.spawn(
-    [
-      "grep",
-      "-I",
-      "-i",
-      "-n",
-      "-E",
-      "-C",
-      String(GREP_CONTEXT),
-      "-m",
-      String(GREP_LINES_PER_FILE),
-      pattern,
-      absPath,
-    ],
-    { stdout: "pipe", stderr: "pipe" },
-  );
-  const output = await new Response(proc.stdout).text();
-  await proc.exited;
-  return output;
+  return spawnBenchmarkSearch([
+    "grep",
+    "-I",
+    "-i",
+    "-n",
+    "-E",
+    "-C",
+    String(GREP_CONTEXT),
+    "-m",
+    String(GREP_LINES_PER_FILE),
+    pattern,
+    absPath,
+  ]);
 }
 
 async function findstrFilePreview(absPath: string, keywords: string[]): Promise<string> {
-  const args = ["findstr", "/N", "/I", "/P", ...keywords.map((k) => `/C:${k}`), absPath];
-  const proc = Bun.spawn(args, { stdout: "pipe", stderr: "pipe" });
-  const output = await new Response(proc.stdout).text();
-  await proc.exited;
-  return output;
+  return spawnBenchmarkSearch([
+    "findstr",
+    "/N",
+    "/I",
+    "/P",
+    ...keywords.map((k) => `/C:${k}`),
+    absPath,
+  ]);
 }

@@ -1,6 +1,7 @@
 import * as z from "zod";
 import packageJson from "../../package.json";
 import { benchmarkSearchComparison, toAgentBenchmarkSummary } from "../benchmark/compare.ts";
+import { withGrepTimeoutFallback } from "../benchmark/grep.ts";
 import {
   appendBenchmarkQuery,
   readBenchmarkRollup,
@@ -46,14 +47,30 @@ const REPO_DESCRIPTION =
   "Pass the project root for local workspaces. " +
   "The index is built on the first tool call and cached for the session.";
 
-const BENCHMARK_LOCAL_ONLY_NOTE =
-  "Benchmark comparisons require a local repo path; git URL repos are skipped.";
+const BENCHMARK_SKIP_NOTES = {
+  local_repo_only: "Benchmark comparisons require a local repo path; git URL repos are skipped.",
+  grep_timeout:
+    "Benchmark Grep baseline timed out; Miru results are still returned. " +
+    "Raise MIRU_BENCHMARK_SEARCH_TIMEOUT (seconds) if needed.",
+} as const;
 
-function withBenchmarkSkippedNote(body: string): string {
+type BenchmarkSkipReason = keyof typeof BENCHMARK_SKIP_NOTES;
+
+function withBenchmarkSkippedNote(body: string, reason: BenchmarkSkipReason): string {
   return `${body}\n\n${JSON.stringify({
-    benchmark_skipped: "local_repo_only",
-    note: BENCHMARK_LOCAL_ONLY_NOTE,
+    benchmark_skipped: reason,
+    note: BENCHMARK_SKIP_NOTES[reason],
   })}`;
+}
+
+async function persistBenchmarkQuery(
+  ...args: Parameters<typeof appendBenchmarkQuery>
+): Promise<void> {
+  try {
+    await appendBenchmarkQuery(...args);
+  } catch {
+    // History is best-effort; never fail the tool on persist errors.
+  }
 }
 
 export function createMcpServer(
@@ -101,29 +118,33 @@ export function createMcpServer(
         const repoRoot = localRepoRoot(repo);
         const k = clampMcpTopK(topK);
 
+        let skip: BenchmarkSkipReason | undefined;
         if (benchmark && repoRoot) {
-          const comparison = await benchmarkSearchComparison({
-            query,
-            repoPath: repoRoot,
-            index,
-            topK: k,
-            dedupeByFile: dedupeByFile !== false,
-          });
-          const results = comparison.results;
-          if (results.length === 0) {
-            return toolText("No results found.");
-          }
-          try {
-            await appendBenchmarkQuery(recordFromBenchmark(repoRoot, comparison.benchmark));
-          } catch {
-            // History is best-effort; never fail the search on persist errors.
-          }
-          const body = formatResultsText(
-            formatResults(query, results, { repoRoot, snippet: true }),
+          const comparison = await withGrepTimeoutFallback(() =>
+            benchmarkSearchComparison({
+              query,
+              repoPath: repoRoot,
+              index,
+              topK: k,
+              dedupeByFile: dedupeByFile !== false,
+            }),
           );
-          return toolText(
-            appendAgentBenchmark(body, toAgentBenchmarkSummary(comparison.benchmark)),
-          );
+          if (comparison) {
+            const results = comparison.results;
+            if (results.length === 0) {
+              return toolText("No results found.");
+            }
+            await persistBenchmarkQuery(recordFromBenchmark(repoRoot, comparison.benchmark));
+            const body = formatResultsText(
+              formatResults(query, results, { repoRoot, snippet: true }),
+            );
+            return toolText(
+              appendAgentBenchmark(body, toAgentBenchmarkSummary(comparison.benchmark)),
+            );
+          }
+          skip = "grep_timeout";
+        } else if (benchmark && !repoRoot) {
+          skip = "local_repo_only";
         }
 
         let results = await index.search({ query, topK: k });
@@ -135,10 +156,7 @@ export function createMcpServer(
         }
         const payload = formatResults(query, results, { repoRoot, snippet: true });
         const body = formatResultsText(payload);
-        if (benchmark && !repoRoot) {
-          return toolText(withBenchmarkSkippedNote(body));
-        }
-        return toolText(body);
+        return toolText(skip ? withBenchmarkSkippedNote(body, skip) : body);
       } catch (err) {
         return toolText(err instanceof Error ? err.message : String(err));
       }
@@ -200,32 +218,31 @@ export function createMcpServer(
       try {
         const index = await getIndexForRepo(repo, cache);
 
-        if (benchmark) {
-          const repoRoot = localRepoRoot(repo);
-          if (repoRoot && typeof literal === "string") {
-            const comparison = await benchmarkLocateComparison({
+        let skip: BenchmarkSkipReason | undefined;
+        const repoRoot = localRepoRoot(repo);
+        if (benchmark && repoRoot && typeof literal === "string") {
+          const comparison = await withGrepTimeoutFallback(() =>
+            benchmarkLocateComparison({
               literal,
               repoPath: repoRoot,
               index,
               locate: locateOpts,
-            });
-            try {
-              await appendBenchmarkQuery(recordFromAgentSummary(repoRoot, comparison.benchmark));
-            } catch {
-              // History is best-effort; never fail locate on persist errors.
-            }
+            }),
+          );
+          if (comparison) {
+            await persistBenchmarkQuery(recordFromAgentSummary(repoRoot, comparison.benchmark));
             const body = formatLiteralLocateText(comparison.payload);
             return toolText(appendAgentBenchmark(body, comparison.benchmark));
           }
+          skip = "grep_timeout";
+        } else if (benchmark && !repoRoot) {
+          skip = "local_repo_only";
         }
 
         const result = index.locateLiteral(literal, locateOpts);
         const payload = formatLiteralLocate(result);
         const body = formatLiteralLocateText(payload);
-        if (benchmark && !localRepoRoot(repo)) {
-          return toolText(withBenchmarkSkippedNote(body));
-        }
-        return toolText(body);
+        return toolText(skip ? withBenchmarkSkippedNote(body, skip) : body);
       } catch (err) {
         return toolText(err instanceof Error ? err.message : String(err));
       }

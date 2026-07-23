@@ -2,7 +2,7 @@
 
 import { relative } from "node:path";
 import { countTokens } from "../token-count.ts";
-import { RG_EXCLUDE_ARGS, selectBenchmarkSearchTool } from "./grep.ts";
+import { RG_EXCLUDE_ARGS, selectBenchmarkSearchTool, spawnBenchmarkSearch } from "./grep.ts";
 
 export interface RgLiteralOutput {
   text: string;
@@ -76,16 +76,10 @@ export async function rgLiteralOutput(
     throw new Error("No search tool found in PATH (tried rg, grep, and findstr on Windows)");
   }
   const start = performance.now();
-  const proc = Bun.spawn(
+  const text = await spawnBenchmarkSearch(
     buildLiteralArgs(tool, repoRoot, literals, context, maxCount, !!options.ignoreCase),
-    {
-      stdout: "pipe",
-      stderr: "pipe",
-      ...(tool === "findstr" ? { cwd: repoRoot } : {}),
-    },
+    tool === "findstr" ? repoRoot : undefined,
   );
-  const text = await new Response(proc.stdout).text();
-  await proc.exited;
   const latency_ms = performance.now() - start;
   const stats = parseRgLiteralStats(text, repoRoot);
   return { text, tokens: countTokens(text), latency_ms, ...stats };

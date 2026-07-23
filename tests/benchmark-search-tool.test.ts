@@ -1,5 +1,14 @@
-import { describe, expect, test } from "bun:test";
-import { selectBenchmarkSearchTool } from "../src/benchmark/grep.ts";
+import { afterEach, describe, expect, test } from "bun:test";
+import {
+  BenchmarkSearchTimeoutError,
+  selectBenchmarkSearchTool,
+  spawnBenchmarkSearch,
+  withGrepTimeoutFallback,
+} from "../src/benchmark/grep.ts";
+
+afterEach(() => {
+  delete process.env.MIRU_BENCHMARK_SEARCH_TIMEOUT;
+});
 
 describe("benchmark search tool selection", () => {
   test("prefers rg when available", () => {
@@ -42,6 +51,30 @@ describe("benchmark search tool selection", () => {
         hasRg: false,
         hasGrep: false,
         hasFindstr: false,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("benchmark search timeout", () => {
+  test("spawnBenchmarkSearch returns stdout when process finishes in time", async () => {
+    process.env.MIRU_BENCHMARK_SEARCH_TIMEOUT = "5";
+    expect(await spawnBenchmarkSearch(["/bin/echo", "-n", "ok"])).toBe("ok");
+  });
+
+  test("spawnBenchmarkSearch kills hung processes", async () => {
+    process.env.MIRU_BENCHMARK_SEARCH_TIMEOUT = "1";
+    const started = performance.now();
+    await expect(spawnBenchmarkSearch(["sleep", "30"])).rejects.toBeInstanceOf(
+      BenchmarkSearchTimeoutError,
+    );
+    expect(performance.now() - started).toBeLessThan(5000);
+  });
+
+  test("withGrepTimeoutFallback maps timeout to null", async () => {
+    expect(
+      await withGrepTimeoutFallback(async () => {
+        throw new BenchmarkSearchTimeoutError(1);
       }),
     ).toBeNull();
   });
