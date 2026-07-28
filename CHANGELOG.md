@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.5.0](https://github.com/takara-ai/miru-code/compare/v1.4.0...v1.5.0) (2026-07-23)
+
+
+### Features
+
+* **embeddings:** add self-hosted AWS SageMaker embedding backend ([a4a357f](https://github.com/takara-ai/miru-code/commit/a4a357fa190d547a01b4c52d539a3f943b649bb6))
+* **embeddings:** add self-hosted AWS SageMaker embedding backend ([6f2ca78](https://github.com/takara-ai/miru-code/commit/6f2ca7863056323d21ea2859c38a0baa8f80aa8e))
+* **setup:** make Takara and SageMaker credentials mutually exclusive ([7861a8b](https://github.com/takara-ai/miru-code/commit/7861a8b16af8d78a944e6b857f235d65d992d476))
+
+
+### Bug Fixes
+
+* **embeddings:** replace unauthorized body with actionable auth message ([d264915](https://github.com/takara-ai/miru-code/commit/d26491578b46c6677ab30e807784c99e30f1f0fd))
+* **types:** correct SageMaker InvokeEndpoint and setup test typing ([c762b59](https://github.com/takara-ai/miru-code/commit/c762b59cc4f4c85a264d8df016f1db2c4a56a177))
+
+
+### Performance Improvements
+
+* **embeddings:** lazy-load SageMaker AWS SDK until first invoke ([67ddbff](https://github.com/takara-ai/miru-code/commit/67ddbff69ca9b6bd8cc5a9e8a4db56bef8728ff6))
+* **index:** fill embedding API batches and overlap BM25 during indexing ([f4f7201](https://github.com/takara-ai/miru-code/commit/f4f720119a0ac6e56985a39d308ce88821736668))
+
 ## [1.4.0](https://github.com/takara-ai/miru-code/compare/v1.3.1...v1.4.0) (2026-07-16)
 
 
