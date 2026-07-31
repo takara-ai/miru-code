@@ -240,6 +240,59 @@ describe("setup credentials", () => {
     expect(process.env.TAKARA_API_KEY).toBe("device-access-token");
   });
 
+  test("ensureCredentials device bootstrap keeps human auth UI off stdout", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-setup-stdout-clean-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    process.env.MIRU_AUTH_BASE_URL = "https://auth.example.test";
+    process.env.MIRU_AUTH_CLIENT_ID = "miru-test";
+    process.env.MIRU_OPEN_BROWSER = "0";
+
+    let call = 0;
+    globalThis.fetch = (async (input) => {
+      call++;
+      if (call === 1) {
+        return new Response(
+          JSON.stringify({
+            device_code: "device-code",
+            user_code: "ABCD-EFGH",
+            verification_uri: "https://verify.example.test",
+            expires_in: 600,
+            interval: 0,
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          access_token: "device-access-token",
+          refresh_token: "device-refresh-token",
+          expires_in: 3600,
+          token_type: "Bearer",
+        }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+
+    let stdout = "";
+    const originalWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = ((chunk: string | Uint8Array, ...args: unknown[]) => {
+      stdout += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString();
+      return (originalWrite as (chunk: string | Uint8Array, ...args: unknown[]) => boolean)(
+        chunk,
+        ...args,
+      );
+    }) as typeof process.stdout.write;
+
+    try {
+      await ensureCredentials({ interactive: true });
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+
+    expect(process.env.TAKARA_API_KEY).toBe("device-access-token");
+    expect(stdout).not.toMatch(/Takara credentials|device-code|Open https:\/\/verify|Saved credentials/i);
+  });
+
   test("ensureCredentials falls back to re-auth when refresh fails and interactive login is allowed", async () => {
     credDir = await mkdtemp(join(tmpdir(), "miru-setup-refresh-fallback-"));
     process.env.MIRU_CREDENTIALS_DIR = credDir;

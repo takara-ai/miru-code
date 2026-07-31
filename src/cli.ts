@@ -61,7 +61,13 @@ process.title = "miru";
 
 await loadEnvFiles();
 normalizeTakaraApiKeyEnv();
-await loadStoredCredentials();
+// Soft-fail: expired/revoked device refresh must not brick `miru -v`, `setup --clear`, etc.
+// Command paths call ensureCredentials() which recovers interactively when allowed.
+try {
+  await loadStoredCredentials();
+} catch {
+  // Leave recovery to ensureCredentials / setup.
+}
 
 const CLI_COMMANDS = new Set([
   "search",

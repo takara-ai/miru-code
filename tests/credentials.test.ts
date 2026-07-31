@@ -233,6 +233,78 @@ describe("credentials", () => {
     expect(stored.refresh_token).toBe("fresh-refresh-token");
   });
 
+  test("loadStoredCredentials surfaces refresh failures for callers to recover", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-cred-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    process.env.MIRU_AUTH_BASE_URL = "https://auth.example.test";
+    process.env.MIRU_AUTH_CLIENT_ID = "miru-test";
+    clearTakaraApiKey();
+    await saveStoredCredentials({
+      kind: "device_code",
+      accessToken: "expired-token",
+      refreshToken: "revoked-refresh",
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+
+    globalThis.fetch = (async (_input, _init) =>
+      new Response(
+        JSON.stringify({
+          error: "invalid_grant",
+          error_description: "Refresh token revoked",
+        }),
+        { status: 400 },
+      )) as typeof fetch;
+
+    await expect(loadStoredCredentials()).rejects.toThrow(/Device token refresh failed/);
+    expect(process.env.TAKARA_API_KEY).toBeUndefined();
+  });
+
+  test("readStoredCredentials returns null for incomplete device credentials", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-cred-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    const path = join(credDir, "credentials.json");
+    await Bun.write(
+      path,
+      JSON.stringify(
+        {
+          version: CREDENTIALS_VERSION,
+          kind: "device_code",
+          access_token: "",
+          refresh_token: "orphan-refresh",
+        },
+        null,
+        2,
+      ) + "\n",
+    );
+    await chmod(path, 0o600);
+    expect(await readStoredCredentials()).toBeNull();
+  });
+
+  test("clearStoredCredentials removes incomplete device credential files", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-cred-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    clearTakaraApiKey();
+    const path = join(credDir, "credentials.json");
+    await Bun.write(
+      path,
+      JSON.stringify(
+        {
+          version: CREDENTIALS_VERSION,
+          kind: "device_code",
+          access_token: "   ",
+          refresh_token: "orphan-refresh",
+        },
+        null,
+        2,
+      ) + "\n",
+    );
+    await chmod(path, 0o600);
+
+    const result = await clearStoredCredentials();
+    expect(result.cleared).toBe(true);
+    expect(await Bun.file(path).exists()).toBe(false);
+  });
+
   test("clearStoredCredentials removes file and unsets loaded env", async () => {
     credDir = await mkdtemp(join(tmpdir(), "miru-cred-"));
     process.env.MIRU_CREDENTIALS_DIR = credDir;

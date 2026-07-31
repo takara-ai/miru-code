@@ -1,6 +1,6 @@
 import { authenticateWithProvider } from "./auth/providers.ts";
 import { credentialAccessToken } from "./auth/types.ts";
-import { divider, fail, hint, info, printBrandBanner, success, writeStdout } from "./cli-ui.ts";
+import { divider, fail, hint, info, printBrandBanner, success, writeStderr, writeStdout } from "./cli-ui.ts";
 import {
   beginModeSwitch,
   clearStoredCredentials,
@@ -240,14 +240,14 @@ export async function runSetup(options: RunSetupOptions = {}): Promise<RunSetupR
     }
   }
 
-  writeStdout("");
-  // stderr banner: setup runs before stdout may be a TTY (e.g. piped miru search).
+  writeStderr("");
+  // stderr: setup/MCP must not write human auth UI to stdout (JSON-RPC / piped CLI).
   printBrandBanner(process.stderr);
   divider("─", 48, process.stderr);
-  writeStdout("Miru needs Takara credentials for code embeddings.");
+  writeStderr("Miru needs Takara credentials for code embeddings.");
   hint("Device code login is the default. Manual API key entry is still available.");
   hint("This replaces any stored SageMaker endpoint — only one embedding mode is active at a time.");
-  writeStdout("");
+  writeStderr("");
 
   await beginModeSwitch("takara");
 
@@ -263,14 +263,14 @@ export async function runSetup(options: RunSetupOptions = {}): Promise<RunSetupR
   setStoredCredentialsEnvToken(
     credentials.kind === "api_key" ? credentials.apiKey : credentials.accessToken,
   );
-  writeStdout("");
+  writeStderr("");
   success(`Saved credentials to ${path}`);
   if (hadSageMaker) {
     hint("Removed the stored SageMaker endpoint — Miru now embeds only via Takara.");
   } else {
     hint("MCP loads this key from credentials.json automatically.");
   }
-  writeStdout("");
+  writeStderr("");
   return { path, newlySaved: true };
 }
 
@@ -320,7 +320,7 @@ export async function ensureCredentials(options?: { interactive?: boolean }): Pr
   }
 
   if (wantsPrompt) {
-    writeStdout("");
+    writeStderr("");
     if (refreshError) {
       info(`Stored credentials could not be used: ${refreshError.message}`);
       hint("Starting a fresh device-code login.");
@@ -342,10 +342,10 @@ export async function ensureCredentials(options?: { interactive?: boolean }): Pr
     throw refreshError;
   }
 
-  writeStdout("");
+  writeStderr("");
   // Brand on stderr when credentials are missing in non-interactive mode (stdout may not be a TTY).
   printBrandBanner(process.stderr);
-  writeStdout("");
+  writeStderr("");
 
   throw new Error(
     "Takara credentials required. Initial login must be completed in an interactive terminal. " +
