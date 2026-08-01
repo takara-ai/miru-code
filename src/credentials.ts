@@ -68,28 +68,49 @@ function hydrateSageMakerEnv(sagemaker: StoredSageMakerCredentials): void {
   }
 }
 
-/** Hydrate TAKARA_API_KEY / SageMaker env vars from the credentials file when env is unset. */
+function clearSageMakerEnv(sagemaker?: StoredSageMakerCredentials): void {
+  delete process.env.MIRU_SAGEMAKER_ENDPOINT_ARN;
+  delete process.env.MIRU_SAGEMAKER_ENDPOINT_NAME;
+  delete process.env.MIRU_SAGEMAKER_REGION;
+  if (sagemaker?.profile && process.env.AWS_PROFILE === sagemaker.profile) {
+    delete process.env.AWS_PROFILE;
+  }
+}
+
+function clearTakaraEnv(): void {
+  delete process.env.TAKARA_API_KEY;
+}
+
+/** Apply credentials.json as the sole mode — never leave Takara and SageMaker both active. */
 export async function loadStoredCredentials(): Promise<boolean> {
   normalizeTakaraApiKeyEnv();
-  const needsTakara = !hasTakaraApiKeyInEnv();
-  const needsSageMaker = !process.env.MIRU_SAGEMAKER_ENDPOINT_ARN;
-  if (!needsTakara && !needsSageMaker) {
-    return false;
-  }
-
   const stored = await readStoredCredentials();
   if (!stored) {
     return false;
   }
 
   let changed = false;
-  if (needsTakara && stored.takara_api_key) {
-    process.env.TAKARA_API_KEY = stored.takara_api_key;
-    changed = true;
+  if (stored.takara_api_key) {
+    if (!hasTakaraApiKeyInEnv()) {
+      process.env.TAKARA_API_KEY = stored.takara_api_key;
+      changed = true;
+    }
+    if (process.env.MIRU_SAGEMAKER_ENDPOINT_ARN || process.env.MIRU_SAGEMAKER_ENDPOINT_NAME) {
+      clearSageMakerEnv(stored.sagemaker);
+      changed = true;
+    }
+    return changed;
   }
-  if (needsSageMaker && stored.sagemaker) {
-    hydrateSageMakerEnv(stored.sagemaker);
-    changed = true;
+
+  if (stored.sagemaker) {
+    if (!process.env.MIRU_SAGEMAKER_ENDPOINT_ARN?.trim()) {
+      hydrateSageMakerEnv(stored.sagemaker);
+      changed = true;
+    }
+    if (hasTakaraApiKeyInEnv()) {
+      clearTakaraEnv();
+      changed = true;
+    }
   }
   return changed;
 }
@@ -98,9 +119,7 @@ export async function saveStoredCredentials(apiKey: string): Promise<string> {
   const dir = resolveCredentialsDir();
   const path = resolveCredentialsPath();
   await mkdir(dir, { recursive: true, mode: 0o700 });
-  const existing = await readStoredCredentials();
-  // Takara and SageMaker modes are mutually exclusive — saving a key drops any stored endpoint.
-  const previousSageMaker = existing?.sagemaker;
+  const previousSageMaker = (await readStoredCredentials())?.sagemaker;
   const payload: StoredCredentials = {
     version: CREDENTIALS_VERSION,
     takara_api_key: apiKey,
@@ -111,14 +130,7 @@ export async function saveStoredCredentials(apiKey: string): Promise<string> {
   } catch {
     // Windows may not support Unix mode bits on all filesystems.
   }
-  if (previousSageMaker) {
-    if (process.env.MIRU_SAGEMAKER_ENDPOINT_ARN === previousSageMaker.endpoint_arn) {
-      delete process.env.MIRU_SAGEMAKER_ENDPOINT_ARN;
-    }
-    if (previousSageMaker.profile && process.env.AWS_PROFILE === previousSageMaker.profile) {
-      delete process.env.AWS_PROFILE;
-    }
-  }
+  clearSageMakerEnv(previousSageMaker);
   return path;
 }
 
@@ -128,9 +140,6 @@ export async function saveStoredSageMakerCredentials(
   const dir = resolveCredentialsDir();
   const path = resolveCredentialsPath();
   await mkdir(dir, { recursive: true, mode: 0o700 });
-  const existing = await readStoredCredentials();
-  // Takara and SageMaker modes are mutually exclusive — saving an endpoint drops any stored key.
-  const previousTakaraKey = existing?.takara_api_key;
   const payload: StoredCredentials = {
     version: CREDENTIALS_VERSION,
     sagemaker,
@@ -141,9 +150,7 @@ export async function saveStoredSageMakerCredentials(
   } catch {
     // Windows may not support Unix mode bits on all filesystems.
   }
-  if (previousTakaraKey && process.env.TAKARA_API_KEY === previousTakaraKey) {
-    delete process.env.TAKARA_API_KEY;
-  }
+  clearTakaraEnv();
   return path;
 }
 
@@ -157,16 +164,10 @@ export async function clearStoredCredentials(): Promise<{ cleared: boolean; path
   await Bun.file(path).delete();
 
   if (stored?.takara_api_key && process.env.TAKARA_API_KEY === stored.takara_api_key) {
-    delete process.env.TAKARA_API_KEY;
+    clearTakaraEnv();
   }
-  const sagemaker = stored?.sagemaker;
-  if (sagemaker) {
-    if (process.env.MIRU_SAGEMAKER_ENDPOINT_ARN === sagemaker.endpoint_arn) {
-      delete process.env.MIRU_SAGEMAKER_ENDPOINT_ARN;
-    }
-    if (sagemaker.profile && process.env.AWS_PROFILE === sagemaker.profile) {
-      delete process.env.AWS_PROFILE;
-    }
+  if (stored?.sagemaker) {
+    clearSageMakerEnv(stored.sagemaker);
   }
 
   return { cleared: true, path };

@@ -196,6 +196,20 @@ describe("credentials", () => {
     expect(process.env.TAKARA_API_KEY).toBeUndefined();
   });
 
+  test("saving SageMaker clears Takara even when the key was only in env", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-cred-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    clearTakaraApiKey();
+    clearSageMakerEnv();
+    process.env.TAKARA_API_KEY = "env-only-token";
+
+    const arn = "arn:aws:sagemaker:us-east-1:123456789012:endpoint/miru-test";
+    await saveStoredSageMakerCredentials({ endpoint_arn: arn, profile: "miru" });
+
+    expect(process.env.TAKARA_API_KEY).toBeUndefined();
+    expect((await readStoredCredentials())?.takara_api_key).toBeUndefined();
+  });
+
   test("saving Takara credentials removes stored SageMaker endpoint", async () => {
     credDir = await mkdtemp(join(tmpdir(), "miru-cred-"));
     process.env.MIRU_CREDENTIALS_DIR = credDir;
@@ -214,5 +228,28 @@ describe("credentials", () => {
     expect(stored?.takara_api_key).toBe("takara-token");
     expect(process.env.MIRU_SAGEMAKER_ENDPOINT_ARN).toBeUndefined();
     expect(process.env.AWS_PROFILE).toBeUndefined();
+  });
+
+  test("loadStoredCredentials follows credentials.json and drops the other mode from env", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-cred-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    clearTakaraApiKey();
+    clearSageMakerEnv();
+
+    const arn = "arn:aws:sagemaker:us-east-1:123456789012:endpoint/miru-test";
+    await saveStoredSageMakerCredentials({ endpoint_arn: arn, profile: "miru" });
+    process.env.TAKARA_API_KEY = "stale-takara";
+
+    expect(await loadStoredCredentials()).toBe(true);
+    expect(process.env.TAKARA_API_KEY).toBeUndefined();
+    expect(process.env.MIRU_SAGEMAKER_ENDPOINT_ARN).toBe(arn);
+
+    await saveStoredCredentials("takara-token");
+    process.env.MIRU_SAGEMAKER_ENDPOINT_ARN = arn;
+    process.env.TAKARA_API_KEY = "takara-token";
+
+    expect(await loadStoredCredentials()).toBe(true);
+    expect(process.env.MIRU_SAGEMAKER_ENDPOINT_ARN).toBeUndefined();
+    expect(process.env.TAKARA_API_KEY).toBe("takara-token");
   });
 });

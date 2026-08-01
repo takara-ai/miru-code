@@ -162,6 +162,25 @@ describe("setup credentials", () => {
     expect(process.env.AWS_PROFILE).toBeUndefined();
   });
 
+  test("runSetup migrates to Takara when env key is set and SageMaker is still stored", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-setup-migrate-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    const arn = "arn:aws:sagemaker:us-east-1:123456789012:endpoint/miru-test";
+    await saveStoredSageMakerCredentials({ endpoint_arn: arn, profile: "miru" });
+    process.env.MIRU_SAGEMAKER_ENDPOINT_ARN = arn;
+    process.env.AWS_PROFILE = "miru";
+    process.env.TAKARA_API_KEY = "env-takara-token";
+
+    const result = await runSetup({ skipValidation: true });
+
+    expect(result.newlySaved).toBe(true);
+    const stored = await readStoredCredentials();
+    expect(stored?.sagemaker).toBeUndefined();
+    expect(stored?.takara_api_key).toBe("env-takara-token");
+    expect(process.env.MIRU_SAGEMAKER_ENDPOINT_ARN).toBeUndefined();
+    expect(process.env.AWS_PROFILE).toBeUndefined();
+  });
+
   test("hasCredentials is true when SageMaker endpoint ARN is configured", () => {
     process.env.MIRU_SAGEMAKER_ENDPOINT_ARN =
       "arn:aws:sagemaker:us-east-1:123456789012:endpoint/miru-test";

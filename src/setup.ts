@@ -206,7 +206,17 @@ export async function runSetup(options: RunSetupOptions = {}): Promise<RunSetupR
   if (!options.force && hasTakaraApiKeyInEnv()) {
     const path = resolveCredentialsPath();
     const stored = await readStoredCredentials();
-    if (stored) {
+    if (stored?.sagemaker) {
+      const apiKey = resolveEmbeddingApiKey();
+      await saveStoredCredentials(apiKey);
+      process.env.TAKARA_API_KEY = apiKey;
+      writeStdout("");
+      success(`Saved credentials to ${path}`);
+      hint("Removed the stored SageMaker endpoint — Miru now embeds only via Takara.");
+      writeStdout("");
+      return { path, newlySaved: true };
+    }
+    if (stored?.takara_api_key) {
       info(`API key already configured (env + ${path}). Use --force to replace stored key.`);
       return { path, newlySaved: false };
     }
