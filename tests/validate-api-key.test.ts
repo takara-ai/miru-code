@@ -63,8 +63,9 @@ describe("validateEmbeddingApiKey", () => {
     process.env.MIRU_SAGEMAKER_ENDPOINT_ARN =
       "arn:aws:sagemaker:us-east-1:123456789012:endpoint/miru-2";
     let requestedModel = "";
-    globalThis.fetch = (async (_input, init) => {
-      requestedModel = (JSON.parse(String(init?.body ?? "{}")) as { model?: string }).model ?? "";
+    globalThis.fetch = (async (...args: Parameters<typeof fetch>) => {
+      requestedModel =
+        (JSON.parse(String(args[1]?.body ?? "{}")) as { model?: string }).model ?? "";
       return new Response(
         JSON.stringify({ data: [{ index: 0, embedding: Array.from({ length: 256 }, () => 0.1) }] }),
         { status: 200 },
