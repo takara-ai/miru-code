@@ -1,5 +1,6 @@
 import { divider, fail, hint, info, printBrandBanner, success, writeStdout } from "./cli-ui.ts";
 import {
+  beginModeSwitch,
   clearStoredCredentials,
   loadStoredCredentials,
   readStoredCredentials,
@@ -163,6 +164,7 @@ export async function runSageMakerSetup(options: RunSetupOptions = {}): Promise<
     profile = await promptAwsProfile();
   }
 
+  await beginModeSwitch("sagemaker");
   process.env.MIRU_SAGEMAKER_ENDPOINT_ARN = arnInput;
   process.env.AWS_PROFILE = profile;
 
@@ -207,14 +209,12 @@ export async function runSetup(options: RunSetupOptions = {}): Promise<RunSetupR
     const path = resolveCredentialsPath();
     const stored = await readStoredCredentials();
     if (stored?.sagemaker) {
-      const apiKey = resolveEmbeddingApiKey();
-      await saveStoredCredentials(apiKey);
-      process.env.TAKARA_API_KEY = apiKey;
+      const saved = await saveStoredCredentials(resolveEmbeddingApiKey());
       writeStdout("");
-      success(`Saved credentials to ${path}`);
+      success(`Saved credentials to ${saved}`);
       hint("Removed the stored SageMaker endpoint — Miru now embeds only via Takara.");
       writeStdout("");
-      return { path, newlySaved: true };
+      return { path: saved, newlySaved: true };
     }
     if (stored?.takara_api_key) {
       info(`API key already configured (env + ${path}). Use --force to replace stored key.`);
@@ -246,6 +246,7 @@ export async function runSetup(options: RunSetupOptions = {}): Promise<RunSetupR
 
   const apiKey = options.apiKey ?? (await promptApiKey());
 
+  await beginModeSwitch("takara");
   if (!options.skipValidation) {
     const spinner = new Spinner("Validating API key");
     spinner.start();
@@ -259,7 +260,6 @@ export async function runSetup(options: RunSetupOptions = {}): Promise<RunSetupR
 
   const hadSageMaker = Boolean((await readStoredCredentials())?.sagemaker);
   const path = await saveStoredCredentials(apiKey);
-  process.env.TAKARA_API_KEY = apiKey;
   writeStdout("");
   success(`Saved credentials to ${path}`);
   if (hadSageMaker) {

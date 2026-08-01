@@ -57,4 +57,31 @@ describe("validateEmbeddingApiKey", () => {
     expect(result.valid).toBe(false);
     expect(result.message).toContain("empty");
   });
+
+  test("ignores SageMaker env when choosing the Takara validation model", async () => {
+    const prevArn = process.env.MIRU_SAGEMAKER_ENDPOINT_ARN;
+    process.env.MIRU_SAGEMAKER_ENDPOINT_ARN =
+      "arn:aws:sagemaker:us-east-1:123456789012:endpoint/miru-2";
+    let requestedModel = "";
+    globalThis.fetch = (async (_input, init) => {
+      requestedModel = (JSON.parse(String(init?.body ?? "{}")) as { model?: string }).model ?? "";
+      return new Response(
+        JSON.stringify({ data: [{ index: 0, embedding: Array.from({ length: 256 }, () => 0.1) }] }),
+        { status: 200 },
+      );
+    }) as unknown as typeof fetch;
+
+    try {
+      const result = await validateEmbeddingApiKey({
+        apiKey: "good-key",
+        baseUrl: "https://example.test/v1",
+        dimensions: 256,
+      });
+      expect(result.valid).toBe(true);
+      expect(requestedModel.startsWith("sagemaker:")).toBe(false);
+    } finally {
+      if (prevArn === undefined) delete process.env.MIRU_SAGEMAKER_ENDPOINT_ARN;
+      else process.env.MIRU_SAGEMAKER_ENDPOINT_ARN = prevArn;
+    }
+  });
 });

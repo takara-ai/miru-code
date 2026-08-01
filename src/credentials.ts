@@ -61,13 +61,6 @@ export async function readStoredCredentials(): Promise<StoredCredentials | null>
   }
 }
 
-function hydrateSageMakerEnv(sagemaker: StoredSageMakerCredentials): void {
-  process.env.MIRU_SAGEMAKER_ENDPOINT_ARN = sagemaker.endpoint_arn;
-  if (sagemaker.profile && !process.env.AWS_PROFILE) {
-    process.env.AWS_PROFILE = sagemaker.profile;
-  }
-}
-
 function clearSageMakerEnv(sagemaker?: StoredSageMakerCredentials): void {
   delete process.env.MIRU_SAGEMAKER_ENDPOINT_ARN;
   delete process.env.MIRU_SAGEMAKER_ENDPOINT_NAME;
@@ -81,6 +74,36 @@ function clearTakaraEnv(): void {
   delete process.env.TAKARA_API_KEY;
 }
 
+function hydrateSageMakerEnv(sagemaker: StoredSageMakerCredentials): void {
+  process.env.MIRU_SAGEMAKER_ENDPOINT_ARN = sagemaker.endpoint_arn;
+  if (sagemaker.profile && !process.env.AWS_PROFILE) {
+    process.env.AWS_PROFILE = sagemaker.profile;
+  }
+}
+
+/** Drop the other backend from env so setup validation cannot see a stale mode. */
+export async function beginModeSwitch(to: "takara" | "sagemaker"): Promise<void> {
+  const stored = await readStoredCredentials();
+  if (to === "takara") {
+    clearSageMakerEnv(stored?.sagemaker);
+  } else {
+    clearTakaraEnv();
+  }
+}
+
+async function writeExclusive(payload: StoredCredentials): Promise<string> {
+  const dir = resolveCredentialsDir();
+  const path = resolveCredentialsPath();
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  await Bun.write(path, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
+  try {
+    await chmod(path, 0o600);
+  } catch {
+    // Windows may not support Unix mode bits on all filesystems.
+  }
+  return path;
+}
+
 /** Apply credentials.json as the sole mode — never leave Takara and SageMaker both active. */
 export async function loadStoredCredentials(): Promise<boolean> {
   normalizeTakaraApiKeyEnv();
@@ -89,8 +112,8 @@ export async function loadStoredCredentials(): Promise<boolean> {
     return false;
   }
 
-  let changed = false;
   if (stored.takara_api_key) {
+    let changed = false;
     if (!hasTakaraApiKeyInEnv()) {
       process.env.TAKARA_API_KEY = stored.takara_api_key;
       changed = true;
@@ -103,6 +126,7 @@ export async function loadStoredCredentials(): Promise<boolean> {
   }
 
   if (stored.sagemaker) {
+    let changed = false;
     if (!process.env.MIRU_SAGEMAKER_ENDPOINT_ARN?.trim()) {
       hydrateSageMakerEnv(stored.sagemaker);
       changed = true;
@@ -111,46 +135,28 @@ export async function loadStoredCredentials(): Promise<boolean> {
       clearTakaraEnv();
       changed = true;
     }
+    return changed;
   }
-  return changed;
+  return false;
 }
 
 export async function saveStoredCredentials(apiKey: string): Promise<string> {
-  const dir = resolveCredentialsDir();
-  const path = resolveCredentialsPath();
-  await mkdir(dir, { recursive: true, mode: 0o700 });
-  const previousSageMaker = (await readStoredCredentials())?.sagemaker;
-  const payload: StoredCredentials = {
-    version: CREDENTIALS_VERSION,
-    takara_api_key: apiKey,
-  };
-  await Bun.write(path, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
-  try {
-    await chmod(path, 0o600);
-  } catch {
-    // Windows may not support Unix mode bits on all filesystems.
-  }
-  clearSageMakerEnv(previousSageMaker);
+  const previous = await readStoredCredentials();
+  const path = await writeExclusive({ version: CREDENTIALS_VERSION, takara_api_key: apiKey });
+  process.env.TAKARA_API_KEY = apiKey;
+  clearSageMakerEnv(previous?.sagemaker);
   return path;
 }
 
 export async function saveStoredSageMakerCredentials(
   sagemaker: StoredSageMakerCredentials,
 ): Promise<string> {
-  const dir = resolveCredentialsDir();
-  const path = resolveCredentialsPath();
-  await mkdir(dir, { recursive: true, mode: 0o700 });
-  const payload: StoredCredentials = {
-    version: CREDENTIALS_VERSION,
-    sagemaker,
-  };
-  await Bun.write(path, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
-  try {
-    await chmod(path, 0o600);
-  } catch {
-    // Windows may not support Unix mode bits on all filesystems.
-  }
+  const path = await writeExclusive({ version: CREDENTIALS_VERSION, sagemaker });
   clearTakaraEnv();
+  process.env.MIRU_SAGEMAKER_ENDPOINT_ARN = sagemaker.endpoint_arn;
+  if (sagemaker.profile) {
+    process.env.AWS_PROFILE = sagemaker.profile;
+  }
   return path;
 }
 

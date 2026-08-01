@@ -3,7 +3,7 @@ import {
   embeddingDimensions,
   resolveEmbeddingBaseUrl,
   resolveEmbeddingDimensions,
-  resolveEmbeddingModel,
+  resolveTakaraEmbeddingModel,
 } from "./openai.ts";
 
 export interface ValidateApiKeyResult {
@@ -19,7 +19,7 @@ export async function validateEmbeddingApiKey(options: {
   dimensions?: number;
 }): Promise<ValidateApiKeyResult> {
   const baseUrl = (options.baseUrl ?? resolveEmbeddingBaseUrl()).replace(/\/$/, "");
-  const model = options.model ?? resolveEmbeddingModel();
+  const model = options.model ?? resolveTakaraEmbeddingModel();
   const dimensions = options.dimensions ?? resolveEmbeddingDimensions(model);
   const endpoint = `${baseUrl}/embeddings`;
 
