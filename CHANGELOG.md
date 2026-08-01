@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.1](https://github.com/takara-ai/miru-code/compare/v1.5.0...v1.5.1) (2026-08-01)
+
+
+### Bug Fixes
+
+* **benchmark:** timeout hung rg/grep baseline spawns ([db35cc2](https://github.com/takara-ai/miru-code/commit/db35cc26d1c4865b9cd7c2592f2e72a6255fafd0))
+* **credentials:** cut over cleanly between Takara and SageMaker ([6a6fc64](https://github.com/takara-ai/miru-code/commit/6a6fc64834cbc36b4f3d3d2341faba784bf2f90a))
+
 ## [1.5.0](https://github.com/takara-ai/miru-code/compare/v1.4.0...v1.5.0) (2026-07-23)
 
 
