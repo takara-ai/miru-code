@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.3](https://github.com/takara-ai/miru-code/compare/v1.5.2...v1.5.3) (2026-08-01)
+
+
+### Bug Fixes
+
+* **setup:** clear opposing mode before Takara/SageMaker cutover ([8c82716](https://github.com/takara-ai/miru-code/commit/8c8271628d3cd8b977b555a534f61a847b4b01c0))
+* **setup:** type fetch mock params in validate API key test ([62b17ed](https://github.com/takara-ai/miru-code/commit/62b17edccc001be401e29b9389c724b5653bc8f7))
+
 ## [1.5.2](https://github.com/takara-ai/miru-code/compare/v1.5.1...v1.5.2) (2026-08-01)
 
 
