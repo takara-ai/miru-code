@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.2](https://github.com/takara-ai/miru-code/compare/v1.5.1...v1.5.2) (2026-08-01)
+
+
+### Bug Fixes
+
+* **windows:** use Bun for benchmark spawn timeout tests ([185aca2](https://github.com/takara-ai/miru-code/commit/185aca2669d18114c44cec7da7996ffadfcf4303))
+
 ## [1.5.1](https://github.com/takara-ai/miru-code/compare/v1.5.0...v1.5.1) (2026-08-01)
 
 
