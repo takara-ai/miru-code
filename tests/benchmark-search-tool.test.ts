@@ -57,17 +57,19 @@ describe("benchmark search tool selection", () => {
 });
 
 describe("benchmark search timeout", () => {
+  const bun = process.execPath;
+
   test("spawnBenchmarkSearch returns stdout when process finishes in time", async () => {
     process.env.MIRU_BENCHMARK_SEARCH_TIMEOUT = "5";
-    expect(await spawnBenchmarkSearch(["/bin/echo", "-n", "ok"])).toBe("ok");
+    expect(await spawnBenchmarkSearch([bun, "-e", "process.stdout.write('ok')"])).toBe("ok");
   });
 
   test("spawnBenchmarkSearch kills hung processes", async () => {
     process.env.MIRU_BENCHMARK_SEARCH_TIMEOUT = "1";
     const started = performance.now();
-    await expect(spawnBenchmarkSearch(["sleep", "30"])).rejects.toBeInstanceOf(
-      BenchmarkSearchTimeoutError,
-    );
+    await expect(
+      spawnBenchmarkSearch([bun, "-e", "await Bun.sleep(30_000)"]),
+    ).rejects.toBeInstanceOf(BenchmarkSearchTimeoutError);
     expect(performance.now() - started).toBeLessThan(5000);
   });
 
