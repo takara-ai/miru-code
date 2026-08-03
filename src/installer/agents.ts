@@ -92,6 +92,8 @@ export interface AgentTarget {
   hooksFormat: HooksFormat | null;
   subagentPath: string | null;
   subagentId: AgentId | null;
+  /** On-demand Caveman Agent Skill (`…/skills/caveman/SKILL.md`), or null if unsupported. */
+  cavemanSkillPath: string | null;
 }
 
 export function opencodeMcpPath(): string {
@@ -176,6 +178,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     hooksFormat: "claude",
     subagentPath: join(HOME, ".claude", "agents", "miru-code.md"),
     subagentId: "claude",
+    cavemanSkillPath: join(HOME, ".claude", "skills", "caveman", "SKILL.md"),
   },
   {
     id: "cursor",
@@ -189,6 +192,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     hooksFormat: "cursor",
     subagentPath: join(HOME, ".cursor", "agents", "miru-code.md"),
     subagentId: "cursor",
+    cavemanSkillPath: join(HOME, ".cursor", "skills", "caveman", "SKILL.md"),
   },
   {
     id: "gemini",
@@ -202,6 +206,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     hooksFormat: "gemini",
     subagentPath: join(HOME, ".gemini", "agents", "miru-code.md"),
     subagentId: "gemini",
+    cavemanSkillPath: null,
   },
   {
     id: "kiro",
@@ -220,6 +225,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     hooksFormat: "kiro",
     subagentPath: join(HOME, ".kiro", "agents", "miru-code.md"),
     subagentId: "kiro",
+    cavemanSkillPath: null,
   },
   {
     id: "opencode",
@@ -233,6 +239,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     hooksFormat: "opencode",
     subagentPath: join(HOME, ".config", "opencode", "agents", "miru-code.md"),
     subagentId: "opencode",
+    cavemanSkillPath: null,
   },
   {
     id: "copilot",
@@ -246,6 +253,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     hooksFormat: "vscode",
     subagentPath: join(HOME, ".copilot", "agents", "miru-code.agent.md"),
     subagentId: "copilot",
+    cavemanSkillPath: null,
   },
   {
     id: "codex",
@@ -265,6 +273,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     hooksFormat: "claude",
     subagentPath: null,
     subagentId: null,
+    cavemanSkillPath: null,
   },
   {
     id: "vscode",
@@ -278,6 +287,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     hooksFormat: "vscode",
     subagentPath: null,
     subagentId: null,
+    cavemanSkillPath: null,
   },
   {
     id: "windsurf",
@@ -291,6 +301,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     hooksFormat: "windsurf",
     subagentPath: null,
     subagentId: null,
+    cavemanSkillPath: null,
   },
   {
     id: "visualstudio",
@@ -304,6 +315,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     hooksFormat: "vscode",
     subagentPath: null,
     subagentId: null,
+    cavemanSkillPath: null,
   },
 ];
 

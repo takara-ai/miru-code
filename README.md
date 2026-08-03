@@ -41,6 +41,7 @@ Interactive TUI — **↑↓** move, **space** toggle, **a** all, **enter** conf
 | Sub-agent                     | Dedicated `miru-code` agent file                                    |
 | Cursor rules                  | Always-on `.cursor/rules/miru-code.mdc` (Cursor only)               |
 | Search hooks *(experimental)* | Block built-in Grep/Glob and redirect to Miru MCP                   |
+| Caveman *(experimental)*      | On-demand chat compression skill (`/caveman`); not STE clarity writing |
 
 
 Restart the IDE when done.
@@ -52,21 +53,32 @@ miru uninstall   # remove miru config
 **Supported:** Cursor · Claude Code · Gemini CLI · Kiro · OpenCode · GitHub Copilot · Codex · VS Code · Visual Studio (Windows) · Windsurf / Devin Desktop
 
 
-| IDE            | MCP                                   | Instructions / rules            | Hooks *(experimental)*                            |
-| -------------- | ------------------------------------- | ------------------------------- | ------------------------------------------------- |
-| Cursor         | `~/.cursor/mcp.json`                  | `~/.cursor/rules/miru-code.mdc` | `~/.cursor/hooks.json`                            |
-| Claude Code    | `~/.claude.json`                      | `~/.claude/CLAUDE.md`           | `~/.claude/settings.json`                         |
-| Gemini CLI     | `~/.gemini/settings.json`             | `~/.gemini/GEMINI.md`           | `~/.gemini/settings.json` (`BeforeTool`)          |
-| Kiro           | `~/.kiro/settings/mcp.json`           | `~/.kiro/steering/miru.md`      | `~/.kiro/settings/hooks.json`                     |
-| OpenCode       | `~/.config/opencode/opencode.json(c)` | `~/.config/opencode/AGENTS.md`  | `~/.config/opencode/plugins/miru-search-guard.ts` |
-| GitHub Copilot | `~/.copilot/mcp-config.json`          | —                               | `~/.copilot/hooks/miru-search.json`               |
-| Codex          | `~/.codex/config.toml`                | `~/.codex/AGENTS.md`            | `~/.codex/hooks.json`                             |
-| VS Code        | `…/Code/User/mcp.json`                | —                               | `~/.copilot/hooks/miru-search.json`               |
-| Visual Studio  | `%USERPROFILE%\.mcp.json`             | —                               | `~/.copilot/hooks/miru-search.json`               |
-| Windsurf       | —                                     | —                               | `~/.codeium/windsurf/hooks.json`                  |
+| IDE            | MCP                                   | Instructions / rules            | Hooks *(experimental)*                            | Caveman *(experimental)*              |
+| -------------- | ------------------------------------- | ------------------------------- | ------------------------------------------------- | ------------------------------------- |
+| Cursor         | `~/.cursor/mcp.json`                  | `~/.cursor/rules/miru-code.mdc` | `~/.cursor/hooks.json`                            | `~/.cursor/skills/caveman/SKILL.md`   |
+| Claude Code    | `~/.claude.json`                      | `~/.claude/CLAUDE.md`           | `~/.claude/settings.json`                         | `~/.claude/skills/caveman/SKILL.md`   |
+| Gemini CLI     | `~/.gemini/settings.json`             | `~/.gemini/GEMINI.md`           | `~/.gemini/settings.json` (`BeforeTool`)          | —                                     |
+| Kiro           | `~/.kiro/settings/mcp.json`           | `~/.kiro/steering/miru.md`      | `~/.kiro/settings/hooks.json`                     | —                                     |
+| OpenCode       | `~/.config/opencode/opencode.json(c)` | `~/.config/opencode/AGENTS.md`  | `~/.config/opencode/plugins/miru-search-guard.ts` | —                                     |
+| GitHub Copilot | `~/.copilot/mcp-config.json`          | —                               | `~/.copilot/hooks/miru-search.json`               | —                                     |
+| Codex          | `~/.codex/config.toml`                | `~/.codex/AGENTS.md`            | `~/.codex/hooks.json`                             | —                                     |
+| VS Code        | `…/Code/User/mcp.json`                | —                               | `~/.copilot/hooks/miru-search.json`               | —                                     |
+| Visual Studio  | `%USERPROFILE%\.mcp.json`             | —                               | `~/.copilot/hooks/miru-search.json`               | —                                     |
+| Windsurf       | —                                     | —                               | `~/.codeium/windsurf/hooks.json`                  | —                                     |
 
 
-Sub-agent files are also written where supported (see `miru install` plan). Windsurf hooks only *(experimental)* — no MCP entry yet.
+Sub-agent files are also written where supported (see `miru install` plan). Windsurf hooks only *(experimental)* — no MCP entry yet. Caveman is an on-demand Agent Skill (default off): invoke with `/caveman` or “talk like caveman”; stop with “normal mode”. Chat compression only — not STE-style clarity writing.
+
+<details>
+<summary>Caveman mode <em>(experimental)</em></summary>
+
+Caveman compresses **live chat replies** (less filler, max meaning). Intensities: `/caveman lite|full|ultra` (default full). Persisted artifacts (commits, PRs, customer docs) stay normal prose unless you ask otherwise.
+
+Security / destructive warnings use clear normal prose (auto-clarity) — brevity never hides risk. Session token savings vary; the skill itself costs input tokens. No guaranteed %.
+
+Off by default at install time. Enable Caveman in the installer for Cursor and/or Claude Code.
+
+</details>
 
 <details>
 <summary>Search hooks <em>(experimental)</em></summary>

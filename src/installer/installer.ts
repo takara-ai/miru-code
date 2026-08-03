@@ -1,4 +1,5 @@
-import { unlink } from "node:fs/promises";
+import { mkdir, rmdir, unlink } from "node:fs/promises";
+import { dirname } from "node:path";
 import { loadAgentTemplate } from "../agents.ts";
 import { clearBenchmarkHistory } from "../benchmark/history.ts";
 import { brandTitle, dim, divider, green, hint, info, success, writeStdout } from "../cli-ui.ts";
@@ -24,13 +25,14 @@ import {
 import { mergeHooks, removeHooks } from "./hooks/install.ts";
 import { promptConfirm, promptMultiSelect, requireInteractiveTerminal } from "./prompt.ts";
 import { CURSOR_RULES_MDC } from "./search-policy.ts";
+import { CAVEMAN_SKILL_MD } from "./style-packs/caveman.ts";
 
 export interface WriteResult {
   path: string;
   action: InstallAction;
 }
 
-export type IntegrationId = "mcp" | "instructions" | "subagent" | "hooks" | "rules";
+export type IntegrationId = "mcp" | "instructions" | "subagent" | "hooks" | "rules" | "caveman";
 
 interface Integration {
   id: IntegrationId;
@@ -183,6 +185,33 @@ async function applySubagent(agent: AgentTarget, mode: InstallMode): Promise<Wri
   }
 }
 
+async function applyCaveman(agent: AgentTarget, mode: InstallMode): Promise<WriteResult | null> {
+  const path = agent.cavemanSkillPath;
+  if (!path) {
+    return null;
+  }
+
+  const skillDir = dirname(path);
+
+  if (mode === "uninstall") {
+    if (!(await Bun.file(path).exists())) {
+      return { path, action: "not-found" };
+    }
+    await unlink(path);
+    try {
+      await rmdir(skillDir);
+    } catch {
+      // Directory not empty or already gone — leave other skills alone.
+    }
+    return { path, action: "removed" };
+  }
+
+  const existed = await Bun.file(path).exists();
+  await mkdir(skillDir, { recursive: true });
+  await Bun.write(path, CAVEMAN_SKILL_MD);
+  return { path, action: existed ? "updated" : "created" };
+}
+
 const INTEGRATIONS: Integration[] = [
   {
     id: "mcp",
@@ -220,6 +249,15 @@ const INTEGRATIONS: Integration[] = [
     defaultChecked: false,
     planPath: (agent) => agent.hooksPath,
     apply: applyHooks,
+  },
+  {
+    id: "caveman",
+    label: "Caveman",
+    description: "on-demand chat compression skill (/caveman); not STE clarity writing",
+    experimental: true,
+    defaultChecked: false,
+    planPath: (agent) => agent.cavemanSkillPath,
+    apply: applyCaveman,
   },
 ];
 
@@ -355,6 +393,7 @@ export async function runInstaller(mode: InstallMode): Promise<void> {
 }
 
 export {
+  applyCaveman,
   applyHooks,
   applyInstructions,
   applyMcp,
