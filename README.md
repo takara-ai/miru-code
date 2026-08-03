@@ -41,7 +41,7 @@ Interactive TUI — **↑↓** move, **space** toggle, **a** all, **enter** conf
 | Sub-agent                     | Dedicated `miru-code` agent file                                    |
 | Cursor rules                  | Always-on `.cursor/rules/miru-code.mdc` (Cursor only)               |
 | Search hooks *(experimental)* | Block built-in Grep/Glob and redirect to Miru MCP                   |
-| Caveman *(experimental)*      | On-demand chat compression skill (`/caveman`); not STE clarity writing |
+| Caveman *(experimental)*      | On-demand chat compression skill (`/caveman`)                       |
 
 
 Restart the IDE when done.
@@ -67,7 +67,7 @@ miru uninstall   # remove miru config
 | Windsurf       | —                                     | —                               | `~/.codeium/windsurf/hooks.json`                  | —                                     |
 
 
-Sub-agent files are also written where supported (see `miru install` plan). Windsurf hooks only *(experimental)* — no MCP entry yet. Caveman is an on-demand Agent Skill (default off): invoke with `/caveman` or “talk like caveman”; stop with “normal mode”. Chat compression only — not STE-style clarity writing.
+Sub-agent files are also written where supported (see `miru install` plan). Windsurf hooks only *(experimental)* — no MCP entry yet. Caveman is an on-demand Agent Skill (default off): invoke with `/caveman` or “talk like caveman”; stop with “normal mode”.
 
 <details>
 <summary>Caveman mode <em>(experimental)</em></summary>

@@ -253,7 +253,7 @@ const INTEGRATIONS: Integration[] = [
   {
     id: "caveman",
     label: "Caveman",
-    description: "on-demand chat compression skill (/caveman); not STE clarity writing",
+    description: "on-demand chat compression skill (/caveman)",
     experimental: true,
     defaultChecked: false,
     planPath: (agent) => agent.cavemanSkillPath,
