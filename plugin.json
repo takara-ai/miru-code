@@ -1,0 +1,28 @@
+{
+  "name": "miru",
+  "version": "1.0.5",
+  "description": "Semantic code search for coding agents. Find code by meaning, not grep.",
+  "author": {
+    "name": "Takara",
+    "url": "https://github.com/takara-ai"
+  },
+  "homepage": "https://takara.ai",
+  "repository": "https://github.com/takara-ai/miru-code",
+  "license": "MIT",
+  "keywords": [
+    "code-search",
+    "semantic-search",
+    "mcp",
+    "agents",
+    "takara"
+  ],
+  "category": "Productivity",
+  "tags": [
+    "mcp",
+    "semantic-search",
+    "developer-tools"
+  ],
+  "skills": "./skills/",
+  "rules": "./.cursor/rules/miru-code-search.mdc",
+  "mcpServers": "./.mcp.json"
+}
