@@ -685,7 +685,11 @@ async function runMcp(argv: string[]): Promise<void> {
 }
 
 async function runMcpWithCredentials(argv: string[]): Promise<void> {
-  await ensureCredentials({ interactive: true });
+  // The MCP server is spawned as a headless stdio subprocess, never a real
+  // login terminal — force the non-interactive path so a cold start with no
+  // cached credentials fails fast with an actionable error instead of
+  // attempting a doomed inline device-code login.
+  await ensureCredentials({ interactive: false });
   await runMcp(argv);
 }
 
