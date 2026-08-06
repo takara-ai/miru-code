@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { __resetAuthToolStateForTests } from "../src/mcp/auth-tool.ts";
 import { IndexCache } from "../src/mcp/index-cache.ts";
 import { createMcpServer } from "../src/mcp/server.ts";
 import { MemoryTransport } from "./helpers/mcp-memory-transport.ts";
@@ -39,7 +38,6 @@ describe("auth MCP tool", () => {
   beforeEach(async () => {
     credDir = await mkdtemp(join(tmpdir(), "miru-auth-tool-"));
     process.env.MIRU_CREDENTIALS_DIR = credDir;
-    __resetAuthToolStateForTests();
   });
 
   afterEach(async () => {
@@ -50,7 +48,6 @@ describe("auth MCP tool", () => {
     } else {
       process.env.MIRU_CREDENTIALS_DIR = prevDir;
     }
-    __resetAuthToolStateForTests();
   });
 
   test("check with no pending login tells the caller to start one", async () => {
@@ -157,6 +154,69 @@ describe("auth MCP tool", () => {
     expect(raw.refresh_token).toBe("refresh-token-value");
 
     delete (globalThis as { __authTestCheckCount?: number }).__authTestCheckCount;
+  });
+
+  test("check keeps pending state after a transient error, so a retry can still succeed", async () => {
+    let calls = 0;
+    globalThis.fetch = (async (input, _init) => {
+      const url = String(input);
+      if (url.includes("/oauth/device/code")) {
+        return jsonResponse(200, {
+          device_code: "device-abc",
+          user_code: "ABCD-1234",
+          verification_uri: "https://auth.dev.takara.ai/device/approve",
+          expires_in: 600,
+          interval: 5,
+        });
+      }
+      calls++;
+      if (calls === 1) {
+        // Unrecognized OAuth error code — checkDeviceAuthorizationOnce throws.
+        return jsonResponse(400, { error: "server_error", error_description: "boom" });
+      }
+      return jsonResponse(200, {
+        access_token: "access-token-value",
+        expires_in: 3600,
+      });
+    }) as typeof fetch;
+
+    const server = createMcpServer(new IndexCache());
+    const transport = new MemoryTransport([
+      await callAuthTool(1, { action: "start" }),
+      await callAuthTool(2, { action: "check" }),
+      await callAuthTool(3, { action: "check" }),
+    ]);
+    await server.connect(transport);
+
+    expect(toolTextOf(transport.responseFor(2))).toMatch(/server_error/);
+    expect(toolTextOf(transport.responseFor(3))).toMatch(/Signed in successfully/);
+  });
+
+  test("start re-issues a new login once the previous pending one has expired", async () => {
+    let calls = 0;
+    globalThis.fetch = (async (_input, _init) => {
+      calls++;
+      return jsonResponse(200, {
+        device_code: `device-${calls}`,
+        user_code: `CODE-${calls}`,
+        verification_uri: "https://auth.dev.takara.ai/device/approve",
+        expires_in: 1,
+        interval: 5,
+      });
+    }) as typeof fetch;
+
+    const server = createMcpServer(new IndexCache());
+    const first = new MemoryTransport([await callAuthTool(1, { action: "start" })]);
+    await server.connect(first);
+    expect(calls).toBe(1);
+    expect(toolTextOf(first.responseFor(1))).toContain("CODE-1");
+
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+
+    const second = new MemoryTransport([await callAuthTool(2, { action: "start" })]);
+    await server.connect(second);
+    expect(calls).toBe(2);
+    expect(toolTextOf(second.responseFor(2))).toContain("CODE-2");
   });
 
   test("check clears pending state on denial", async () => {

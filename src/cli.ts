@@ -11,6 +11,7 @@ import {
   info,
   prefersJsonOutput,
   success,
+  warn,
   writeStdout,
 } from "./cli-ui.ts";
 import { loadStoredCredentials } from "./credentials.ts";
@@ -697,7 +698,13 @@ async function runMcpWithCredentials(argv: string[]): Promise<void> {
   // to individual tool calls to report a missing-credentials error, and to
   // the `auth` tool (src/mcp/auth-tool.ts) to complete device-code login
   // in-band without a terminal.
-  await loadStoredCredentials().catch(() => false);
+  await loadStoredCredentials().catch((err: unknown) => {
+    // Swallow so a stale/revoked refresh token etc. can't crash the server — but
+    // don't swallow silently, or the only symptom is a later "credentials
+    // required" tool error with no clue why stored credentials didn't work.
+    warn(`Could not load stored credentials: ${err instanceof Error ? err.message : String(err)}`);
+    return false;
+  });
   await runMcp(argv);
 }
 
