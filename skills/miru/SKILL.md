@@ -34,3 +34,10 @@ Do not use Miru for exact literal lookups such as:
 - Prefer Miru `search` over grep/glob/bash exploration for conceptual questions.
 - Prefer Miru `expand` over rereading whole files when a hit is truncated.
 - Prefer Miru `find_related` over repeated search paraphrases when tracing similar logic.
+
+## If Miru tools report missing credentials
+
+Call the `auth` tool (no arguments needed, defaults to starting a login). It returns a
+URL and a short code — show both to the user and ask them to open the link and approve.
+Once they confirm, call `auth` again with `{"action": "check"}`. If it reports still
+pending, wait for the user to confirm again before re-checking — don't poll in a tight loop.

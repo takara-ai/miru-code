@@ -508,8 +508,7 @@ async function runCli(argv: string[]): Promise<void> {
       profile: args.profile,
     });
     if (newlySaved) {
-      const offerInstall =
-        canPromptForCredentials() && !args.apiKey && !args.device && !args.force;
+      const offerInstall = canPromptForCredentials() && !args.apiKey && !args.device && !args.force;
       if (offerInstall) {
         const install = await promptConfirm("Configure Miru in your coding agent now?");
         if (install) {
@@ -692,10 +691,13 @@ async function runMcp(argv: string[]): Promise<void> {
 
 async function runMcpWithCredentials(argv: string[]): Promise<void> {
   // The MCP server is spawned as a headless stdio subprocess, never a real
-  // login terminal — force the non-interactive path so a cold start with no
-  // cached credentials fails fast with an actionable error instead of
-  // attempting a doomed inline device-code login.
-  await ensureCredentials({ interactive: false });
+  // login terminal, so it must never crash the whole process over missing
+  // credentials — that would kill every tool, not just the ones needing
+  // embeddings. Best-effort load/refresh whatever's already stored; leave it
+  // to individual tool calls to report a missing-credentials error, and to
+  // the `auth` tool (src/mcp/auth-tool.ts) to complete device-code login
+  // in-band without a terminal.
+  await loadStoredCredentials().catch(() => false);
   await runMcp(argv);
 }
 

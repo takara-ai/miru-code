@@ -348,7 +348,8 @@ export async function ensureCredentials(options?: { interactive?: boolean }): Pr
   writeStderr("");
 
   throw new Error(
-    "Takara credentials required. Initial login must be completed in an interactive terminal. " +
-      "Run `miru setup` or `miru setup --key TOKEN`, or set TAKARA_API_KEY in your environment.",
+    "Takara credentials required. If you're an agent with Miru MCP tools available, call the " +
+      "`auth` tool to sign in. Otherwise run `miru setup` or `miru setup --key TOKEN` in an " +
+      "interactive terminal, or set TAKARA_API_KEY in your environment.",
   );
 }

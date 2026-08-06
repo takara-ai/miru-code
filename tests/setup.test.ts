@@ -30,17 +30,22 @@ describe("setup credentials", () => {
   let keySnapshot: string | undefined;
   let sageMakerArnSnapshot: string | undefined;
   let awsProfileSnapshot: string | undefined;
+  let openBrowserSnapshot: string | undefined;
   const originalFetch = globalThis.fetch;
 
   beforeEach(() => {
     keySnapshot = snapshotKey();
     sageMakerArnSnapshot = process.env.MIRU_SAGEMAKER_ENDPOINT_ARN;
     awsProfileSnapshot = process.env.AWS_PROFILE;
+    openBrowserSnapshot = process.env.MIRU_OPEN_BROWSER;
     delete process.env[TAKARA_API_KEY_ENV];
     delete process.env.MIRU_SAGEMAKER_ENDPOINT_ARN;
     delete process.env.AWS_PROFILE;
     delete process.env.MIRU_AUTH_BASE_URL;
     delete process.env.MIRU_AUTH_CLIENT_ID;
+    // These tests drive real device-code flows against a mocked fetch — never let
+    // that also spawn a real browser on whoever's machine runs the test suite.
+    process.env.MIRU_OPEN_BROWSER = "0";
   });
 
   afterEach(async () => {
@@ -54,6 +59,11 @@ describe("setup credentials", () => {
       delete process.env.AWS_PROFILE;
     } else {
       process.env.AWS_PROFILE = awsProfileSnapshot;
+    }
+    if (openBrowserSnapshot === undefined) {
+      delete process.env.MIRU_OPEN_BROWSER;
+    } else {
+      process.env.MIRU_OPEN_BROWSER = openBrowserSnapshot;
     }
     globalThis.fetch = originalFetch;
     if (credDir) {
@@ -104,7 +114,7 @@ describe("setup credentials", () => {
     delete process.env.TAKARA_API_KEY;
 
     await expect(ensureCredentials({ interactive: false })).rejects.toThrow(
-      /Initial login must be completed in an interactive terminal/,
+      /call the `auth` tool to sign in/,
     );
   });
 

@@ -69,7 +69,7 @@ describe("native MCP server matches official 2025-11-25 schema", () => {
     }
 
     const tools = (list.result as { tools: unknown[] }).tools;
-    expect(tools.length).toBe(4);
+    expect(tools.length).toBe(5);
     for (const tool of tools) {
       assertMatchesOfficialMcpSchema("Tool", tool);
     }
@@ -98,6 +98,7 @@ describe("native MCP server matches official 2025-11-25 schema", () => {
     }
     const tools = (list.result as { tools: Array<{ name: string }> }).tools;
     expect(tools.map((tool) => tool.name)).toEqual([
+      "auth",
       "search",
       "locate",
       "expand",
