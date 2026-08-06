@@ -1,8 +1,22 @@
 # Miru (見る)
 
-Your AI agent finds the code it needs in 60% fewer tokens.
+[![CI](https://github.com/takara-ai/miru-code/actions/workflows/ci.yml/badge.svg)](https://github.com/takara-ai/miru-code/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE) [![bun](https://img.shields.io/badge/runtime-bun%201.1%2B-black)](https://bun.sh)
 
-**Requires:** [Bun](https://bun.sh) 1.1+ · Takara credentials
+
+**Hybrid code search for AI coding agents.** Find code by meaning, not grep.
+
+Your AI agent finds the code it needs with up to 50% fewer tokens.
+
+Miru returns the best **chunks** (path, lines, snippet) for questions like *"where is auth middleware configured?"* — plugged directly into Claude Code, Cursor, Copilot, Codex, and 9+ other agents via MCP.
+
+---
+
+## How it fits into your agent's workflow
+
+![How Miru fits into an agent's workflow](docs/miru-workflow-diagram.svg)
+
+Miru replaces the grep/glob-style search agents fall back on today. Install once, and every connected agent gets `search` and `find_related` MCP tools automatically.
+
 
 ## Install
 
