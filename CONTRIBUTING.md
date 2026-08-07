@@ -2,30 +2,29 @@
 
 ## Setup
 
-```bash
-git clone https://github.com/takara-ai/miru-code.git && cd miru-code
-bun install && cp .env.example .env.local
-bun test && bun run typecheck
-```
+1. Install [prek](https://github.com/j178/prek), a Rust reimplementation of [pre-commit](https://pre-commit.com/):
 
-`bun install` also runs `prek install` (via the `prepare` script), which wires up the git hooks below.
+   ```bash
+   brew install prek   # or: pip install prek / cargo install prek
+   ```
+
+2. Clone and install:
+
+   ```bash
+   git clone https://github.com/takara-ai/miru-code.git && cd miru-code
+   bun install && cp .env.example .env.local
+   bun test && bun run typecheck
+   ```
+
+   `bun install` runs `prek install --install-hooks` (via the `prepare` script) if `prek` is on your `PATH`, wiring up the git hooks below. If `prek` isn't installed yet, `prepare` skips silently — install it and run manually:
+
+   ```bash
+   prek install --install-hooks
+   ```
 
 ## Pre-commit hooks
 
-This repo uses [prek](https://github.com/j178/prek), a Rust reimplementation of [pre-commit](https://pre-commit.com/), driven by [`.pre-commit-config.yaml`](.pre-commit-config.yaml). Install it once:
-
-```bash
-brew install prek   # or: pip install prek / cargo install prek
-```
-
-Hooks install automatically on `bun install`. To install manually:
-
-```bash
-prek install
-prek install --hook-type commit-msg
-```
-
-Hooks run:
+Driven by [`.pre-commit-config.yaml`](.pre-commit-config.yaml). Hooks run:
 
 - Standard checks (trailing whitespace, end-of-file fixer, YAML/JSON validity, large files, merge conflicts, private keys, mixed line endings)
 - `commitizen` on commit messages (Conventional Commits format)
