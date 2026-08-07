@@ -508,8 +508,7 @@ async function runCli(argv: string[]): Promise<void> {
       profile: args.profile,
     });
     if (newlySaved) {
-      const offerInstall =
-        canPromptForCredentials() && !args.apiKey && !args.device && !args.force;
+      const offerInstall = canPromptForCredentials() && !args.apiKey && !args.device && !args.force;
       if (offerInstall) {
         const install = await promptConfirm("Configure Miru in your coding agent now?");
         if (install) {

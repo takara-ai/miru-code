@@ -1,6 +1,15 @@
 import { authenticateWithProvider } from "./auth/providers.ts";
 import { credentialAccessToken } from "./auth/types.ts";
-import { divider, fail, hint, info, printBrandBanner, success, writeStderr, writeStdout } from "./cli-ui.ts";
+import {
+  divider,
+  fail,
+  hint,
+  info,
+  printBrandBanner,
+  success,
+  writeStderr,
+  writeStdout,
+} from "./cli-ui.ts";
 import {
   beginModeSwitch,
   clearStoredCredentials,
@@ -154,7 +163,9 @@ export async function runSageMakerSetup(options: RunSetupOptions = {}): Promise<
   writeStdout("Miru will connect directly to your self-hosted SageMaker embedding endpoint.");
   hint("Miru only inherits AWS credentials from a profile you've already configured —");
   hint("it never creates or writes to ~/.aws. Run `aws configure --profile <name>` first.");
-  hint("This replaces any stored Takara credentials — only one embedding mode is active at a time.");
+  hint(
+    "This replaces any stored Takara credentials — only one embedding mode is active at a time.",
+  );
   writeStdout("");
 
   const arnInput = options.sagemakerArn ?? (await promptSageMakerArn());
@@ -224,7 +235,9 @@ export async function runSetup(options: RunSetupOptions = {}): Promise<RunSetupR
       return { path: saved, newlySaved: true };
     }
     if (stored) {
-      info(`Credentials already configured (env + ${path}). Use --force to replace stored credentials.`);
+      info(
+        `Credentials already configured (env + ${path}). Use --force to replace stored credentials.`,
+      );
       return { path, newlySaved: false };
     }
     info("API key already set via environment variable. Stored credentials unchanged.");
@@ -246,7 +259,9 @@ export async function runSetup(options: RunSetupOptions = {}): Promise<RunSetupR
   divider("─", 48, process.stderr);
   writeStderr("Miru needs Takara credentials for code embeddings.");
   hint("Device code login is the default. Manual API key entry is still available.");
-  hint("This replaces any stored SageMaker endpoint — only one embedding mode is active at a time.");
+  hint(
+    "This replaces any stored SageMaker endpoint — only one embedding mode is active at a time.",
+  );
   writeStderr("");
 
   await beginModeSwitch("takara");

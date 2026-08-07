@@ -7,7 +7,5 @@
     "name": "Takara",
     "url": "https://github.com/takara-ai"
   },
-  "skills": [
-    "./skills/"
-  ]
+  "skills": ["./skills/"]
 }

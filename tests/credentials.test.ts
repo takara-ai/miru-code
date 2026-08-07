@@ -265,7 +265,7 @@ describe("credentials", () => {
     const path = join(credDir, "credentials.json");
     await Bun.write(
       path,
-      JSON.stringify(
+      `${JSON.stringify(
         {
           version: CREDENTIALS_VERSION,
           kind: "device_code",
@@ -274,7 +274,7 @@ describe("credentials", () => {
         },
         null,
         2,
-      ) + "\n",
+      )}\n`,
     );
     await chmod(path, 0o600);
     expect(await readStoredCredentials()).toBeNull();
@@ -287,7 +287,7 @@ describe("credentials", () => {
     const path = join(credDir, "credentials.json");
     await Bun.write(
       path,
-      JSON.stringify(
+      `${JSON.stringify(
         {
           version: CREDENTIALS_VERSION,
           kind: "device_code",
@@ -296,7 +296,7 @@ describe("credentials", () => {
         },
         null,
         2,
-      ) + "\n",
+      )}\n`,
     );
     await chmod(path, 0o600);
 

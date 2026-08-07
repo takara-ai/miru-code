@@ -1,19 +1,16 @@
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { hasTakaraApiKeyInEnv, normalizeTakaraApiKeyEnv } from "./env.ts";
-import {
-  deviceCredentialsNeedRefresh,
-  refreshDeviceAuthorization,
-} from "./auth/device.ts";
+import { deviceCredentialsNeedRefresh, refreshDeviceAuthorization } from "./auth/device.ts";
 import {
   CREDENTIALS_VERSION,
+  credentialAccessToken,
   LEGACY_CREDENTIALS_VERSION,
   type LegacyStoredCredentials,
   type SaveStoredCredentialsInput,
   type StoredCredentials,
   type StoredSageMakerCredentials,
-  credentialAccessToken,
 } from "./auth/types.ts";
+import { hasTakaraApiKeyInEnv, normalizeTakaraApiKeyEnv } from "./env.ts";
 
 const CREDENTIALS_FILENAME = "credentials.json";
 let activeStoredToken: string | null = null;
