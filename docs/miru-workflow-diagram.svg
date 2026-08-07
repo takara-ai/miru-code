@@ -1,0 +1,47 @@
+<svg width="800" height="280" viewBox="0 0 800 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="miru-diagram-title miru-diagram-desc">
+  <title id="miru-diagram-title">How Miru fits into an agent's code search workflow</title>
+  <desc id="miru-diagram-desc">A coding agent sends a natural-language query to the Miru MCP server, which runs hybrid search (AST-aware embeddings plus BM25 and reranking) over the indexed repository, then returns ranked code chunks back to the agent.</desc>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M1 1L8 5L1 9" fill="none" stroke="#4A4D4E" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="800" height="280" fill="#FFFFFF"/>
+
+  <text x="400" y="34" text-anchor="middle" font-family="Lato, 'Gill Sans', sans-serif" font-size="13" fill="#4A4D4E">
+    Replaces the grep/glob-style search agents fall back on today
+  </text>
+
+  <!-- Coding agent -->
+  <g>
+    <rect x="40" y="100" width="180" height="80" rx="10" fill="#FFFFFF" stroke="#4A4D4E" stroke-width="1.5"/>
+    <text x="130" y="134" text-anchor="middle" font-family="Lato, 'Gill Sans', sans-serif" font-size="16" font-weight="600" fill="#000000">Coding agent</text>
+    <text x="130" y="156" text-anchor="middle" font-family="Lato, 'Gill Sans', sans-serif" font-size="12" fill="#4A4D4E">"where's auth set up?"</text>
+  </g>
+
+  <line x1="220" y1="140" x2="288" y2="140" stroke="#4A4D4E" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Miru MCP server (hero box, Takara Red) -->
+  <g>
+    <rect x="290" y="70" width="220" height="140" rx="10" fill="#D91009"/>
+    <text x="400" y="106" text-anchor="middle" font-family="Lato, 'Gill Sans', sans-serif" font-size="17" font-weight="700" fill="#FFFFFF">Miru MCP server</text>
+    <text x="400" y="132" text-anchor="middle" font-family="Lato, 'Gill Sans', sans-serif" font-size="12.5" fill="#FFFFFF">AST-aware embeddings</text>
+    <text x="400" y="150" text-anchor="middle" font-family="Lato, 'Gill Sans', sans-serif" font-size="12.5" fill="#FFFFFF">+ BM25 + reranking</text>
+    <text x="400" y="168" text-anchor="middle" font-family="Lato, 'Gill Sans', sans-serif" font-size="12.5" fill="#FFFFFF">over indexed repo</text>
+  </g>
+
+  <line x1="510" y1="140" x2="578" y2="140" stroke="#4A4D4E" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Ranked chunks (accent, Azure Blue) -->
+  <g>
+    <rect x="580" y="100" width="180" height="80" rx="10" fill="#FFFFFF" stroke="#00A3EE" stroke-width="1.75"/>
+    <text x="670" y="134" text-anchor="middle" font-family="Lato, 'Gill Sans', sans-serif" font-size="16" font-weight="600" fill="#00668F">Ranked chunks</text>
+    <text x="670" y="156" text-anchor="middle" font-family="Lato, 'Gill Sans', sans-serif" font-size="12" fill="#4A4D4E">path, lines, snippet</text>
+  </g>
+
+  <text x="400" y="248" text-anchor="middle" font-family="Lato, 'Gill Sans', sans-serif" font-size="12" fill="#4A4D4E">
+    Every connected agent (Cursor, Claude Code, Copilot, Codex, and more) gets this via MCP
+  </text>
+</svg>
