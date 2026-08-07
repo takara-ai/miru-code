@@ -376,6 +376,8 @@ bun install && cp .env.example .env.local
 bun test && bun run typecheck
 ```
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for pre-commit hooks, commit message conventions, and the PR process.
+
 Local MCP: `"command": "bun", "args": ["/path/to/miru-code/src/cli.ts"]`
 
 `miru help` / setup print a framed wordmark on color terminals (`MIRU_QUIET=1` for subtitle only). Crane art lives in `src/brand-banner.ts`; regenerate with `bun run scripts/render-crane-art.ts` (ImageMagick). The crane is a registered mark of Takara.ai Ltd.
