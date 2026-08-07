@@ -99,9 +99,10 @@ async function postForm(
   });
 }
 
-export async function startDeviceAuthorization(
-  options?: { config?: DeviceAuthConfig; fetchImpl?: typeof fetch },
-): Promise<DeviceAuthorizationStart> {
+export async function startDeviceAuthorization(options?: {
+  config?: DeviceAuthConfig;
+  fetchImpl?: typeof fetch;
+}): Promise<DeviceAuthorizationStart> {
   const config = options?.config ?? resolveDeviceAuthConfig();
   const fetchImpl = options?.fetchImpl ?? fetch;
   const body = new URLSearchParams({ client_id: config.clientId });
@@ -125,9 +126,7 @@ export async function startDeviceAuthorization(
 
   const deviceCode = String(payload.device_code ?? "").trim();
   const userCode = String(payload.user_code ?? "").trim();
-  const verificationUri = String(
-    payload.verification_uri ?? payload.verification_url ?? "",
-  ).trim();
+  const verificationUri = String(payload.verification_uri ?? payload.verification_url ?? "").trim();
   if (!deviceCode || !userCode || !verificationUri) {
     throw new Error("Device authorization response was missing required fields.");
   }
@@ -142,8 +141,7 @@ export async function startDeviceAuthorization(
         : undefined,
     expiresIn:
       typeof payload.expires_in === "number" && payload.expires_in > 0 ? payload.expires_in : 600,
-    interval:
-      typeof payload.interval === "number" && payload.interval >= 0 ? payload.interval : 5,
+    interval: typeof payload.interval === "number" && payload.interval >= 0 ? payload.interval : 5,
   };
 }
 
@@ -205,7 +203,9 @@ export async function refreshDeviceAuthorization(
   options?: { config?: DeviceAuthConfig; fetchImpl?: typeof fetch },
 ): Promise<DeviceAuthorizationTokens> {
   if (!credentials.refresh_token?.trim()) {
-    throw new Error("Stored device credentials cannot be refreshed because no refresh token exists.");
+    throw new Error(
+      "Stored device credentials cannot be refreshed because no refresh token exists.",
+    );
   }
 
   const config = options?.config ?? resolveDeviceAuthConfig();

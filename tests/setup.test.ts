@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadStoredCredentials, readStoredCredentials, saveStoredCredentials } from "../src/credentials.ts";
+import {
+  loadStoredCredentials,
+  readStoredCredentials,
+  saveStoredCredentials,
+} from "../src/credentials.ts";
 import { TAKARA_API_KEY_ENV } from "../src/env.ts";
 import {
   canPromptForCredentials,
@@ -248,7 +252,7 @@ describe("setup credentials", () => {
     process.env.MIRU_OPEN_BROWSER = "0";
 
     let call = 0;
-    globalThis.fetch = (async (input) => {
+    globalThis.fetch = (async (_input) => {
       call++;
       if (call === 1) {
         return new Response(
@@ -290,7 +294,9 @@ describe("setup credentials", () => {
     }
 
     expect(process.env.TAKARA_API_KEY).toBe("device-access-token");
-    expect(stdout).not.toMatch(/Takara credentials|device-code|Open https:\/\/verify|Saved credentials/i);
+    expect(stdout).not.toMatch(
+      /Takara credentials|device-code|Open https:\/\/verify|Saved credentials/i,
+    );
   });
 
   test("ensureCredentials falls back to re-auth when refresh fails and interactive login is allowed", async () => {
@@ -333,7 +339,9 @@ describe("setup credentials", () => {
         );
       }
       expect(String(input)).toBe("https://auth.example.test/oauth/token");
-      expect(String(init?.body)).toContain("grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code");
+      expect(String(init?.body)).toContain(
+        "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code",
+      );
       return new Response(
         JSON.stringify({
           access_token: "reauth-token",

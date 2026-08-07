@@ -1,8 +1,8 @@
 import { hint, info, warn, writeStderr } from "../cli-ui.ts";
-import { promptHidden } from "../prompt.ts";
-import { Spinner } from "../spinner.ts";
 import { validateEmbeddingApiKey } from "../embeddings/validate.ts";
 import { promptConfirm } from "../installer/prompt.ts";
+import { promptHidden } from "../prompt.ts";
+import { Spinner } from "../spinner.ts";
 import {
   openBrowserForDeviceLogin,
   pollDeviceAuthorization,
@@ -47,7 +47,9 @@ async function resolveAuthMode(options: AuthenticateOptions): Promise<AuthMode> 
   return useDevice ? "device_code" : "api_key";
 }
 
-async function authenticateWithApiKey(options: AuthenticateOptions): Promise<AuthenticatedCredentials> {
+async function authenticateWithApiKey(
+  options: AuthenticateOptions,
+): Promise<AuthenticatedCredentials> {
   const apiKey = options.apiKey ?? (await promptApiKey());
   if (!options.skipValidation) {
     const spinner = new Spinner("Validating API key");
@@ -75,7 +77,10 @@ async function authenticateWithDeviceCode(
   if (options.interactive) {
     const shouldOpenBrowser =
       process.env.MIRU_OPEN_BROWSER === undefined || process.env.MIRU_OPEN_BROWSER === "1";
-    if (shouldOpenBrowser && openBrowserForDeviceLogin(start.verificationUriComplete ?? start.verificationUri)) {
+    if (
+      shouldOpenBrowser &&
+      openBrowserForDeviceLogin(start.verificationUriComplete ?? start.verificationUri)
+    ) {
       hint("Opened the verification page in your browser.");
     }
   }
