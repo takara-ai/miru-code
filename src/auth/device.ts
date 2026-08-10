@@ -149,50 +149,86 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+export type DeviceAuthorizationCheck =
+  | { status: "success"; tokens: DeviceAuthorizationTokens }
+  | { status: "pending" }
+  | { status: "slow_down" }
+  | { status: "denied" }
+  | { status: "expired" };
+
+/**
+ * Single non-blocking poll attempt against the token endpoint — no internal
+ * sleep. Used directly by the `auth` MCP tool (one check per tool call, so a
+ * call never blocks for the device code's full expiry window), and by
+ * pollDeviceAuthorization's blocking loop below for the CLI path.
+ */
+export async function checkDeviceAuthorizationOnce(
+  start: DeviceAuthorizationStart,
+  options?: { config?: DeviceAuthConfig; fetchImpl?: typeof fetch },
+): Promise<DeviceAuthorizationCheck> {
+  const config = options?.config ?? resolveDeviceAuthConfig();
+  const fetchImpl = options?.fetchImpl ?? fetch;
+
+  const body = new URLSearchParams({
+    grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+    device_code: start.deviceCode,
+    client_id: config.clientId,
+  });
+  const response = await postForm(resolveUrl(config.baseUrl, config.tokenPath), body, fetchImpl);
+  const text = await response.text();
+  const payload = text ? (JSON.parse(text) as OAuthTokenSuccess | OAuthTokenError) : {};
+
+  if (response.ok) {
+    const success = payload as OAuthTokenSuccess;
+    if (!success.access_token?.trim()) {
+      throw new Error("Device login succeeded but did not return an access token.");
+    }
+    return { status: "success", tokens: normalizeTokenSuccess(success) };
+  }
+
+  const error = (payload as OAuthTokenError).error;
+  if (error === "authorization_pending") {
+    return { status: "pending" };
+  }
+  if (error === "slow_down") {
+    return { status: "slow_down" };
+  }
+  if (error === "access_denied") {
+    return { status: "denied" };
+  }
+  if (error === "expired_token") {
+    return { status: "expired" };
+  }
+  throw new Error(`Device login failed: ${parseTokenError(payload as OAuthTokenError)}`);
+}
+
 export async function pollDeviceAuthorization(
   start: DeviceAuthorizationStart,
   options?: { config?: DeviceAuthConfig; fetchImpl?: typeof fetch },
 ): Promise<DeviceAuthorizationTokens> {
-  const config = options?.config ?? resolveDeviceAuthConfig();
-  const fetchImpl = options?.fetchImpl ?? fetch;
   const deadline = Date.now() + start.expiresIn * 1000;
   let intervalMs = start.interval * 1000;
 
   while (Date.now() < deadline) {
     await sleep(intervalMs);
 
-    const body = new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-      device_code: start.deviceCode,
-      client_id: config.clientId,
-    });
-    const response = await postForm(resolveUrl(config.baseUrl, config.tokenPath), body, fetchImpl);
-    const text = await response.text();
-    const payload = text ? (JSON.parse(text) as OAuthTokenSuccess | OAuthTokenError) : {};
-
-    if (response.ok) {
-      const success = payload as OAuthTokenSuccess;
-      if (!success.access_token?.trim()) {
-        throw new Error("Device login succeeded but did not return an access token.");
-      }
-      return normalizeTokenSuccess(success);
+    const check = await checkDeviceAuthorizationOnce(start, options);
+    if (check.status === "success") {
+      return check.tokens;
     }
-
-    const error = (payload as OAuthTokenError).error;
-    if (error === "authorization_pending") {
+    if (check.status === "pending") {
       continue;
     }
-    if (error === "slow_down") {
+    if (check.status === "slow_down") {
       intervalMs += 5_000;
       continue;
     }
-    if (error === "access_denied") {
+    if (check.status === "denied") {
       throw new Error("Device login was denied.");
     }
-    if (error === "expired_token") {
+    if (check.status === "expired") {
       throw new Error("Device login expired before it was completed.");
     }
-    throw new Error(`Device login failed: ${parseTokenError(payload as OAuthTokenError)}`);
   }
 
   throw new Error("Device login timed out before it was completed.");

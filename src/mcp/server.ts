@@ -34,6 +34,7 @@ import {
   MAX_MCP_TOP_K,
   resolveChunk,
 } from "../utils.ts";
+import { registerAuthTool } from "./auth-tool.ts";
 import {
   formatExpandResultsText,
   formatLiteralLocateText,
@@ -87,6 +88,8 @@ export function createMcpServer(
       instructions: benchmark ? MCP_BENCHMARK_SERVER_INSTRUCTIONS : MCP_SERVER_INSTRUCTIONS,
     },
   );
+
+  registerAuthTool(server);
 
   server.registerTool(
     "search",
