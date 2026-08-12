@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { loadAgentTemplate } from "../src/agents.ts";
 import {
   appendBenchmarkQuery,
@@ -26,6 +27,7 @@ import {
   replaceOrAppendMarked,
 } from "../src/installer/config.ts";
 import {
+  applyCaveman,
   applyHooks,
   applyMcp,
   applySubagent,
@@ -33,6 +35,7 @@ import {
   integrationsForAgents,
   removeUninstallLocalData,
 } from "../src/installer/installer.ts";
+import { CAVEMAN_SKILL_MD } from "../src/installer/style-packs/caveman.ts";
 
 const BLOCK = `${MIRU_START}\n## Miru\ninstructions\n${MIRU_END}\n`;
 const BLOCK_V2 = `${MIRU_START}\n## Miru\nupdated\n${MIRU_END}\n`;
@@ -60,6 +63,7 @@ function claudeTarget(root: string): AgentTarget {
     hooksFormat: "claude",
     subagentPath: join(root, ".claude", "agents", "miru-code.md"),
     subagentId: "claude",
+    cavemanSkillPath: join(root, ".claude", "skills", "caveman", "SKILL.md"),
   };
 }
 
@@ -94,6 +98,21 @@ describe("installer config", () => {
     const hooksIntegration = INTEGRATIONS.find((entry) => entry.id === "hooks");
     expect(hooksIntegration?.defaultChecked).toBe(false);
     expect(hooksIntegration?.experimental).toBe(true);
+  });
+
+  test("T10: caveman integration is experimental and unchecked by default", () => {
+    const caveman = INTEGRATIONS.find((entry) => entry.id === "caveman");
+    expect(caveman?.experimental).toBe(true);
+    expect(caveman?.defaultChecked).toBe(false);
+    expect(caveman?.planPath).toBeDefined();
+  });
+
+  test("caveman skill paths: Cursor and Claude only", () => {
+    const byId = Object.fromEntries(AGENT_TARGETS.map((agent) => [agent.id, agent]));
+    expect(byId.cursor?.cavemanSkillPath).toContain("/.cursor/skills/caveman/SKILL.md");
+    expect(byId.claude?.cavemanSkillPath).toContain("/.claude/skills/caveman/SKILL.md");
+    expect(byId.codex?.cavemanSkillPath).toBeNull();
+    expect(byId.gemini?.cavemanSkillPath).toBeNull();
   });
 
   test("cursor rules is only offered when Cursor is selected", () => {
@@ -375,6 +394,7 @@ describe("installer apply", () => {
       hooksFormat: null,
       subagentPath: null,
       subagentId: null,
+      cavemanSkillPath: null,
     };
     const result = await applyMcp(agent, "install");
     expect(result?.action).toBe("created");
@@ -481,6 +501,61 @@ describe("installer apply", () => {
 
     expect((await applySubagent(agent, "uninstall"))?.action).toBe("removed");
     expect(await Bun.file(subagentPath).exists()).toBe(false);
+  });
+
+  test("T6: applyCaveman installs Cursor skill", async () => {
+    const skillPath = join(root, ".cursor", "skills", "caveman", "SKILL.md");
+    const agent: AgentTarget = {
+      ...claudeTarget(root),
+      id: "cursor",
+      displayName: "Cursor",
+      cavemanSkillPath: skillPath,
+      mcp: null,
+      instructionsPath: null,
+      subagentPath: null,
+      subagentId: null,
+    };
+    const result = await applyCaveman(agent, "install");
+    expect(result?.action).toBe("created");
+    expect(result?.path).toBe(skillPath);
+    expect(await Bun.file(skillPath).text()).toBe(CAVEMAN_SKILL_MD);
+  });
+
+  test("T7: applyCaveman re-install updates skill content", async () => {
+    const agent = claudeTarget(root);
+    expect((await applyCaveman(agent, "install"))?.action).toBe("created");
+    const skillPath = agent.cavemanSkillPath ?? "";
+    await Bun.write(skillPath, "stale\n");
+    expect((await applyCaveman(agent, "install"))?.action).toBe("updated");
+    expect(await Bun.file(skillPath).text()).toBe(CAVEMAN_SKILL_MD);
+  });
+
+  test("T8: applyCaveman uninstall removes skill and leaves MCP untouched", async () => {
+    const agent = claudeTarget(root);
+    await applyMcp(agent, "install");
+    await applyCaveman(agent, "install");
+    const skillPath = agent.cavemanSkillPath ?? "";
+    const mcpPath = agent.mcp?.path ?? "";
+
+    expect((await applyCaveman(agent, "uninstall"))?.action).toBe("removed");
+    expect(await Bun.file(skillPath).exists()).toBe(false);
+    expect(existsSync(dirname(skillPath))).toBe(false);
+    expect(await Bun.file(mcpPath).exists()).toBe(true);
+    const data = JSON.parse(await Bun.file(mcpPath).text()) as {
+      mcpServers?: { miru?: unknown };
+    };
+    expect(data.mcpServers?.miru).toBeDefined();
+  });
+
+  test("T9: applyCaveman returns null when unsupported", async () => {
+    const agent: AgentTarget = {
+      ...claudeTarget(root),
+      cavemanSkillPath: null,
+    };
+    expect(await applyCaveman(agent, "install")).toBeNull();
+    expect(await applyCaveman(agent, "uninstall")).toBeNull();
+    const caveman = INTEGRATIONS.find((entry) => entry.id === "caveman");
+    expect(caveman?.planPath(agent)).toBeNull();
   });
 });
 

@@ -171,15 +171,18 @@ export function printCommandHelp(command: string): void {
       return;
     case "install":
       commandHeader("install", "Interactive global agent setup.");
-      writeStdout("Configures MCP server, instructions, and sub-agent files under");
+      writeStdout("Configures MCP server, instructions, sub-agent files, and optional");
+      writeStdout("experimental integrations (search hooks, Caveman skill) under");
       writeStdout("your user config (~/.claude, ~/.cursor, etc.).");
       writeStdout("");
+      writeStdout("Caveman = on-demand chat compression (/caveman). Off by default.");
       writeStdout("Run miru setup first, or set TAKARA_API_KEY for MCP env expansion.");
       writeStdout("");
       return;
     case "uninstall":
       commandHeader("uninstall", "Remove miru configuration from agents.");
-      writeStdout("Removes MCP entries, marked instruction blocks, and global sub-agents.");
+      writeStdout("Removes MCP entries, marked instruction blocks, global sub-agents,");
+      writeStdout("and selected optional integrations (hooks, Caveman skill).");
       writeStdout("Also deletes the global benchmark report from Miru's state directory.");
       writeStdout("");
       return;
