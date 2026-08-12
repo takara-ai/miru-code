@@ -30,6 +30,7 @@ import {
   applyMcp,
   applySubagent,
   INTEGRATIONS,
+  integrationsForAgents,
   removeUninstallLocalData,
 } from "../src/installer/installer.ts";
 
@@ -93,6 +94,14 @@ describe("installer config", () => {
     const hooksIntegration = INTEGRATIONS.find((entry) => entry.id === "hooks");
     expect(hooksIntegration?.defaultChecked).toBe(false);
     expect(hooksIntegration?.experimental).toBe(true);
+  });
+
+  test("cursor rules is only offered when Cursor is selected", () => {
+    for (const agent of AGENT_TARGETS) {
+      expect(integrationsForAgents([agent]).some((entry) => entry.id === "rules")).toBe(
+        agent.id === "cursor",
+      );
+    }
   });
   let root = "";
 
