@@ -603,7 +603,75 @@ describe("installer apply", () => {
     expect(caveman?.planPath(agent)).toBeNull();
   });
 
-  test("shared Copilot path: install once, keep on sibling-detected uninstall", async () => {
+  test("shared Copilot path: install once, keep via owners including Visual Studio", async () => {
+    const shared = join(root, ".copilot", "skills", "caveman", "SKILL.md");
+    const ownersPath = join(root, ".copilot", "skills", "caveman", "miru-owners.json");
+    const base = claudeTarget(root);
+    const copilot: AgentTarget = {
+      ...base,
+      id: "copilot",
+      displayName: "GitHub Copilot",
+      cavemanSkillPath: shared,
+      mcp: null,
+      instructionsPath: null,
+      subagentPath: null,
+      subagentId: null,
+    };
+    const vscode: AgentTarget = {
+      ...copilot,
+      id: "vscode",
+      displayName: "VS Code",
+    };
+    const visualstudio: AgentTarget = {
+      ...copilot,
+      id: "visualstudio",
+      displayName: "Visual Studio",
+    };
+    const family = [copilot, vscode, visualstudio];
+    const seen = new Set<string>();
+    const ctx = { selectedAgents: family, cavemanSeenPaths: seen, allAgents: family };
+
+    expect((await applyCaveman(copilot, "install", ctx))?.action).toBe("created");
+    expect((await applyCaveman(vscode, "install", ctx))?.action).toBe("unchanged");
+    expect((await applyCaveman(visualstudio, "install", ctx))?.action).toBe("unchanged");
+    expect(await Bun.file(shared).exists()).toBe(true);
+    expect(JSON.parse(await Bun.file(ownersPath).text())).toEqual([
+      "copilot",
+      "visualstudio",
+      "vscode",
+    ]);
+
+    const keepVscode = await applyCaveman(vscode, "uninstall", {
+      selectedAgents: [vscode],
+      cavemanSeenPaths: new Set(),
+      allAgents: family,
+      isDetected: async () => false,
+    });
+    expect(keepVscode?.action).toBe("unchanged");
+    expect(await Bun.file(shared).exists()).toBe(true);
+    expect(JSON.parse(await Bun.file(ownersPath).text())).toEqual(["copilot", "visualstudio"]);
+
+    const keepVs = await applyCaveman(visualstudio, "uninstall", {
+      selectedAgents: [visualstudio],
+      cavemanSeenPaths: new Set(),
+      allAgents: family,
+      isDetected: async () => false,
+    });
+    expect(keepVs?.action).toBe("unchanged");
+    expect(JSON.parse(await Bun.file(ownersPath).text())).toEqual(["copilot"]);
+
+    const removed = await applyCaveman(copilot, "uninstall", {
+      selectedAgents: [copilot],
+      cavemanSeenPaths: new Set(),
+      allAgents: family,
+      isDetected: async () => false,
+    });
+    expect(removed?.action).toBe("removed");
+    expect(await Bun.file(shared).exists()).toBe(false);
+    expect(await Bun.file(ownersPath).exists()).toBe(false);
+  });
+
+  test("shared Copilot path: uninstalling all selected owners removes once", async () => {
     const shared = join(root, ".copilot", "skills", "caveman", "SKILL.md");
     const base = claudeTarget(root);
     const copilot: AgentTarget = {
@@ -622,17 +690,62 @@ describe("installer apply", () => {
       displayName: "VS Code",
     };
     const family = [copilot, vscode];
-    const seen = new Set<string>();
+    await applyCaveman(copilot, "install", {
+      selectedAgents: family,
+      cavemanSeenPaths: new Set(),
+      allAgents: family,
+    });
+    await applyCaveman(vscode, "install", {
+      selectedAgents: family,
+      cavemanSeenPaths: new Set([shared]),
+      allAgents: family,
+    });
 
     expect(
-      (await applyCaveman(copilot, "install", { selectedAgents: family, cavemanSeenPaths: seen }))
-        ?.action,
-    ).toBe("created");
-    expect(
-      (await applyCaveman(vscode, "install", { selectedAgents: family, cavemanSeenPaths: seen }))
-        ?.action,
+      (
+        await applyCaveman(copilot, "uninstall", {
+          selectedAgents: family,
+          cavemanSeenPaths: new Set(),
+          allAgents: family,
+        })
+      )?.action,
     ).toBe("unchanged");
     expect(await Bun.file(shared).exists()).toBe(true);
+
+    expect(
+      (
+        await applyCaveman(vscode, "uninstall", {
+          selectedAgents: family,
+          cavemanSeenPaths: new Set(),
+          allAgents: family,
+          isDetected: async () => false,
+        })
+      )?.action,
+    ).toBe("removed");
+    expect(await Bun.file(shared).exists()).toBe(false);
+  });
+
+  test("shared Copilot path: legacy install without owners falls back to detection", async () => {
+    const shared = join(root, ".copilot", "skills", "caveman", "SKILL.md");
+    await mkdir(dirname(shared), { recursive: true });
+    await Bun.write(shared, CAVEMAN_SKILL_MD);
+    const base = claudeTarget(root);
+    const copilot: AgentTarget = {
+      ...base,
+      id: "copilot",
+      displayName: "GitHub Copilot",
+      cavemanSkillPath: shared,
+      mcp: null,
+      instructionsPath: null,
+      subagentPath: null,
+      subagentId: null,
+    };
+    const vscode: AgentTarget = {
+      ...copilot,
+      id: "vscode",
+      displayName: "VS Code",
+    };
+    const family = [copilot, vscode];
 
     const keep = await applyCaveman(vscode, "uninstall", {
       selectedAgents: [vscode],
@@ -650,50 +763,6 @@ describe("installer apply", () => {
       isDetected: async () => false,
     });
     expect(removed?.action).toBe("removed");
-    expect(await Bun.file(shared).exists()).toBe(false);
-  });
-
-  test("shared Copilot path: uninstalling both selected agents removes once", async () => {
-    const shared = join(root, ".copilot", "skills", "caveman", "SKILL.md");
-    const base = claudeTarget(root);
-    const copilot: AgentTarget = {
-      ...base,
-      id: "copilot",
-      displayName: "GitHub Copilot",
-      cavemanSkillPath: shared,
-      mcp: null,
-      instructionsPath: null,
-      subagentPath: null,
-      subagentId: null,
-    };
-    const vscode: AgentTarget = {
-      ...copilot,
-      id: "vscode",
-      displayName: "VS Code",
-    };
-    const family = [copilot, vscode];
-    await applyCaveman(copilot, "install");
-
-    expect(
-      (
-        await applyCaveman(copilot, "uninstall", {
-          selectedAgents: family,
-          cavemanSeenPaths: new Set(),
-        })
-      )?.action,
-    ).toBe("unchanged");
-    expect(await Bun.file(shared).exists()).toBe(true);
-
-    expect(
-      (
-        await applyCaveman(vscode, "uninstall", {
-          selectedAgents: family,
-          cavemanSeenPaths: new Set(),
-          allAgents: family,
-          isDetected: async () => false,
-        })
-      )?.action,
-    ).toBe("removed");
     expect(await Bun.file(shared).exists()).toBe(false);
   });
 
@@ -729,6 +798,31 @@ describe("installer apply", () => {
 
     expect(await ensureCodexSkillsFeature(configPath)).toBe("unchanged");
     expect((await applyCaveman(agent, "install"))?.action).toBe("unchanged");
+
+    // Uninstall removes the skill but leaves the Codex skills feature enabled.
+    expect((await applyCaveman(agent, "uninstall"))?.action).toBe("removed");
+    expect(await Bun.file(skillPath).exists()).toBe(false);
+    expect(await Bun.file(configPath).text()).toMatch(/skills\s*=\s*true/);
+  });
+
+  test("ensureCodexSkillsFeature inserts into existing [features] and flips false", async () => {
+    const configPath = join(root, ".codex", "config.toml");
+    await mkdir(dirname(configPath), { recursive: true });
+
+    await Bun.write(configPath, "[features]\napps = true\n");
+    expect(await ensureCodexSkillsFeature(configPath)).toBe("updated");
+    let text = await Bun.file(configPath).text();
+    expect(text).toContain("[features]");
+    expect(text).toMatch(/skills\s*=\s*true/);
+    expect(text).toContain("apps = true");
+    expect(await ensureCodexSkillsFeature(configPath)).toBe("unchanged");
+
+    await Bun.write(configPath, "[features]\nskills = false\napps = true\n");
+    expect(await ensureCodexSkillsFeature(configPath)).toBe("updated");
+    text = await Bun.file(configPath).text();
+    expect(text).toMatch(/skills\s*=\s*true/);
+    expect(text).not.toMatch(/skills\s*=\s*false/);
+    expect(text).toContain("apps = true");
   });
 });
 

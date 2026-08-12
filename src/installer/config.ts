@@ -654,14 +654,14 @@ export async function ensureCodexSkillsFeature(path: string): Promise<InstallAct
     lines[skillsIdx] = "skills = true";
     const next = `${lines.join("\n").replace(/\n+$/, "")}\n`;
     await Bun.write(path, next);
-    return existed ? "updated" : "created";
+    return "updated";
   }
 
   if (featuresIdx >= 0) {
     lines.splice(featuresIdx + 1, 0, "skills = true");
     const next = `${lines.join("\n").replace(/\n+$/, "")}\n`;
     await Bun.write(path, next);
-    return existed ? "updated" : "created";
+    return "updated";
   }
 
   const block = "[features]\nskills = true\n";

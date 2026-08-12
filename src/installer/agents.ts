@@ -9,9 +9,14 @@ function copilotHooksPath(home: string): string {
   return join(home, ".copilot", "hooks", "miru-search.json");
 }
 
+/** Shared Copilot / VS Code / Visual Studio config + skills root. */
+export function copilotHomeDir(home: string): string {
+  return join(home, ".copilot");
+}
+
 /** Shared Copilot / VS Code / Visual Studio Agent Skills root. */
 function copilotCavemanSkillPath(home: string): string {
-  return join(home, ".copilot", "skills", "caveman", "SKILL.md");
+  return join(copilotHomeDir(home), "skills", "caveman", "SKILL.md");
 }
 
 function kiroHooksPath(home: string): string {
@@ -241,13 +246,13 @@ export const AGENT_TARGETS: AgentTarget[] = [
     id: "opencode",
     displayName: "OpenCode",
     binary: "opencode",
-    configDir: join(HOME, ".config", "opencode"),
+    configDir: opencodeConfigDir(HOME),
     mcp: jsonMcp(opencodeMcpPath(), "mcp", OPENCODE_SERVER_CONFIG),
-    instructionsPath: join(HOME, ".config", "opencode", "AGENTS.md"),
+    instructionsPath: join(opencodeConfigDir(HOME), "AGENTS.md"),
     cursorRulesPath: null,
     hooksPath: opencodePluginPath(HOME),
     hooksFormat: "opencode",
-    subagentPath: join(HOME, ".config", "opencode", "agents", "miru-code.md"),
+    subagentPath: join(opencodeConfigDir(HOME), "agents", "miru-code.md"),
     subagentId: "opencode",
     cavemanSkillPath: opencodeCavemanSkillPath(HOME),
   },
@@ -256,12 +261,12 @@ export const AGENT_TARGETS: AgentTarget[] = [
     displayName: "GitHub Copilot",
     binary: null,
     configDir: join(HOME, ".config", "github-copilot"),
-    mcp: jsonMcp(join(HOME, ".copilot", "mcp-config.json"), "mcpServers", BARE_STDIO_SERVER_CONFIG),
+    mcp: jsonMcp(join(copilotHomeDir(HOME), "mcp-config.json"), "mcpServers", BARE_STDIO_SERVER_CONFIG),
     instructionsPath: null,
     cursorRulesPath: null,
     hooksPath: copilotHooksPath(HOME),
     hooksFormat: "vscode",
-    subagentPath: join(HOME, ".copilot", "agents", "miru-code.agent.md"),
+    subagentPath: join(copilotHomeDir(HOME), "agents", "miru-code.agent.md"),
     subagentId: "copilot",
     cavemanSkillPath: copilotCavemanSkillPath(HOME),
   },
@@ -348,6 +353,16 @@ export async function isAgentDetected(agent: AgentTarget): Promise<boolean> {
       return true;
     }
     if (agent.binary && (await commandOnPath(agent.binary))) {
+      return true;
+    }
+    return false;
+  }
+  // Copilot installer artifacts live under ~/.copilot; CLI config may be absent.
+  if (agent.id === "copilot") {
+    if (existsSync(copilotHomeDir(HOME))) {
+      return true;
+    }
+    if (agent.configDir && existsSync(agent.configDir)) {
       return true;
     }
     return false;

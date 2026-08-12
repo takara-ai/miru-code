@@ -97,7 +97,7 @@ Current limitation:
 
 ### Search hooks
 
-Sub-agent files are also written where supported (see `miru install` plan). Windsurf hooks only *(experimental)* — no MCP entry yet. Caveman is an on-demand Agent Skill (default off): invoke with `/caveman` or “talk like caveman”; stop with “normal mode”. Invocation UI varies by IDE (`/caveman`, `$caveman`, `@caveman`, etc.). Copilot / VS Code / Visual Studio share `~/.copilot/skills/caveman/SKILL.md` — uninstalling one keeps the skill if another of those IDEs is still detected; selecting all three removes it once.
+Sub-agent files are also written where supported (see `miru install` plan). Windsurf hooks only *(experimental)* — no MCP entry yet. Caveman is an on-demand Agent Skill (default off): invoke with `/caveman` or “talk like caveman”; stop with “normal mode”. Invocation UI varies by IDE (`/caveman`, `$caveman`, `@caveman`, etc.). Copilot / VS Code / Visual Studio share `~/.copilot/skills/caveman/SKILL.md` — ownership is tracked so uninstalling one keeps the skill while another still owns it; selecting all owners removes it once.
 
 <details>
 <summary>Caveman mode <em>(experimental)</em></summary>
