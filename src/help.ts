@@ -176,6 +176,7 @@ export function printCommandHelp(command: string): void {
       writeStdout("your user config (~/.claude, ~/.cursor, etc.).");
       writeStdout("");
       writeStdout("Caveman = on-demand chat compression (/caveman). Off by default.");
+      writeStdout("Supported on all Miru installer IDEs (shared Copilot path for VS Code / VS).");
       writeStdout("Run miru setup first, or set TAKARA_API_KEY for MCP env expansion.");
       writeStdout("");
       return;

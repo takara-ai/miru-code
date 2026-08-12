@@ -9,6 +9,11 @@ function copilotHooksPath(home: string): string {
   return join(home, ".copilot", "hooks", "miru-search.json");
 }
 
+/** Shared Copilot / VS Code / Visual Studio Agent Skills root. */
+function copilotCavemanSkillPath(home: string): string {
+  return join(home, ".copilot", "skills", "caveman", "SKILL.md");
+}
+
 function kiroHooksPath(home: string): string {
   return join(home, ".kiro", "settings", "hooks.json");
 }
@@ -21,6 +26,12 @@ function opencodePluginPath(home: string): string {
   const xdg = process.env.XDG_CONFIG_HOME;
   const base = xdg ? join(xdg, "opencode") : join(home, ".config", "opencode");
   return join(base, "plugins", "miru-search-guard.ts");
+}
+
+function opencodeCavemanSkillPath(home: string): string {
+  const xdg = process.env.XDG_CONFIG_HOME;
+  const base = xdg ? join(xdg, "opencode") : join(home, ".config", "opencode");
+  return join(base, "skills", "caveman", "SKILL.md");
 }
 
 export type InstallAction =
@@ -92,7 +103,7 @@ export interface AgentTarget {
   hooksFormat: HooksFormat | null;
   subagentPath: string | null;
   subagentId: AgentId | null;
-  /** On-demand Caveman Agent Skill (`…/skills/caveman/SKILL.md`), or null if unsupported. */
+  /** On-demand Caveman Agent Skill (`…/skills/caveman/SKILL.md`). */
   cavemanSkillPath: string | null;
 }
 
@@ -206,7 +217,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     hooksFormat: "gemini",
     subagentPath: join(HOME, ".gemini", "agents", "miru-code.md"),
     subagentId: "gemini",
-    cavemanSkillPath: null,
+    cavemanSkillPath: join(HOME, ".gemini", "skills", "caveman", "SKILL.md"),
   },
   {
     id: "kiro",
@@ -220,7 +231,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     hooksFormat: "kiro",
     subagentPath: join(HOME, ".kiro", "agents", "miru-code.md"),
     subagentId: "kiro",
-    cavemanSkillPath: null,
+    cavemanSkillPath: join(HOME, ".kiro", "skills", "caveman", "SKILL.md"),
   },
   {
     id: "opencode",
@@ -234,7 +245,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     hooksFormat: "opencode",
     subagentPath: join(HOME, ".config", "opencode", "agents", "miru-code.md"),
     subagentId: "opencode",
-    cavemanSkillPath: null,
+    cavemanSkillPath: opencodeCavemanSkillPath(HOME),
   },
   {
     id: "copilot",
@@ -248,7 +259,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     hooksFormat: "vscode",
     subagentPath: join(HOME, ".copilot", "agents", "miru-code.agent.md"),
     subagentId: "copilot",
-    cavemanSkillPath: null,
+    cavemanSkillPath: copilotCavemanSkillPath(HOME),
   },
   {
     id: "codex",
@@ -268,7 +279,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     hooksFormat: "claude",
     subagentPath: null,
     subagentId: null,
-    cavemanSkillPath: null,
+    cavemanSkillPath: join(HOME, ".codex", "skills", "caveman", "SKILL.md"),
   },
   {
     id: "vscode",
@@ -282,7 +293,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     hooksFormat: "vscode",
     subagentPath: null,
     subagentId: null,
-    cavemanSkillPath: null,
+    cavemanSkillPath: copilotCavemanSkillPath(HOME),
   },
   {
     id: "windsurf",
@@ -296,7 +307,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     hooksFormat: "windsurf",
     subagentPath: null,
     subagentId: null,
-    cavemanSkillPath: null,
+    cavemanSkillPath: join(HOME, ".codeium", "windsurf", "skills", "caveman", "SKILL.md"),
   },
   {
     id: "visualstudio",
@@ -310,7 +321,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     hooksFormat: "vscode",
     subagentPath: null,
     subagentId: null,
-    cavemanSkillPath: null,
+    cavemanSkillPath: copilotCavemanSkillPath(HOME),
   },
 ];
 

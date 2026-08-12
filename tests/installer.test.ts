@@ -107,12 +107,25 @@ describe("installer config", () => {
     expect(caveman?.planPath).toBeDefined();
   });
 
-  test("caveman skill paths: Cursor and Claude only", () => {
+  test("caveman skill paths: native skills dir for every installer IDE", () => {
     const byId = Object.fromEntries(AGENT_TARGETS.map((agent) => [agent.id, agent]));
     expect(byId.cursor?.cavemanSkillPath).toContain("/.cursor/skills/caveman/SKILL.md");
     expect(byId.claude?.cavemanSkillPath).toContain("/.claude/skills/caveman/SKILL.md");
-    expect(byId.codex?.cavemanSkillPath).toBeNull();
-    expect(byId.gemini?.cavemanSkillPath).toBeNull();
+    expect(byId.gemini?.cavemanSkillPath).toContain("/.gemini/skills/caveman/SKILL.md");
+    expect(byId.kiro?.cavemanSkillPath).toContain("/.kiro/skills/caveman/SKILL.md");
+    expect(byId.opencode?.cavemanSkillPath).toMatch(/opencode\/skills\/caveman\/SKILL\.md$/);
+    expect(byId.codex?.cavemanSkillPath).toContain("/.codex/skills/caveman/SKILL.md");
+    expect(byId.windsurf?.cavemanSkillPath).toContain(
+      "/.codeium/windsurf/skills/caveman/SKILL.md",
+    );
+    const copilotPath = byId.copilot?.cavemanSkillPath;
+    expect(copilotPath).toContain("/.copilot/skills/caveman/SKILL.md");
+    expect(byId.vscode?.cavemanSkillPath).toBe(copilotPath);
+    expect(byId.visualstudio?.cavemanSkillPath).toBe(copilotPath);
+    for (const agent of AGENT_TARGETS) {
+      expect(agent.cavemanSkillPath).not.toBeNull();
+      expect(integrationsForAgents([agent]).some((entry) => entry.id === "caveman")).toBe(true);
+    }
   });
 
   test("cursor rules is only offered when Cursor is selected", () => {
