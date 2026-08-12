@@ -21,8 +21,9 @@ import {
   AGENT_IDS,
   formatUnknownAgent,
   printCommandHelp,
-  printFullHelp,
+  printEnvironmentHelp,
   printMainHelp,
+  printSageMakerHelp,
 } from "./help.ts";
 import { getBenchmarkModeStatus, setBenchmarkMode } from "./installer/benchmark-mode.ts";
 import { runSearchGuardFromStdin } from "./installer/hooks/search-guard.ts";
@@ -81,6 +82,8 @@ const CLI_COMMANDS = new Set([
   "setup",
   "clear",
   "benchmark",
+  "env",
+  "environment",
   "hook-guard",
   "help",
   "-h",
@@ -415,7 +418,7 @@ async function runCli(argv: string[]): Promise<void> {
   }
 
   if (command === "-h" || command === "--help") {
-    printFullHelp();
+    printMainHelp();
     return;
   }
 
@@ -426,11 +429,30 @@ async function runCli(argv: string[]): Promise<void> {
 
   if (command === "help") {
     const topic = rest[0];
-    if (!topic) {
+    if (!topic || topic === "-h" || topic === "--help") {
       printMainHelp();
       return;
     }
     printCommandHelp(topic);
+    return;
+  }
+
+  if (command === "setup" && (rest.includes("-h") || rest.includes("--help"))) {
+    if (rest.includes("--sagemaker")) {
+      printSageMakerHelp();
+    } else {
+      printCommandHelp("setup");
+    }
+    return;
+  }
+
+  if (command === "env" || command === "environment") {
+    printEnvironmentHelp();
+    return;
+  }
+
+  if (rest[0] === "-h" || rest[0] === "--help") {
+    printCommandHelp(command);
     return;
   }
 
