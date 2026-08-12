@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { loadAgentTemplate } from "../src/agents.ts";
 import {
@@ -109,8 +109,13 @@ describe("installer config", () => {
 
   test("caveman skill paths: Cursor and Claude only", () => {
     const byId = Object.fromEntries(AGENT_TARGETS.map((agent) => [agent.id, agent]));
-    expect(byId.cursor?.cavemanSkillPath).toContain("/.cursor/skills/caveman/SKILL.md");
-    expect(byId.claude?.cavemanSkillPath).toContain("/.claude/skills/caveman/SKILL.md");
+    const home = homedir();
+    expect(byId.cursor?.cavemanSkillPath).toBe(
+      join(home, ".cursor", "skills", "caveman", "SKILL.md"),
+    );
+    expect(byId.claude?.cavemanSkillPath).toBe(
+      join(home, ".claude", "skills", "caveman", "SKILL.md"),
+    );
     expect(byId.codex?.cavemanSkillPath).toBeNull();
     expect(byId.gemini?.cavemanSkillPath).toBeNull();
   });
