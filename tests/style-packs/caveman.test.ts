@@ -44,4 +44,8 @@ describe("caveman style pack", () => {
   test("T5: inspired-by credit present", () => {
     expect(CAVEMAN_SKILL_MD).toContain("JuliusBrussee/caveman");
   });
+
+  test("does not reference STE (ships separately in PRD-405)", () => {
+    expect(CAVEMAN_SKILL_MD).not.toMatch(/\bSTE\b/);
+  });
 });

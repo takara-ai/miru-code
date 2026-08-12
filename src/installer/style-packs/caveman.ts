@@ -82,13 +82,6 @@ Default: caveman = **live chat replies only**.
 
 Commits, PR bodies, customer docs, READMEs, Linear text, memory files → **normal usable English** unless the user explicitly asks for caveman tone on that artifact.
 
-## Caveman vs STE
-
-- **Caveman** = say less in chat (compression)
-- **STE** = write clearer technical English (clarity)
-
-Separate skills. Do **not** apply Caveman and STE styles to the same reply. Pick the skill that matches the task.
-
 ## Token honesty
 
 Output can shrink a lot on chatty replies. Session-level savings are often smaller; the skill itself costs input tokens each turn. No guaranteed % savings.
