@@ -14,6 +14,7 @@ import {
 } from "./agents.ts";
 import { withPreservedBenchmarkFlag } from "./benchmark-mode.ts";
 import {
+  ensureCodexSkillsFeature,
   mergeJsonMember,
   mergeTomlBlock,
   removeJsonMember,
@@ -30,9 +31,20 @@ import { CAVEMAN_SKILL_MD } from "./style-packs/caveman.ts";
 export interface WriteResult {
   path: string;
   action: InstallAction;
+  note?: string;
 }
 
 export type IntegrationId = "mcp" | "instructions" | "subagent" | "hooks" | "rules" | "caveman";
+
+/** Shared context for one install/uninstall pass (path dedupe + shared-skill keep). */
+export interface ApplyCtx {
+  selectedAgents: AgentTarget[];
+  cavemanSeenPaths: Set<string>;
+  /** Defaults to AGENT_TARGETS; override in tests. */
+  allAgents?: AgentTarget[];
+  /** Defaults to isAgentDetected; override in tests. */
+  isDetected?: (agent: AgentTarget) => Promise<boolean>;
+}
 
 interface Integration {
   id: IntegrationId;
@@ -41,7 +53,7 @@ interface Integration {
   experimental?: boolean;
   defaultChecked?: boolean;
   planPath: (agent: AgentTarget) => string | null;
-  apply: (agent: AgentTarget, mode: InstallMode) => Promise<WriteResult | null>;
+  apply: (agent: AgentTarget, mode: InstallMode, ctx: ApplyCtx) => Promise<WriteResult | null>;
 }
 
 const ACTION_DETAIL: Partial<Record<InstallAction, string>> = {
@@ -86,7 +98,11 @@ async function readExistingJsonMcpEntry(
   }
 }
 
-async function applyMcp(agent: AgentTarget, mode: InstallMode): Promise<WriteResult | null> {
+async function applyMcp(
+  agent: AgentTarget,
+  mode: InstallMode,
+  _ctx?: ApplyCtx,
+): Promise<WriteResult | null> {
   const mcp = agent.mcp;
   if (!mcp) {
     return null;
@@ -112,6 +128,7 @@ async function applyMcp(agent: AgentTarget, mode: InstallMode): Promise<WriteRes
 async function applyInstructions(
   agent: AgentTarget,
   mode: InstallMode,
+  _ctx?: ApplyCtx,
 ): Promise<WriteResult | null> {
   const path = agent.instructionsPath;
   if (!path) {
@@ -123,7 +140,11 @@ async function applyInstructions(
   return { path, action };
 }
 
-async function applyHooks(agent: AgentTarget, mode: InstallMode): Promise<WriteResult | null> {
+async function applyHooks(
+  agent: AgentTarget,
+  mode: InstallMode,
+  _ctx?: ApplyCtx,
+): Promise<WriteResult | null> {
   const path = agent.hooksPath;
   const format = agent.hooksFormat;
   if (!path || !format) {
@@ -141,6 +162,7 @@ async function applyHooks(agent: AgentTarget, mode: InstallMode): Promise<WriteR
 async function applyCursorRules(
   agent: AgentTarget,
   mode: InstallMode,
+  _ctx?: ApplyCtx,
 ): Promise<WriteResult | null> {
   const path = agent.cursorRulesPath;
   if (!path) {
@@ -160,7 +182,11 @@ async function applyCursorRules(
   return { path, action: existed ? "updated" : "created" };
 }
 
-async function applySubagent(agent: AgentTarget, mode: InstallMode): Promise<WriteResult | null> {
+async function applySubagent(
+  agent: AgentTarget,
+  mode: InstallMode,
+  _ctx?: ApplyCtx,
+): Promise<WriteResult | null> {
   const dest = agent.subagentPath;
   const templateId = agent.subagentId;
   if (!dest || !templateId) {
@@ -185,7 +211,33 @@ async function applySubagent(agent: AgentTarget, mode: InstallMode): Promise<Wri
   }
 }
 
-async function applyCaveman(agent: AgentTarget, mode: InstallMode): Promise<WriteResult | null> {
+async function shouldKeepSharedCaveman(
+  path: string,
+  agent: AgentTarget,
+  ctx: ApplyCtx,
+): Promise<boolean> {
+  const all = ctx.allAgents ?? AGENT_TARGETS;
+  const detect = ctx.isDetected ?? isAgentDetected;
+  const siblings = all.filter(
+    (other) => other.id !== agent.id && other.cavemanSkillPath === path,
+  );
+
+  for (const sibling of siblings) {
+    if (ctx.selectedAgents.some((selected) => selected.id === sibling.id)) {
+      continue;
+    }
+    if (await detect(sibling)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function applyCaveman(
+  agent: AgentTarget,
+  mode: InstallMode,
+  ctx: ApplyCtx = { selectedAgents: [agent], cavemanSeenPaths: new Set() },
+): Promise<WriteResult | null> {
   const path = agent.cavemanSkillPath;
   if (!path) {
     return null;
@@ -194,6 +246,28 @@ async function applyCaveman(agent: AgentTarget, mode: InstallMode): Promise<Writ
   const skillDir = dirname(path);
 
   if (mode === "uninstall") {
+    const selectedSharing = ctx.selectedAgents.filter(
+      (selected) => selected.cavemanSkillPath === path,
+    );
+    const isLast =
+      selectedSharing.length === 0 ||
+      selectedSharing[selectedSharing.length - 1]?.id === agent.id;
+    if (!isLast) {
+      return {
+        path,
+        action: "unchanged",
+        note: "shared skill; remove deferred to last selected IDE",
+      };
+    }
+
+    if (await shouldKeepSharedCaveman(path, agent, ctx)) {
+      return {
+        path,
+        action: "unchanged",
+        note: "shared skill kept — another Copilot-family IDE is still detected",
+      };
+    }
+
     if (!(await Bun.file(path).exists())) {
       return { path, action: "not-found" };
     }
@@ -206,10 +280,39 @@ async function applyCaveman(agent: AgentTarget, mode: InstallMode): Promise<Writ
     return { path, action: "removed" };
   }
 
+  if (ctx.cavemanSeenPaths.has(path)) {
+    return { path, action: "unchanged", note: "shared skill path already written" };
+  }
+  ctx.cavemanSeenPaths.add(path);
+
   const existed = await Bun.file(path).exists();
+  if (existed && (await Bun.file(path).text()) === CAVEMAN_SKILL_MD) {
+    if (agent.id === "codex" && agent.mcp?.path) {
+      const featureAction = await ensureCodexSkillsFeature(agent.mcp.path);
+      if (featureAction !== "unchanged") {
+        return {
+          path,
+          action: "updated",
+          note: "enabled [features] skills = true in config.toml",
+        };
+      }
+    }
+    return { path, action: "unchanged" };
+  }
+
   await mkdir(skillDir, { recursive: true });
   await Bun.write(path, CAVEMAN_SKILL_MD);
-  return { path, action: existed ? "updated" : "created" };
+  let action: InstallAction = existed ? "updated" : "created";
+  let note: string | undefined;
+
+  if (agent.id === "codex" && agent.mcp?.path) {
+    const featureAction = await ensureCodexSkillsFeature(agent.mcp.path);
+    if (featureAction !== "unchanged") {
+      note = "also sets [features] skills = true in config.toml";
+    }
+  }
+
+  return { path, action, note };
 }
 
 const INTEGRATIONS: Integration[] = [
@@ -273,7 +376,7 @@ function integrationsForAgents(agents: AgentTarget[]): Integration[] {
 
 function formatActionLine(integration: Integration, result: WriteResult): string {
   const icon = ACTION_ICON[result.action] ?? dim("·");
-  const detail = ACTION_DETAIL[result.action];
+  const detail = result.note ?? ACTION_DETAIL[result.action];
   const suffix = detail ? dim(` — ${detail}`) : "";
   return `   ${icon} ${integration.label.padEnd(13)} ${dim(result.action)}${suffix}\n      ${dim(result.path)}`;
 }
@@ -291,6 +394,11 @@ function printPlan(agents: AgentTarget[], integrations: Integration[]): void {
         continue;
       }
       writeStdout(`   ${green("✓")} ${integration.label.padEnd(13)} ${path}`);
+      if (integration.id === "caveman" && agent.id === "codex") {
+        writeStdout(
+          `      ${dim("also sets [features] skills = true in ~/.codex/config.toml")}`,
+        );
+      }
     }
   }
   writeStdout("");
@@ -305,13 +413,18 @@ async function apply(
   writeStdout(dim(mode === "install" ? "Installing" : "Removing"));
   divider();
 
+  const ctx: ApplyCtx = {
+    selectedAgents: agents,
+    cavemanSeenPaths: new Set(),
+  };
+
   for (const agent of agents) {
     writeStdout(` ${agent.displayName}`);
     for (const integration of integrations) {
       if (!integrationApplies(integration, agent)) {
         continue;
       }
-      const result = await integration.apply(agent, mode);
+      const result = await integration.apply(agent, mode, ctx);
       if (!result) {
         continue;
       }

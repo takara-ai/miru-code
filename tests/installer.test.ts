@@ -16,9 +16,12 @@ import {
   type AgentTarget,
   MIRU_END,
   MIRU_START,
+  opencodeCavemanSkillPath,
+  opencodeConfigDir,
   visualStudioMcpPath,
 } from "../src/installer/agents.ts";
 import {
+  ensureCodexSkillsFeature,
   mergeJsonMember,
   mergeTomlBlock,
   removeJsonMember,
@@ -125,6 +128,29 @@ describe("installer config", () => {
     for (const agent of AGENT_TARGETS) {
       expect(agent.cavemanSkillPath).not.toBeNull();
       expect(integrationsForAgents([agent]).some((entry) => entry.id === "caveman")).toBe(true);
+    }
+  });
+
+  test("OpenCode caveman path follows XDG_CONFIG_HOME", () => {
+    const prev = process.env.XDG_CONFIG_HOME;
+    try {
+      process.env.XDG_CONFIG_HOME = "/tmp/miru-xdg-test";
+      expect(opencodeConfigDir("/home/user")).toBe(join("/tmp/miru-xdg-test", "opencode"));
+      expect(opencodeCavemanSkillPath("/home/user")).toBe(
+        join("/tmp/miru-xdg-test", "opencode", "skills", "caveman", "SKILL.md"),
+      );
+
+      delete process.env.XDG_CONFIG_HOME;
+      expect(opencodeConfigDir("/home/user")).toBe(join("/home/user", ".config", "opencode"));
+      expect(opencodeCavemanSkillPath("/home/user")).toMatch(
+        /\/home\/user\/\.config\/opencode\/skills\/caveman\/SKILL\.md$/,
+      );
+    } finally {
+      if (prev === undefined) {
+        delete process.env.XDG_CONFIG_HOME;
+      } else {
+        process.env.XDG_CONFIG_HOME = prev;
+      }
     }
   });
 
@@ -543,6 +569,12 @@ describe("installer apply", () => {
     expect(await Bun.file(skillPath).text()).toBe(CAVEMAN_SKILL_MD);
   });
 
+  test("T7b: applyCaveman reports unchanged when content matches", async () => {
+    const agent = claudeTarget(root);
+    expect((await applyCaveman(agent, "install"))?.action).toBe("created");
+    expect((await applyCaveman(agent, "install"))?.action).toBe("unchanged");
+  });
+
   test("T8: applyCaveman uninstall removes skill and leaves MCP untouched", async () => {
     const agent = claudeTarget(root);
     await applyMcp(agent, "install");
@@ -569,6 +601,134 @@ describe("installer apply", () => {
     expect(await applyCaveman(agent, "uninstall")).toBeNull();
     const caveman = INTEGRATIONS.find((entry) => entry.id === "caveman");
     expect(caveman?.planPath(agent)).toBeNull();
+  });
+
+  test("shared Copilot path: install once, keep on sibling-detected uninstall", async () => {
+    const shared = join(root, ".copilot", "skills", "caveman", "SKILL.md");
+    const base = claudeTarget(root);
+    const copilot: AgentTarget = {
+      ...base,
+      id: "copilot",
+      displayName: "GitHub Copilot",
+      cavemanSkillPath: shared,
+      mcp: null,
+      instructionsPath: null,
+      subagentPath: null,
+      subagentId: null,
+    };
+    const vscode: AgentTarget = {
+      ...copilot,
+      id: "vscode",
+      displayName: "VS Code",
+    };
+    const family = [copilot, vscode];
+    const seen = new Set<string>();
+
+    expect(
+      (await applyCaveman(copilot, "install", { selectedAgents: family, cavemanSeenPaths: seen }))
+        ?.action,
+    ).toBe("created");
+    expect(
+      (await applyCaveman(vscode, "install", { selectedAgents: family, cavemanSeenPaths: seen }))
+        ?.action,
+    ).toBe("unchanged");
+    expect(await Bun.file(shared).exists()).toBe(true);
+
+    const keep = await applyCaveman(vscode, "uninstall", {
+      selectedAgents: [vscode],
+      cavemanSeenPaths: new Set(),
+      allAgents: family,
+      isDetected: async (agent) => agent.id === "copilot",
+    });
+    expect(keep?.action).toBe("unchanged");
+    expect(await Bun.file(shared).exists()).toBe(true);
+
+    const removed = await applyCaveman(vscode, "uninstall", {
+      selectedAgents: [vscode],
+      cavemanSeenPaths: new Set(),
+      allAgents: family,
+      isDetected: async () => false,
+    });
+    expect(removed?.action).toBe("removed");
+    expect(await Bun.file(shared).exists()).toBe(false);
+  });
+
+  test("shared Copilot path: uninstalling both selected agents removes once", async () => {
+    const shared = join(root, ".copilot", "skills", "caveman", "SKILL.md");
+    const base = claudeTarget(root);
+    const copilot: AgentTarget = {
+      ...base,
+      id: "copilot",
+      displayName: "GitHub Copilot",
+      cavemanSkillPath: shared,
+      mcp: null,
+      instructionsPath: null,
+      subagentPath: null,
+      subagentId: null,
+    };
+    const vscode: AgentTarget = {
+      ...copilot,
+      id: "vscode",
+      displayName: "VS Code",
+    };
+    const family = [copilot, vscode];
+    await applyCaveman(copilot, "install");
+
+    expect(
+      (
+        await applyCaveman(copilot, "uninstall", {
+          selectedAgents: family,
+          cavemanSeenPaths: new Set(),
+        })
+      )?.action,
+    ).toBe("unchanged");
+    expect(await Bun.file(shared).exists()).toBe(true);
+
+    expect(
+      (
+        await applyCaveman(vscode, "uninstall", {
+          selectedAgents: family,
+          cavemanSeenPaths: new Set(),
+          allAgents: family,
+          isDetected: async () => false,
+        })
+      )?.action,
+    ).toBe("removed");
+    expect(await Bun.file(shared).exists()).toBe(false);
+  });
+
+  test("Codex Caveman install enables [features] skills = true", async () => {
+    const configPath = join(root, ".codex", "config.toml");
+    const skillPath = join(root, ".codex", "skills", "caveman", "SKILL.md");
+    await mkdir(dirname(configPath), { recursive: true });
+    await Bun.write(configPath, 'model = "gpt-5"\n');
+
+    const agent: AgentTarget = {
+      ...claudeTarget(root),
+      id: "codex",
+      displayName: "Codex",
+      cavemanSkillPath: skillPath,
+      mcp: {
+        path: configPath,
+        key: "mcp_servers",
+        memberKey: "miru",
+        entry: {},
+        format: "toml",
+      },
+      instructionsPath: null,
+      subagentPath: null,
+      subagentId: null,
+    };
+
+    expect((await applyCaveman(agent, "install"))?.action).toBe("created");
+    expect(await Bun.file(skillPath).text()).toBe(CAVEMAN_SKILL_MD);
+    const toml = await Bun.file(configPath).text();
+    expect(toml).toContain("[features]");
+    expect(toml).toMatch(/skills\s*=\s*true/);
+    expect(toml).toContain('model = "gpt-5"');
+
+    expect(await ensureCodexSkillsFeature(configPath)).toBe("unchanged");
+    expect((await applyCaveman(agent, "install"))?.action).toBe("unchanged");
   });
 });
 

@@ -97,7 +97,7 @@ Current limitation:
 
 ### Search hooks
 
-Sub-agent files are also written where supported (see `miru install` plan). Windsurf hooks only *(experimental)* — no MCP entry yet. Caveman is an on-demand Agent Skill (default off): invoke with `/caveman` or “talk like caveman”; stop with “normal mode”. Invocation UI varies by IDE (`/caveman`, `$caveman`, `@caveman`, etc.). Copilot / VS Code / Visual Studio share `~/.copilot/skills/caveman/SKILL.md`.
+Sub-agent files are also written where supported (see `miru install` plan). Windsurf hooks only *(experimental)* — no MCP entry yet. Caveman is an on-demand Agent Skill (default off): invoke with `/caveman` or “talk like caveman”; stop with “normal mode”. Invocation UI varies by IDE (`/caveman`, `$caveman`, `@caveman`, etc.). Copilot / VS Code / Visual Studio share `~/.copilot/skills/caveman/SKILL.md` — uninstalling one keeps the skill if another of those IDEs is still detected; selecting all three removes it once.
 
 <details>
 <summary>Caveman mode <em>(experimental)</em></summary>
@@ -106,7 +106,7 @@ Caveman compresses **live chat replies** (less filler, max meaning). Intensities
 
 Security / destructive warnings use clear normal prose (auto-clarity) — brevity never hides risk. Session token savings vary; the skill itself costs input tokens. No guaranteed %.
 
-Off by default at install time. Enable Caveman in the installer for any supported IDE. Restart the IDE (or reload skills) after install. Codex may require its skills feature enabled in `~/.codex/config.toml`.
+Off by default at install time. Enable Caveman in the installer for any supported IDE. Restart the IDE (or reload skills) after install. For Codex, the installer also sets `[features] skills = true` in `~/.codex/config.toml` (required for Codex to load skills).
 
 </details>
 

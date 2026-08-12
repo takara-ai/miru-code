@@ -22,16 +22,18 @@ function windsurfHooksPath(home: string): string {
   return join(home, ".codeium", "windsurf", "hooks.json");
 }
 
-function opencodePluginPath(home: string): string {
+/** OpenCode config root (`$XDG_CONFIG_HOME/opencode` or `~/.config/opencode`). */
+export function opencodeConfigDir(home: string): string {
   const xdg = process.env.XDG_CONFIG_HOME;
-  const base = xdg ? join(xdg, "opencode") : join(home, ".config", "opencode");
-  return join(base, "plugins", "miru-search-guard.ts");
+  return xdg ? join(xdg, "opencode") : join(home, ".config", "opencode");
 }
 
-function opencodeCavemanSkillPath(home: string): string {
-  const xdg = process.env.XDG_CONFIG_HOME;
-  const base = xdg ? join(xdg, "opencode") : join(home, ".config", "opencode");
-  return join(base, "skills", "caveman", "SKILL.md");
+function opencodePluginPath(home: string): string {
+  return join(opencodeConfigDir(home), "plugins", "miru-search-guard.ts");
+}
+
+export function opencodeCavemanSkillPath(home: string): string {
+  return join(opencodeConfigDir(home), "skills", "caveman", "SKILL.md");
 }
 
 export type InstallAction =
@@ -103,13 +105,15 @@ export interface AgentTarget {
   hooksFormat: HooksFormat | null;
   subagentPath: string | null;
   subagentId: AgentId | null;
-  /** On-demand Caveman Agent Skill (`…/skills/caveman/SKILL.md`). */
+  /**
+   * On-demand Caveman Agent Skill (`…/skills/caveman/SKILL.md`), or null if
+   * unsupported.
+   */
   cavemanSkillPath: string | null;
 }
 
 export function opencodeMcpPath(): string {
-  const xdg = process.env.XDG_CONFIG_HOME;
-  const base = xdg ? join(xdg, "opencode") : join(HOME, ".config", "opencode");
+  const base = opencodeConfigDir(HOME);
   const jsonc = join(base, "opencode.jsonc");
   const json = join(base, "opencode.json");
   if (existsSync(jsonc)) {
