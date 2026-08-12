@@ -195,13 +195,23 @@ describe("installer config", () => {
     expect(ste?.planPath).toBeDefined();
   });
 
-  test("ste skill dirs: Cursor and Claude only", () => {
+  test("ste skill dirs: native skills dir for every installer IDE", () => {
     const byId = Object.fromEntries(AGENT_TARGETS.map((agent) => [agent.id, agent]));
-    const home = homedir();
-    expect(byId.cursor?.steSkillDir).toBe(join(home, ".cursor", "skills", "ste"));
-    expect(byId.claude?.steSkillDir).toBe(join(home, ".claude", "skills", "ste"));
-    expect(byId.codex?.steSkillDir).toBeNull();
-    expect(byId.gemini?.steSkillDir).toBeNull();
+    expect(byId.cursor?.steSkillDir).toContain("/.cursor/skills/ste");
+    expect(byId.claude?.steSkillDir).toContain("/.claude/skills/ste");
+    expect(byId.gemini?.steSkillDir).toContain("/.gemini/skills/ste");
+    expect(byId.kiro?.steSkillDir).toContain("/.kiro/skills/ste");
+    expect(byId.opencode?.steSkillDir).toMatch(/opencode\/skills\/ste$/);
+    expect(byId.codex?.steSkillDir).toContain("/.codex/skills/ste");
+    expect(byId.windsurf?.steSkillDir).toContain("/.codeium/windsurf/skills/ste");
+    const copilotDir = byId.copilot?.steSkillDir;
+    expect(copilotDir).toContain("/.copilot/skills/ste");
+    expect(byId.vscode?.steSkillDir).toBe(copilotDir);
+    expect(byId.visualstudio?.steSkillDir).toBe(copilotDir);
+    for (const agent of AGENT_TARGETS) {
+      expect(agent.steSkillDir).not.toBeNull();
+      expect(integrationsForAgents([agent]).some((entry) => entry.id === "ste")).toBe(true);
+    }
   });
 
   test("cursor rules is only offered when Cursor is selected", () => {

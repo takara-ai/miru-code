@@ -14,6 +14,11 @@ export function copilotHomeDir(home: string): string {
   return join(home, ".copilot");
 }
 
+/** Shared Copilot / VS Code / Visual Studio STE skill directory. */
+function copilotSteSkillDir(home: string): string {
+  return join(copilotHomeDir(home), "skills", "ste");
+}
+
 /** Vendors that do not scan `~/.agents/skills/` and need a native skill dir. */
 export type NativeCavemanVendor = "claude" | "kiro";
 
@@ -51,6 +56,12 @@ export function opencodeConfigDir(home: string): string {
 
 function opencodePluginPath(home: string): string {
   return join(opencodeConfigDir(home), "plugins", "miru-search-guard.ts");
+}
+
+function opencodeSteSkillDir(home: string): string {
+  const xdg = process.env.XDG_CONFIG_HOME;
+  const base = xdg ? join(xdg, "opencode") : join(home, ".config", "opencode");
+  return join(base, "skills", "ste");
 }
 
 export type InstallAction =
@@ -127,7 +138,7 @@ export interface AgentTarget {
    * unsupported.
    */
   cavemanSkillPath: string | null;
-  /** On-demand STE skill directory (`…/skills/ste/`), or null if unsupported. */
+  /** On-demand STE skill directory (`…/skills/ste/`). */
   steSkillDir: string | null;
 }
 
@@ -245,7 +256,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     subagentPath: join(HOME, ".gemini", "agents", "miru-code.md"),
     subagentId: "gemini",
     cavemanSkillPath: SHARED_CAVEMAN_SKILL,
-    steSkillDir: null,
+    steSkillDir: join(HOME, ".gemini", "skills", "ste"),
   },
   {
     id: "kiro",
@@ -260,7 +271,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     subagentPath: join(HOME, ".kiro", "agents", "miru-code.md"),
     subagentId: "kiro",
     cavemanSkillPath: nativeCavemanSkillPath(HOME, "kiro"),
-    steSkillDir: null,
+    steSkillDir: join(HOME, ".kiro", "skills", "ste"),
   },
   {
     id: "opencode",
@@ -275,7 +286,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     subagentPath: join(opencodeConfigDir(HOME), "agents", "miru-code.md"),
     subagentId: "opencode",
     cavemanSkillPath: SHARED_CAVEMAN_SKILL,
-    steSkillDir: null,
+    steSkillDir: opencodeSteSkillDir(HOME),
   },
   {
     id: "copilot",
@@ -294,7 +305,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     subagentPath: join(copilotHomeDir(HOME), "agents", "miru-code.agent.md"),
     subagentId: "copilot",
     cavemanSkillPath: SHARED_CAVEMAN_SKILL,
-    steSkillDir: null,
+    steSkillDir: copilotSteSkillDir(HOME),
   },
   {
     id: "codex",
@@ -315,7 +326,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     subagentPath: null,
     subagentId: null,
     cavemanSkillPath: SHARED_CAVEMAN_SKILL,
-    steSkillDir: null,
+    steSkillDir: join(HOME, ".codex", "skills", "ste"),
   },
   {
     id: "vscode",
@@ -330,7 +341,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     subagentPath: null,
     subagentId: null,
     cavemanSkillPath: SHARED_CAVEMAN_SKILL,
-    steSkillDir: null,
+    steSkillDir: copilotSteSkillDir(HOME),
   },
   {
     id: "windsurf",
@@ -345,7 +356,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     subagentPath: null,
     subagentId: null,
     cavemanSkillPath: SHARED_CAVEMAN_SKILL,
-    steSkillDir: null,
+    steSkillDir: join(HOME, ".codeium", "windsurf", "skills", "ste"),
   },
   {
     id: "visualstudio",
@@ -360,7 +371,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     subagentPath: null,
     subagentId: null,
     cavemanSkillPath: SHARED_CAVEMAN_SKILL,
-    steSkillDir: null,
+    steSkillDir: copilotSteSkillDir(HOME),
   },
 ];
 
