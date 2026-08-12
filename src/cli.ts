@@ -517,7 +517,7 @@ async function runCli(argv: string[]): Promise<void> {
           return;
         }
       }
-      hint("Run `miru install` to add Miru to your IDE.");
+      hint("To add Miru to your IDE, run `miru install`.");
     }
     return;
   }
