@@ -208,12 +208,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     displayName: "Kiro",
     binary: "kiro",
     configDir: join(HOME, ".kiro"),
-    mcp: jsonMcp(join(HOME, ".kiro", "settings", "mcp.json"), "mcpServers", {
-      ...STDIO_SERVER_CONFIG,
-      env: {
-        PATH: "/usr/local/bin:/usr/bin:/bin",
-      },
-    }),
+    mcp: jsonMcp(join(HOME, ".kiro", "settings", "mcp.json"), "mcpServers", STDIO_SERVER_CONFIG),
     instructionsPath: join(HOME, ".kiro", "steering", "miru.md"),
     cursorRulesPath: null,
     hooksPath: kiroHooksPath(HOME),
