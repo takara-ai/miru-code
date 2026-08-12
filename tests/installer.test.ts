@@ -36,6 +36,7 @@ import {
   applyCaveman,
   applyHooks,
   applyMcp,
+  applySte,
   applySubagent,
   codexCavemanPlanNote,
   INTEGRATIONS,
@@ -43,6 +44,7 @@ import {
   removeUninstallLocalData,
 } from "../src/installer/installer.ts";
 import { CAVEMAN_SKILL_MD } from "../src/installer/style-packs/caveman.ts";
+import { STE_REFERENCE_FILES, STE_SKILL_MD } from "../src/installer/style-packs/ste/skill.ts";
 
 const BLOCK = `${MIRU_START}\n## Miru\ninstructions\n${MIRU_END}\n`;
 const BLOCK_V2 = `${MIRU_START}\n## Miru\nupdated\n${MIRU_END}\n`;
@@ -71,6 +73,7 @@ function claudeTarget(root: string): AgentTarget {
     subagentPath: join(root, ".claude", "agents", "miru-code.md"),
     subagentId: "claude",
     cavemanSkillPath: join(root, ".claude", "skills", "caveman", "SKILL.md"),
+    steSkillDir: join(root, ".claude", "skills", "ste"),
   };
 }
 
@@ -86,6 +89,7 @@ function copilotFamilyTargets(root: string): {
   const base: AgentTarget = {
     ...claudeTarget(root),
     cavemanSkillPath: shared,
+    steSkillDir: null,
     mcp: null,
     instructionsPath: null,
     subagentPath: null,
@@ -182,6 +186,22 @@ describe("installer config", () => {
         process.env.XDG_CONFIG_HOME = prev;
       }
     }
+  });
+
+  test("T15: ste integration is experimental and unchecked by default", () => {
+    const ste = INTEGRATIONS.find((entry) => entry.id === "ste");
+    expect(ste?.experimental).toBe(true);
+    expect(ste?.defaultChecked).toBe(false);
+    expect(ste?.planPath).toBeDefined();
+  });
+
+  test("ste skill dirs: Cursor and Claude only", () => {
+    const byId = Object.fromEntries(AGENT_TARGETS.map((agent) => [agent.id, agent]));
+    const home = homedir();
+    expect(byId.cursor?.steSkillDir).toBe(join(home, ".cursor", "skills", "ste"));
+    expect(byId.claude?.steSkillDir).toBe(join(home, ".claude", "skills", "ste"));
+    expect(byId.codex?.steSkillDir).toBeNull();
+    expect(byId.gemini?.steSkillDir).toBeNull();
   });
 
   test("cursor rules is only offered when Cursor is selected", () => {
@@ -464,6 +484,7 @@ describe("installer apply", () => {
       subagentPath: null,
       subagentId: null,
       cavemanSkillPath: null,
+      steSkillDir: null,
     };
     const result = await applyMcp(agent, "install");
     expect(result?.action).toBe("created");
@@ -900,6 +921,66 @@ describe("installer apply", () => {
     expect(codexCavemanPlanNote("uninstall", false)).toBeNull();
     expect(codexCavemanPlanNote("uninstall", true)).toContain("leaves");
     expect(codexCavemanPlanNote("uninstall", true)).not.toContain("also sets");
+  });
+
+  test("T11: applySte installs Cursor skill + references", async () => {
+    const skillDir = join(root, ".cursor", "skills", "ste");
+    const agent: AgentTarget = {
+      ...claudeTarget(root),
+      id: "cursor",
+      displayName: "Cursor",
+      steSkillDir: skillDir,
+      mcp: null,
+      instructionsPath: null,
+      subagentPath: null,
+      subagentId: null,
+      cavemanSkillPath: null,
+    };
+    const result = await applySte(agent, "install");
+    expect(result?.action).toBe("created");
+    expect(result?.path).toBe(join(skillDir, "SKILL.md"));
+    expect(await Bun.file(join(skillDir, "SKILL.md")).text()).toBe(STE_SKILL_MD);
+    for (const file of STE_REFERENCE_FILES) {
+      expect(await Bun.file(join(skillDir, file.relativePath)).text()).toBe(file.content);
+    }
+  });
+
+  test("T12: applySte re-install updates skill pack", async () => {
+    const agent = claudeTarget(root);
+    expect((await applySte(agent, "install"))?.action).toBe("created");
+    const skillPath = join(agent.steSkillDir ?? "", "SKILL.md");
+    await Bun.write(skillPath, "stale\n");
+    expect((await applySte(agent, "install"))?.action).toBe("updated");
+    expect(await Bun.file(skillPath).text()).toBe(STE_SKILL_MD);
+    for (const file of STE_REFERENCE_FILES) {
+      expect(await Bun.file(join(agent.steSkillDir ?? "", file.relativePath)).exists()).toBe(true);
+    }
+  });
+
+  test("T13: applySte uninstall removes ste dir; leaves MCP and caveman", async () => {
+    const agent = claudeTarget(root);
+    await applyMcp(agent, "install");
+    await applyCaveman(agent, "install");
+    await applySte(agent, "install");
+    const steDir = agent.steSkillDir ?? "";
+    const mcpPath = agent.mcp?.path ?? "";
+    const cavemanPath = agent.cavemanSkillPath ?? "";
+
+    expect((await applySte(agent, "uninstall"))?.action).toBe("removed");
+    expect(existsSync(steDir)).toBe(false);
+    expect(await Bun.file(mcpPath).exists()).toBe(true);
+    expect(await Bun.file(cavemanPath).exists()).toBe(true);
+  });
+
+  test("T14: applySte returns null when unsupported", async () => {
+    const agent: AgentTarget = {
+      ...claudeTarget(root),
+      steSkillDir: null,
+    };
+    expect(await applySte(agent, "install")).toBeNull();
+    expect(await applySte(agent, "uninstall")).toBeNull();
+    const ste = INTEGRATIONS.find((entry) => entry.id === "ste");
+    expect(ste?.planPath(agent)).toBeNull();
   });
 });
 

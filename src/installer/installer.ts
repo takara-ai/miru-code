@@ -1,5 +1,5 @@
-import { mkdir, unlink } from "node:fs/promises";
-import { dirname } from "node:path";
+import { mkdir, rm, unlink } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { loadAgentTemplate } from "../agents.ts";
 import { clearBenchmarkHistory } from "../benchmark/history.ts";
 import { brandTitle, dim, divider, green, hint, info, success, writeStdout } from "../cli-ui.ts";
@@ -34,6 +34,7 @@ import { mergeHooks, removeHooks } from "./hooks/install.ts";
 import { promptConfirm, promptMultiSelect, requireInteractiveTerminal } from "./prompt.ts";
 import { CURSOR_RULES_MDC } from "./search-policy.ts";
 import { CAVEMAN_SKILL_MD } from "./style-packs/caveman.ts";
+import { STE_REFERENCE_FILES, STE_SKILL_MD } from "./style-packs/ste/skill.ts";
 
 export interface WriteResult {
   path: string;
@@ -41,7 +42,14 @@ export interface WriteResult {
   note?: string;
 }
 
-export type IntegrationId = "mcp" | "instructions" | "subagent" | "hooks" | "rules" | "caveman";
+export type IntegrationId =
+  | "mcp"
+  | "instructions"
+  | "subagent"
+  | "hooks"
+  | "rules"
+  | "caveman"
+  | "ste";
 
 /** Shared context for one install/uninstall pass (path dedupe + shared-skill keep). */
 export interface ApplyCtx {
@@ -279,6 +287,33 @@ async function applyCaveman(
   });
 }
 
+async function applySte(agent: AgentTarget, mode: InstallMode): Promise<WriteResult | null> {
+  const skillDir = agent.steSkillDir;
+  if (!skillDir) {
+    return null;
+  }
+
+  const skillPath = join(skillDir, "SKILL.md");
+
+  if (mode === "uninstall") {
+    // Require Miru's SKILL.md before deleting the tree — do not wipe a
+    // third-party ~/.…/skills/ste directory that Miru never installed.
+    if (!(await Bun.file(skillPath).exists())) {
+      return { path: skillPath, action: "not-found" };
+    }
+    await rm(skillDir, { recursive: true, force: true });
+    return { path: skillPath, action: "removed" };
+  }
+
+  const existed = await Bun.file(skillPath).exists();
+  await mkdir(join(skillDir, "references"), { recursive: true });
+  await Bun.write(skillPath, STE_SKILL_MD);
+  for (const file of STE_REFERENCE_FILES) {
+    await Bun.write(join(skillDir, file.relativePath), file.content);
+  }
+  return { path: skillPath, action: existed ? "updated" : "created" };
+}
+
 const INTEGRATIONS: Integration[] = [
   {
     id: "mcp",
@@ -325,6 +360,15 @@ const INTEGRATIONS: Integration[] = [
     defaultChecked: false,
     planPath: (agent) => agent.cavemanSkillPath,
     apply: applyCaveman,
+  },
+  {
+    id: "ste",
+    label: "STE writing",
+    description: "on-demand clear technical English for docs (/ste)",
+    experimental: true,
+    defaultChecked: false,
+    planPath: (agent) => (agent.steSkillDir ? join(agent.steSkillDir, "SKILL.md") : null),
+    apply: applySte,
   },
 ];
 
@@ -518,6 +562,7 @@ export {
   applyHooks,
   applyInstructions,
   applyMcp,
+  applySte,
   applySubagent,
   INTEGRATIONS,
   integrationsForAgents,

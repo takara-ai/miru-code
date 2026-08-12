@@ -127,6 +127,8 @@ export interface AgentTarget {
    * unsupported.
    */
   cavemanSkillPath: string | null;
+  /** On-demand STE skill directory (`…/skills/ste/`), or null if unsupported. */
+  steSkillDir: string | null;
 }
 
 export function opencodeMcpPath(): string {
@@ -213,6 +215,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     subagentPath: join(HOME, ".claude", "agents", "miru-code.md"),
     subagentId: "claude",
     cavemanSkillPath: nativeCavemanSkillPath(HOME, "claude"),
+    steSkillDir: join(HOME, ".claude", "skills", "ste"),
   },
   {
     id: "cursor",
@@ -227,6 +230,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     subagentPath: join(HOME, ".cursor", "agents", "miru-code.md"),
     subagentId: "cursor",
     cavemanSkillPath: SHARED_CAVEMAN_SKILL,
+    steSkillDir: join(HOME, ".cursor", "skills", "ste"),
   },
   {
     id: "gemini",
@@ -241,6 +245,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     subagentPath: join(HOME, ".gemini", "agents", "miru-code.md"),
     subagentId: "gemini",
     cavemanSkillPath: SHARED_CAVEMAN_SKILL,
+    steSkillDir: null,
   },
   {
     id: "kiro",
@@ -255,6 +260,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     subagentPath: join(HOME, ".kiro", "agents", "miru-code.md"),
     subagentId: "kiro",
     cavemanSkillPath: nativeCavemanSkillPath(HOME, "kiro"),
+    steSkillDir: null,
   },
   {
     id: "opencode",
@@ -269,6 +275,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     subagentPath: join(opencodeConfigDir(HOME), "agents", "miru-code.md"),
     subagentId: "opencode",
     cavemanSkillPath: SHARED_CAVEMAN_SKILL,
+    steSkillDir: null,
   },
   {
     id: "copilot",
@@ -287,6 +294,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     subagentPath: join(copilotHomeDir(HOME), "agents", "miru-code.agent.md"),
     subagentId: "copilot",
     cavemanSkillPath: SHARED_CAVEMAN_SKILL,
+    steSkillDir: null,
   },
   {
     id: "codex",
@@ -307,6 +315,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     subagentPath: null,
     subagentId: null,
     cavemanSkillPath: SHARED_CAVEMAN_SKILL,
+    steSkillDir: null,
   },
   {
     id: "vscode",
@@ -321,6 +330,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     subagentPath: null,
     subagentId: null,
     cavemanSkillPath: SHARED_CAVEMAN_SKILL,
+    steSkillDir: null,
   },
   {
     id: "windsurf",
@@ -335,6 +345,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     subagentPath: null,
     subagentId: null,
     cavemanSkillPath: SHARED_CAVEMAN_SKILL,
+    steSkillDir: null,
   },
   {
     id: "visualstudio",
@@ -349,6 +360,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     subagentPath: null,
     subagentId: null,
     cavemanSkillPath: SHARED_CAVEMAN_SKILL,
+    steSkillDir: null,
   },
 ];
 
