@@ -1,4 +1,5 @@
 import { mapPool, resolveWorkerConcurrency } from "../concurrency.ts";
+import { loadStoredCredentials } from "../credentials.ts";
 import { envFirstString, envOptionalInt, resolveEmbeddingApiKey } from "../env.ts";
 import { createSageMakerClient, resolveSageMakerConfig } from "./sagemaker.ts";
 
@@ -346,8 +347,6 @@ class EmbeddingApiError extends Error {
 }
 
 function createClient(): EmbeddingClient {
-  const apiKey = resolveEmbeddingApiKey();
-
   const baseUrl = resolveEmbeddingBaseUrl();
   const endpoint = `${baseUrl}/embeddings`;
 
@@ -357,6 +356,8 @@ function createClient(): EmbeddingClient {
       model: string,
       dimensions?: number,
     ): Promise<EmbeddingResponse> {
+      await loadStoredCredentials();
+      const apiKey = resolveEmbeddingApiKey();
       const body: Record<string, unknown> = { model, input };
       if (dimensions != null) {
         body.dimensions = dimensions;

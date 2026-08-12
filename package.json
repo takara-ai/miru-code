@@ -39,6 +39,7 @@
     "grammars",
     "tokenizer",
     "docs",
+    "scripts/install-git-hooks.ts",
     "README.md",
     "LICENSE"
   ],
@@ -52,6 +53,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
+    "prepare": "bun run scripts/install-git-hooks.ts",
     "vendor-grammars": "bun run scripts/vendor-grammars.ts",
     "prepublishOnly": "bun run vendor-grammars && bun run typecheck && bun test",
     "benchmark:ab": "bun run scripts/search-ab-local.ts",

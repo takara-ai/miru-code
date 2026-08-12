@@ -32,6 +32,7 @@ import {
   applyMcp,
   applySubagent,
   INTEGRATIONS,
+  integrationsForAgents,
   removeUninstallLocalData,
 } from "../src/installer/installer.ts";
 import { CAVEMAN_SKILL_MD } from "../src/installer/style-packs/caveman.ts";
@@ -112,6 +113,14 @@ describe("installer config", () => {
     expect(byId.claude?.cavemanSkillPath).toContain("/.claude/skills/caveman/SKILL.md");
     expect(byId.codex?.cavemanSkillPath).toBeNull();
     expect(byId.gemini?.cavemanSkillPath).toBeNull();
+  });
+
+  test("cursor rules is only offered when Cursor is selected", () => {
+    for (const agent of AGENT_TARGETS) {
+      expect(integrationsForAgents([agent]).some((entry) => entry.id === "rules")).toBe(
+        agent.id === "cursor",
+      );
+    }
   });
   let root = "";
 

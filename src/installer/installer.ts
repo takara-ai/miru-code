@@ -261,6 +261,16 @@ const INTEGRATIONS: Integration[] = [
   },
 ];
 
+function integrationApplies(integration: Integration, agent: AgentTarget): boolean {
+  return integration.planPath(agent) !== null;
+}
+
+function integrationsForAgents(agents: AgentTarget[]): Integration[] {
+  return INTEGRATIONS.filter((integration) =>
+    agents.some((agent) => integrationApplies(integration, agent)),
+  );
+}
+
 function formatActionLine(integration: Integration, result: WriteResult): string {
   const icon = ACTION_ICON[result.action] ?? dim("·");
   const detail = ACTION_DETAIL[result.action];
@@ -277,8 +287,10 @@ function printPlan(agents: AgentTarget[], integrations: Integration[]): void {
     writeStdout(` ${agent.displayName}`);
     for (const integration of integrations) {
       const path = integration.planPath(agent);
-      const icon = path ? green("✓") : dim("–");
-      writeStdout(`   ${icon} ${integration.label.padEnd(13)} ${path ?? dim("(not supported)")}`);
+      if (!path) {
+        continue;
+      }
+      writeStdout(`   ${green("✓")} ${integration.label.padEnd(13)} ${path}`);
     }
   }
   writeStdout("");
@@ -296,9 +308,11 @@ async function apply(
   for (const agent of agents) {
     writeStdout(` ${agent.displayName}`);
     for (const integration of integrations) {
+      if (!integrationApplies(integration, agent)) {
+        continue;
+      }
       const result = await integration.apply(agent, mode);
       if (!result) {
-        writeStdout(`   ${dim("–")} ${integration.id.padEnd(13)} ${dim("not supported")}`);
         continue;
       }
       writeStdout(formatActionLine(integration, result));
@@ -355,7 +369,13 @@ export async function runInstaller(mode: InstallMode): Promise<void> {
     return;
   }
 
-  const integrationItems = INTEGRATIONS.map((integration) => ({
+  const availableIntegrations = integrationsForAgents(chosenAgents);
+  if (availableIntegrations.length === 0) {
+    hint("No integrations apply to the selected agents. Exiting.");
+    return;
+  }
+
+  const integrationItems = availableIntegrations.map((integration) => ({
     label: `${integration.label}${integration.experimental ? dim(" (experimental)") : ""} — ${integration.description}`,
     value: integration,
     checked: install ? (integration.defaultChecked ?? true) : true,
@@ -399,6 +419,7 @@ export {
   applyMcp,
   applySubagent,
   INTEGRATIONS,
+  integrationsForAgents,
   mergeJsonMember as mergeMcpJson,
   removeJsonMember as removeMcpJson,
 };

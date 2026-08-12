@@ -60,7 +60,9 @@ export function resolveEmbeddingApiKey(): string {
   const key = process.env[TAKARA_API_KEY_ENV]?.trim() ?? "";
   if (!isUsableTakaraApiKey(key)) {
     throw new Error(
-      "Takara API key required. Run `miru setup`, or set TAKARA_API_KEY in your MCP server env or .env.local.",
+      "Takara credentials required. If you're an agent with Miru MCP tools available, call the " +
+        "`auth` tool to sign in. Otherwise run `miru setup`, or set TAKARA_API_KEY in your MCP " +
+        "server env or .env.local.",
     );
   }
   return key;

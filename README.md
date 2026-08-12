@@ -1,8 +1,22 @@
 # Miru (見る)
 
-Your AI agent finds the code it needs in 60% fewer tokens.
+[![CI](https://github.com/takara-ai/miru-code/actions/workflows/ci.yml/badge.svg)](https://github.com/takara-ai/miru-code/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE) [![bun](https://img.shields.io/badge/runtime-bun%201.1%2B-black)](https://bun.sh)
 
-**Requires:** [Bun](https://bun.sh) 1.1+ · [Takara API key](https://takara.ai)
+
+**Hybrid code search for AI coding agents.** Find code by meaning, not grep.
+
+Your AI agent finds the code it needs with up to 50% fewer tokens.
+
+Miru returns the best **chunks** (path, lines, snippet) for questions like *"where is auth middleware configured?"* — plugged directly into Claude Code, Cursor, Copilot, Codex, and 9+ other agents via MCP.
+
+---
+
+## How it fits into your agent's workflow
+
+![How Miru fits into an agent's workflow](docs/miru-workflow-diagram.svg)
+
+Miru replaces the grep/glob-style search agents fall back on today. Install once, and every connected agent gets `search` and `find_related` MCP tools automatically.
+
 
 ## Install
 
@@ -10,20 +24,21 @@ Your AI agent finds the code it needs in 60% fewer tokens.
 bun add -g @takara-ai/miru-code
 ```
 
-## Set up API key
+## Set up credentials
 
 ```bash
 miru setup
 ```
 
-Validates your key and saves it locally. Skip this if you prefer — `miru search` or `miru install` will prompt on first run.
+Interactive `miru setup` defaults to device-code login and saves the resulting credentials locally. Manual bearer-token entry is still available with `--key`. If credentials are missing, the interactive MCP/plugin path can bootstrap the same device flow automatically on first use.
 
 ```bash
-miru setup --key YOUR_TOKEN   # non-interactive
-miru setup --clear            # remove stored key
+miru setup --device           # explicit device-code login
+miru setup --key YOUR_TOKEN   # store a bearer token directly
+miru setup --clear            # remove stored credentials
 ```
 
-MCP loads your key from `credentials.json` automatically — no env block needed in MCP config.
+Miru stores versioned credentials in `credentials.json` and automatically loads or refreshes them for MCP and CLI use. `TAKARA_API_KEY` still overrides stored credentials when set explicitly.
 
 ## Add to your IDE
 
@@ -66,6 +81,21 @@ miru uninstall   # remove miru config
 | Visual Studio  | `%USERPROFILE%\.mcp.json`             | —                               | `~/.copilot/hooks/miru-search.json`               | —                                     |
 | Windsurf       | —                                     | —                               | `~/.codeium/windsurf/hooks.json`                  | —                                     |
 
+### Plugin packaging
+
+This repo now includes plugin packaging for:
+
+- Codex: `.codex-plugin/plugin.json` and `.agents/plugins/marketplace.json`
+- Claude Code: `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`
+- Cursor: `plugin.json` and `.cursor/rules/miru-code-search.mdc`
+
+Current limitation:
+
+- these plugin manifests still launch the published Miru runtime through `bunx @takara-ai/miru-code`
+- that means local source edits do not affect plugin behavior until a package version is published
+- and a fully self-contained “no Bun required” plugin install is still future work
+
+### Search hooks
 
 Sub-agent files are also written where supported (see `miru install` plan). Windsurf hooks only *(experimental)* — no MCP entry yet. Caveman is an on-demand Agent Skill (default off): invoke with `/caveman` or “talk like caveman”; stop with “normal mode”.
 
@@ -192,10 +222,9 @@ Set `MIRU_AST_CHUNKING=0` to disable AST and use structural → lines only.
 
 ## CLI reference
 
-
 | Command                                  | Purpose                                                                           |
-| ---------------------------------------- | --------------------------------------------------------------------------------- |
-| `miru setup`                             | Store API key                                                                     |
+| ----------------------------------------- | --------------------------------------------------------------------------------- |
+| `miru setup`                             | Authenticate and store credentials                                                |
 | `miru install`                           | Configure IDE (global)                                                            |
 | `miru uninstall`                         | Remove IDE config                                                                     |
 | `miru search <query> [path]`             | Search (`-k N`, `--content`, `--json`)                                            |
@@ -347,7 +376,7 @@ Override with `MIRU_BENCHMARK_HISTORY_PATH`. Append-only JSONL of compact token 
 
 For benchmark mode, set `"args": ["--benchmark"]` (or append that flag). Prefer `miru benchmark on` after a normal install — it updates every agent config.
 
-Run `miru setup` once so the server can load your key from `credentials.json`.
+Run `miru setup` once so the server can load credentials from `credentials.json`. If the MCP server starts in an interactive terminal without stored credentials, it will start device login automatically.
 
 Use `bunx` + `@takara-ai/miru-code` if `miru` is not global. Wrapper key varies by IDE (`mcpServers`, `servers`, or `mcp`).
 
@@ -359,9 +388,21 @@ bun install && cp .env.example .env.local
 bun test && bun run typecheck
 ```
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for pre-commit hooks, commit message conventions, and the PR process.
+
 Local MCP: `"command": "bun", "args": ["/path/to/miru-code/src/cli.ts"]`
 
 `miru help` / setup print a framed wordmark on color terminals (`MIRU_QUIET=1` for subtitle only). Crane art lives in `src/brand-banner.ts`; regenerate with `bun run scripts/render-crane-art.ts` (ImageMagick). The crane is a registered mark of Takara.ai Ltd.
+
+## Codex plugin in this repo
+
+This repo includes a repo-local Codex plugin:
+
+- `.codex-plugin/plugin.json`
+- `.mcp.json`
+- `.agents/plugins/marketplace.json`
+
+The plugin intentionally launches the published package with `bunx @takara-ai/miru-code` instead of the checked-out source tree, so local source edits here do not affect the Codex plugin until a new package version is published.
 
 ## License
 

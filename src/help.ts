@@ -37,7 +37,7 @@ export function printMainHelp(): void {
   commandRow("locate", "Exact substring location in the index");
   commandRow("expand", "Adjacent chunks in the same file as a hit");
   commandRow("find-related", "Find chunks related to a file:line");
-  commandRow("setup", "Save your Takara API key locally");
+  commandRow("setup", "Authenticate with Takara and save local credentials");
   commandRow("install", "Configure miru across coding agents");
   commandRow("uninstall", "Remove miru agent configuration");
   commandRow("benchmark", "Turn MCP benchmark mode on or off");
@@ -147,13 +147,14 @@ export function printCommandHelp(command: string): void {
       writeStdout("");
       return;
     case "setup":
-      commandHeader("setup", "Store and validate Takara or self-hosted SageMaker credentials.");
+      commandHeader("setup", "Authenticate with Takara or self-hosted SageMaker credentials.");
       section("Usage");
-      writeStdout("  miru setup [--key TOKEN] [--force] [--clear]");
+      writeStdout("  miru setup [--device] [--key TOKEN] [--force] [--clear]");
       writeStdout("  miru setup --sagemaker --arn ENDPOINT_ARN --profile NAME");
       section("Options (Takara)");
-      writeStdout("  --key, -k TOKEN     Non-interactive key entry");
-      writeStdout("  --force             Replace an existing stored key");
+      writeStdout("  --device            Start device-code login (default when interactive)");
+      writeStdout("  --key, -k TOKEN     Non-interactive: store a bearer token directly");
+      writeStdout("  --force             Replace existing stored credentials");
       writeStdout("  --clear             Remove stored credentials");
       section("Options (SageMaker)");
       writeStdout("  --sagemaker         Switch setup to self-hosted SageMaker mode");
