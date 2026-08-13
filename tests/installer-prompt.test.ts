@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  nextConfirmYesSelected,
-  parseInstallerKeyForTest,
-} from "../src/installer/prompt.ts";
+import { nextConfirmYesSelected, parseInstallerKeyForTest } from "../src/installer/prompt.ts";
 
 describe("installer prompt key parsing", () => {
   test("parses ANSI CSI arrow sequences", () => {

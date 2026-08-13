@@ -1,4 +1,5 @@
 import { dim, green, red } from "./cli-ui.ts";
+import { displayWidth } from "./terminal.ts";
 
 const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
@@ -25,8 +26,7 @@ export class Spinner {
     }
     const cols = process.stderr.columns || 80;
     const rows = line.split("\n").reduce((count, part) => {
-      const plain = part.replace(/\x1b\[[0-9;]*m/g, "");
-      return count + Math.max(1, Math.ceil(plain.length / cols));
+      return count + Math.max(1, Math.ceil(displayWidth(part) / cols));
     }, 0);
     process.stderr.write(`\n${line}`);
     this.belowLines += rows;
