@@ -163,6 +163,17 @@ export function parseInstallerKeyForTest(chunk: Buffer): string {
   return parseKey(chunk);
 }
 
+/** Map confirm keys to the next Yes selection. Left/← and y → Yes; right/→ and n → No. */
+export function nextConfirmYesSelected(yesSelected: boolean, key: string): boolean {
+  if (key === "left" || key === "yes") {
+    return true;
+  }
+  if (key === "right" || key === "no") {
+    return false;
+  }
+  return yesSelected;
+}
+
 async function withRawMode<T>(fn: () => Promise<T>): Promise<T> {
   input.setRawMode(true);
   input.resume();
@@ -328,14 +339,10 @@ export async function promptConfirm(question: string, defaultYes = true): Promis
         writeRaw("\n");
         return yesSelected;
       }
-      if (key === "left" || key === "no") {
-        if (yesSelected) {
-          yesSelected = false;
-          updateConfirmPromptLine(question, yesSelected);
-        }
-      } else if (key === "right" || key === "yes") {
-        if (!yesSelected) {
-          yesSelected = true;
+      if (key === "left" || key === "right" || key === "yes" || key === "no") {
+        const next = nextConfirmYesSelected(yesSelected, key);
+        if (next !== yesSelected) {
+          yesSelected = next;
           updateConfirmPromptLine(question, yesSelected);
         }
       }

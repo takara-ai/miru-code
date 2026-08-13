@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseInstallerKeyForTest } from "../src/installer/prompt.ts";
+import { nextConfirmYesSelected, parseInstallerKeyForTest } from "../src/installer/prompt.ts";
 
 describe("installer prompt key parsing", () => {
   test("parses ANSI CSI arrow sequences", () => {
@@ -21,5 +21,15 @@ describe("installer prompt key parsing", () => {
     expect(parseInstallerKeyForTest(Buffer.from([0xe0, 0x50]))).toBe("down");
     expect(parseInstallerKeyForTest(Buffer.from([0xe0, 0x4d]))).toBe("right");
     expect(parseInstallerKeyForTest(Buffer.from([0xe0, 0x4b]))).toBe("left");
+  });
+});
+
+describe("confirm arrow selection", () => {
+  test("left/right follow Yes / No layout; y/n still work", () => {
+    expect(nextConfirmYesSelected(false, "left")).toBe(true);
+    expect(nextConfirmYesSelected(true, "right")).toBe(false);
+    expect(nextConfirmYesSelected(false, "yes")).toBe(true);
+    expect(nextConfirmYesSelected(true, "no")).toBe(false);
+    expect(nextConfirmYesSelected(true, "enter")).toBe(true);
   });
 });

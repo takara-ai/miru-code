@@ -37,24 +37,23 @@ export function printMainHelp(): void {
   commandRow("locate", "Exact substring location in the index");
   commandRow("expand", "Adjacent chunks in the same file as a hit");
   commandRow("find-related", "Find chunks related to a file:line");
-  commandRow("setup", "Authenticate with Takara and save local credentials");
+  commandRow("setup", "Authenticate with Takara");
   commandRow("install", "Configure miru across coding agents");
   commandRow("uninstall", "Remove miru agent configuration");
   commandRow("benchmark", "Turn MCP benchmark mode on or off");
   commandRow("init", "Write a project-local sub-agent file");
   commandRow("clear", "Remove cached index for a path");
-  commandRow("help", "Show help for a command");
   divider();
 
   section("Quick start");
   writeStdout("  miru setup && miru install");
   writeStdout('  miru search "auth middleware" ./src');
   writeStdout("");
-  hint("miru help <command>  ·  miru -h for environment variables  ·  miru -v for version");
+  hint("miru <command> -h  ·  miru -v for version");
   writeStdout("");
 }
 
-export function printEnvHelp(): void {
+export function printEnvironmentHelp(): void {
   section("Environment");
   writeStdout(`  ${TAKARA_API_KEY_ENV}`);
   writeStdout("      Takara bearer token for embeddings");
@@ -67,6 +66,9 @@ export function printEnvHelp(): void {
   writeStdout("  MIRU_TOKENIZER_JSON");
   writeStdout("      Path to tokenizer.json (default: <package>/tokenizer/tokenizer.json)");
   writeStdout("");
+}
+
+export function printSageMakerHelp(): void {
   section("Self-hosted (AWS SageMaker)");
   writeStdout("  MIRU_SAGEMAKER_ENDPOINT_ARN");
   writeStdout("      arn:aws:sagemaker:<region>:<account-id>:endpoint/<name> — set this to");
@@ -90,13 +92,17 @@ export function printEnvHelp(): void {
   writeStdout("");
 }
 
-export function printFullHelp(): void {
-  printMainHelp();
-  printEnvHelp();
+export function printEnvHelp(): void {
+  printEnvironmentHelp();
+  printSageMakerHelp();
 }
 
 export function printCommandHelp(command: string): void {
   switch (command) {
+    case "env":
+    case "environment":
+      printEnvironmentHelp();
+      return;
     case "search":
       commandHeader("search", "Hybrid semantic + keyword search.");
       section("Usage");
