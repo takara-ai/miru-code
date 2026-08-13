@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.6.0](https://github.com/takara-ai/miru-code/compare/v1.5.3...v1.6.0) (2026-08-12)
+
+
+### Features
+
+* **installer:** add experimental Caveman on-demand skill (ref PRD-404) ([5d7296e](https://github.com/takara-ai/miru-code/commit/5d7296e2a621a243645489762c8fedee8ed7a9ef))
+* **installer:** add experimental Caveman on-demand skill (ref PRD-404) ([03c77d3](https://github.com/takara-ai/miru-code/commit/03c77d3889b5514c914d5326a44edc5aa6dae9ef))
+* **mcp:** add auth tool for headless device-code login ([f3417a8](https://github.com/takara-ai/miru-code/commit/f3417a890b78d460d45e794a88f3641c9d112a01))
+* **mcp:** add auth tool for headless device-code login ([f97c90e](https://github.com/takara-ai/miru-code/commit/f97c90e3c0e2f38f78c4eec252bf7a4116d922a5))
+
+
+### Bug Fixes
+
+* **auth:** keep device credential failures from bricking CLI and MCP ([5b97a9f](https://github.com/takara-ai/miru-code/commit/5b97a9f6191eee1d0f4152508680b069845e7a1f))
+* **ci:** use Bun-native prepare for prek hooks on Windows ([0c4d74c](https://github.com/takara-ai/miru-code/commit/0c4d74c55cd50d81e828b3cd136c1733a6034868))
+* **ci:** use Bun-native prepare for prek hooks on Windows ([db19aa8](https://github.com/takara-ai/miru-code/commit/db19aa8ab0401862e899f22e12368cd4811b9911))
+* **installer:** drop hardcoded PATH from Kiro MCP config ([9e93d0f](https://github.com/takara-ai/miru-code/commit/9e93d0f50c9745b4423423440dad10eadfb856b2))
+* **installer:** drop STE cross-reference from Caveman copy (ref PRD-404) ([6076276](https://github.com/takara-ai/miru-code/commit/6076276cf4062bfe2cc26eb539b3cb018c388173))
+* **installer:** only offer integrations supported by selected agents ([a6c5b3d](https://github.com/takara-ai/miru-code/commit/a6c5b3dd792137edc9ff65c01492834cb62851b4))
+* **installer:** remove premature STE section from Caveman skill (ref PRD-404) ([afe07cd](https://github.com/takara-ai/miru-code/commit/afe07cda8ac4e69f4ef9ba8b721410e6d9b6e690))
+* **mcp:** run credential check non-interactive for headless stdio server ([f403243](https://github.com/takara-ai/miru-code/commit/f4032434093f11b3fae7a7099dc8c0dbd629f856))
+* **test:** assert caveman skill paths with path.join ([afa9cc2](https://github.com/takara-ai/miru-code/commit/afa9cc2eeed81ccf132c67a46b1b4e8d045db028))
+* **test:** keep MCP cold-start stdin open until replies arrive ([b223624](https://github.com/takara-ai/miru-code/commit/b2236247eb53255d7dad3ce8a4943e574adb6a38))
+
 ## [1.5.3](https://github.com/takara-ai/miru-code/compare/v1.5.2...v1.5.3) (2026-08-01)
 
 

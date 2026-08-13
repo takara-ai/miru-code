@@ -68,28 +68,25 @@ async function authenticateWithDeviceCode(
   options: AuthenticateOptions,
 ): Promise<AuthenticatedCredentials> {
   const start = await startDeviceAuthorization();
+  const verificationUrl = start.verificationUriComplete ?? start.verificationUri;
   writeStderr("");
-  info(`Open ${start.verificationUri}`);
-  hint(`Code: ${start.userCode}`);
-  if (start.verificationUriComplete) {
-    hint(`Direct link: ${start.verificationUriComplete}`);
-  }
-  if (options.interactive) {
-    const shouldOpenBrowser =
-      process.env.MIRU_OPEN_BROWSER === undefined || process.env.MIRU_OPEN_BROWSER === "1";
-    if (
-      shouldOpenBrowser &&
-      openBrowserForDeviceLogin(start.verificationUriComplete ?? start.verificationUri)
-    ) {
-      hint("Opened the verification page in your browser.");
-    }
+  hint(`Visit ${verificationUrl}`);
+  if (!start.verificationUriComplete) {
+    hint(`Code: ${start.userCode}`);
   }
 
-  const spinner = new Spinner("Waiting for device authorization");
+  const shouldOpenBrowser =
+    options.interactive &&
+    (process.env.MIRU_OPEN_BROWSER === undefined || process.env.MIRU_OPEN_BROWSER === "1");
+  if (shouldOpenBrowser) {
+    openBrowserForDeviceLogin(verificationUrl);
+  }
+
+  const spinner = new Spinner("Waiting for authentication");
   spinner.start();
   try {
     const tokens = await pollDeviceAuthorization(start);
-    spinner.succeed("Device login completed");
+    spinner.succeed("");
     return {
       kind: "device_code",
       accessToken: tokens.accessToken,

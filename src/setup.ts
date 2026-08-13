@@ -257,11 +257,6 @@ export async function runSetup(options: RunSetupOptions = {}): Promise<RunSetupR
   // stderr: setup/MCP must not write human auth UI to stdout (JSON-RPC / piped CLI).
   printBrandBanner(process.stderr);
   divider("─", 48, process.stderr);
-  writeStderr("Miru needs Takara credentials for code embeddings.");
-  hint("Device code login is the default. Manual API key entry is still available.");
-  hint(
-    "This replaces any stored SageMaker endpoint — only one embedding mode is active at a time.",
-  );
   writeStderr("");
 
   await beginModeSwitch("takara");
@@ -279,11 +274,9 @@ export async function runSetup(options: RunSetupOptions = {}): Promise<RunSetupR
     credentials.kind === "api_key" ? credentials.apiKey : credentials.accessToken,
   );
   writeStderr("");
-  success(`Saved credentials to ${path}`);
+  hint("Congratulations! You are now signed in.");
   if (hadSageMaker) {
     hint("Removed the stored SageMaker endpoint — Miru now embeds only via Takara.");
-  } else {
-    hint("MCP loads this key from credentials.json automatically.");
   }
   writeStderr("");
   return { path, newlySaved: true };

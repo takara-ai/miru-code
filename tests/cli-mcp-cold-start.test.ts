@@ -42,14 +42,15 @@ test("cold start with zero stored credentials stays alive and serves tools/list"
     });
     send({ jsonrpc: "2.0", method: "notifications/initialized" });
     send({ jsonrpc: "2.0", id: 2, method: "tools/list" });
-    await writer.end();
+    // Keep stdin open until we have both replies. Ending the pipe early signals EOF
+    // to StdioTransport, which closes the server mid-flight — flaky on Windows CI.
 
     const reader = proc.stdout.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
     const responses: Array<{ id?: number; result?: { tools?: Array<{ name: string }> } }> = [];
 
-    const deadline = Date.now() + 10_000;
+    const deadline = Date.now() + 12_000;
     while (responses.length < 2 && Date.now() < deadline) {
       const { done, value } = await Promise.race([
         reader.read(),
@@ -61,7 +62,7 @@ test("cold start with zero stored credentials stays alive and serves tools/list"
         buffer += decoder.decode(value, { stream: true });
         let newline = buffer.indexOf("\n");
         while (newline !== -1) {
-          const line = buffer.slice(0, newline).trim();
+          const line = buffer.slice(0, newline).replace(/\r$/, "").trim();
           buffer = buffer.slice(newline + 1);
           if (line) {
             responses.push(JSON.parse(line));
@@ -75,6 +76,7 @@ test("cold start with zero stored credentials stays alive and serves tools/list"
     }
 
     reader.releaseLock();
+    await writer.end();
     proc.kill();
     const exitCode = await proc.exited;
 
@@ -92,4 +94,4 @@ test("cold start with zero stored credentials stays alive and serves tools/list"
   } finally {
     await rm(credDir, { recursive: true, force: true });
   }
-}, 15_000);
+}, 20_000);

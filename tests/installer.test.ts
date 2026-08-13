@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { loadAgentTemplate } from "../src/agents.ts";
 import {
@@ -112,17 +112,26 @@ describe("installer config", () => {
 
   test("caveman skill paths: native skills dir for every installer IDE", () => {
     const byId = Object.fromEntries(AGENT_TARGETS.map((agent) => [agent.id, agent]));
-    expect(byId.cursor?.cavemanSkillPath).toContain("/.cursor/skills/caveman/SKILL.md");
-    expect(byId.claude?.cavemanSkillPath).toContain("/.claude/skills/caveman/SKILL.md");
-    expect(byId.gemini?.cavemanSkillPath).toContain("/.gemini/skills/caveman/SKILL.md");
-    expect(byId.kiro?.cavemanSkillPath).toContain("/.kiro/skills/caveman/SKILL.md");
-    expect(byId.opencode?.cavemanSkillPath).toMatch(/opencode\/skills\/caveman\/SKILL\.md$/);
-    expect(byId.codex?.cavemanSkillPath).toContain("/.codex/skills/caveman/SKILL.md");
-    expect(byId.windsurf?.cavemanSkillPath).toContain(
-      "/.codeium/windsurf/skills/caveman/SKILL.md",
+    const home = homedir();
+    expect(byId.cursor?.cavemanSkillPath).toBe(
+      join(home, ".cursor", "skills", "caveman", "SKILL.md"),
+    );
+    expect(byId.claude?.cavemanSkillPath).toBe(
+      join(home, ".claude", "skills", "caveman", "SKILL.md"),
+    );
+    expect(byId.gemini?.cavemanSkillPath).toBe(
+      join(home, ".gemini", "skills", "caveman", "SKILL.md"),
+    );
+    expect(byId.kiro?.cavemanSkillPath).toBe(join(home, ".kiro", "skills", "caveman", "SKILL.md"));
+    expect(byId.opencode?.cavemanSkillPath).toBe(opencodeCavemanSkillPath(home));
+    expect(byId.codex?.cavemanSkillPath).toBe(
+      join(home, ".codex", "skills", "caveman", "SKILL.md"),
+    );
+    expect(byId.windsurf?.cavemanSkillPath).toBe(
+      join(home, ".codeium", "windsurf", "skills", "caveman", "SKILL.md"),
     );
     const copilotPath = byId.copilot?.cavemanSkillPath;
-    expect(copilotPath).toContain("/.copilot/skills/caveman/SKILL.md");
+    expect(copilotPath).toBe(join(home, ".copilot", "skills", "caveman", "SKILL.md"));
     expect(byId.vscode?.cavemanSkillPath).toBe(copilotPath);
     expect(byId.visualstudio?.cavemanSkillPath).toBe(copilotPath);
     for (const agent of AGENT_TARGETS) {
@@ -142,8 +151,8 @@ describe("installer config", () => {
 
       delete process.env.XDG_CONFIG_HOME;
       expect(opencodeConfigDir("/home/user")).toBe(join("/home/user", ".config", "opencode"));
-      expect(opencodeCavemanSkillPath("/home/user")).toMatch(
-        /\/home\/user\/\.config\/opencode\/skills\/caveman\/SKILL\.md$/,
+      expect(opencodeCavemanSkillPath("/home/user")).toBe(
+        join("/home/user", ".config", "opencode", "skills", "caveman", "SKILL.md"),
       );
     } finally {
       if (prev === undefined) {
