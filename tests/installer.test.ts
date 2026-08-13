@@ -14,10 +14,11 @@ import { printCommandHelp } from "../src/help.ts";
 import {
   AGENT_TARGETS,
   type AgentTarget,
+  agentsCavemanSkillPath,
   isCopilotInstalled,
   MIRU_END,
   MIRU_START,
-  opencodeCavemanSkillPath,
+  nativeCavemanSkillPath,
   opencodeConfigDir,
   visualStudioMcpPath,
 } from "../src/installer/agents.ts";
@@ -81,7 +82,7 @@ function copilotFamilyTargets(root: string): {
   vscode: AgentTarget;
   visualstudio: AgentTarget;
 } {
-  const shared = join(root, ".copilot", "skills", "caveman", "SKILL.md");
+  const shared = join(root, ".agents", "skills", "caveman", "SKILL.md");
   const base: AgentTarget = {
     ...claudeTarget(root),
     cavemanSkillPath: shared,
@@ -99,7 +100,7 @@ function copilotFamilyTargets(root: string): {
   };
   return {
     shared,
-    ownersPath: join(root, ".copilot", "skills", "caveman", "miru-owners.json"),
+    ownersPath: join(root, ".agents", "skills", "caveman", "miru-owners.json"),
     family: [copilot, vscode, visualstudio],
     copilot,
     vscode,
@@ -147,49 +148,32 @@ describe("installer config", () => {
     expect(caveman?.planPath).toBeDefined();
   });
 
-  test("caveman skill paths: native skills dir for every installer IDE", () => {
-    const byId = Object.fromEntries(AGENT_TARGETS.map((agent) => [agent.id, agent]));
+  test("caveman skill paths: shared ~/.agents/skills except Claude and Kiro", () => {
     const home = homedir();
-    expect(byId.cursor?.cavemanSkillPath).toBe(
-      join(home, ".cursor", "skills", "caveman", "SKILL.md"),
-    );
-    expect(byId.claude?.cavemanSkillPath).toBe(
-      join(home, ".claude", "skills", "caveman", "SKILL.md"),
-    );
-    expect(byId.gemini?.cavemanSkillPath).toBe(
-      join(home, ".gemini", "skills", "caveman", "SKILL.md"),
-    );
-    expect(byId.kiro?.cavemanSkillPath).toBe(join(home, ".kiro", "skills", "caveman", "SKILL.md"));
-    expect(byId.opencode?.cavemanSkillPath).toBe(opencodeCavemanSkillPath(home));
-    expect(byId.codex?.cavemanSkillPath).toBe(
-      join(home, ".codex", "skills", "caveman", "SKILL.md"),
-    );
-    expect(byId.windsurf?.cavemanSkillPath).toBe(
-      join(home, ".codeium", "windsurf", "skills", "caveman", "SKILL.md"),
-    );
-    const copilotPath = byId.copilot?.cavemanSkillPath;
-    expect(copilotPath).toBe(join(home, ".copilot", "skills", "caveman", "SKILL.md"));
-    expect(byId.vscode?.cavemanSkillPath).toBe(copilotPath);
-    expect(byId.visualstudio?.cavemanSkillPath).toBe(copilotPath);
+    const shared = agentsCavemanSkillPath(home);
     for (const agent of AGENT_TARGETS) {
-      expect(agent.cavemanSkillPath).not.toBeNull();
+      const expected =
+        agent.id === "claude" || agent.id === "kiro"
+          ? nativeCavemanSkillPath(home, agent.id)
+          : shared;
+      expect(agent.cavemanSkillPath).toBe(expected);
       expect(integrationsForAgents([agent]).some((entry) => entry.id === "caveman")).toBe(true);
     }
   });
 
-  test("OpenCode caveman path follows XDG_CONFIG_HOME", () => {
+  test("OpenCode config dir follows XDG_CONFIG_HOME; Caveman uses ~/.agents/skills", () => {
     const prev = process.env.XDG_CONFIG_HOME;
     try {
       process.env.XDG_CONFIG_HOME = "/tmp/miru-xdg-test";
       expect(opencodeConfigDir("/home/user")).toBe(join("/tmp/miru-xdg-test", "opencode"));
-      expect(opencodeCavemanSkillPath("/home/user")).toBe(
-        join("/tmp/miru-xdg-test", "opencode", "skills", "caveman", "SKILL.md"),
+      expect(agentsCavemanSkillPath("/home/user")).toBe(
+        join("/home/user", ".agents", "skills", "caveman", "SKILL.md"),
       );
 
       delete process.env.XDG_CONFIG_HOME;
       expect(opencodeConfigDir("/home/user")).toBe(join("/home/user", ".config", "opencode"));
-      expect(opencodeCavemanSkillPath("/home/user")).toBe(
-        join("/home/user", ".config", "opencode", "skills", "caveman", "SKILL.md"),
+      expect(agentsCavemanSkillPath("/home/user")).toBe(
+        join("/home/user", ".agents", "skills", "caveman", "SKILL.md"),
       );
     } finally {
       if (prev === undefined) {
@@ -589,7 +573,7 @@ describe("installer apply", () => {
   });
 
   test("T6: applyCaveman installs Cursor skill", async () => {
-    const skillPath = join(root, ".cursor", "skills", "caveman", "SKILL.md");
+    const skillPath = join(root, ".agents", "skills", "caveman", "SKILL.md");
     const agent: AgentTarget = {
       ...claudeTarget(root),
       id: "cursor",
@@ -649,7 +633,7 @@ describe("installer apply", () => {
     expect(caveman?.planPath(agent)).toBeNull();
   });
 
-  test("shared Copilot path: owners keep/remove across the full family", async () => {
+  test("shared Caveman path: owners keep/remove across the full family", async () => {
     const { shared, ownersPath, family, copilot, vscode, visualstudio } =
       copilotFamilyTargets(root);
     const ctx = {
@@ -705,7 +689,7 @@ describe("installer apply", () => {
     expect(await Bun.file(ownersPath).exists()).toBe(false);
   });
 
-  test("shared Copilot path: uninstalling all selected owners removes once", async () => {
+  test("shared Caveman path: uninstalling all selected owners removes once", async () => {
     const { shared, family, copilot, vscode, visualstudio } = copilotFamilyTargets(root);
     const installCtx = {
       selectedAgents: family,
@@ -747,7 +731,7 @@ describe("installer apply", () => {
     expect(await Bun.file(shared).exists()).toBe(false);
   });
 
-  test("shared Copilot path: legacy upgrade seeds siblings or stays on detect keep", async () => {
+  test("shared Caveman path: legacy upgrade seeds siblings or stays on detect keep", async () => {
     const { shared, ownersPath, family, copilot, vscode } = copilotFamilyTargets(root);
     await mkdir(dirname(shared), { recursive: true });
     await Bun.write(shared, CAVEMAN_SKILL_MD);
@@ -812,7 +796,7 @@ describe("installer apply", () => {
     expect(await Bun.file(shared).exists()).toBe(false);
   });
 
-  test("shared Copilot path: cleans orphan owners when skill is already gone", async () => {
+  test("shared Caveman path: cleans orphan owners when skill is already gone", async () => {
     const { shared, ownersPath, family, copilot } = copilotFamilyTargets(root);
     await mkdir(dirname(shared), { recursive: true });
     await Bun.write(ownersPath, '["copilot"]\n');
@@ -830,9 +814,29 @@ describe("installer apply", () => {
     expect(await Bun.file(ownersPath).exists()).toBe(false);
   });
 
+  test("shared Caveman path: empty owners file removes even if siblings are detected", async () => {
+    const { shared, ownersPath, family, copilot } = copilotFamilyTargets(root);
+    await mkdir(dirname(shared), { recursive: true });
+    await Bun.write(shared, CAVEMAN_SKILL_MD);
+    await Bun.write(ownersPath, "[]\n");
+
+    expect(
+      (
+        await applyCaveman(copilot, "uninstall", {
+          selectedAgents: [copilot],
+          cavemanSeenPaths: new Set(),
+          allAgents: family,
+          isDetected: async () => true,
+        })
+      )?.action,
+    ).toBe("removed");
+    expect(await Bun.file(shared).exists()).toBe(false);
+    expect(await Bun.file(ownersPath).exists()).toBe(false);
+  });
+
   test("Codex Caveman install enables [features] skills = true", async () => {
     const configPath = join(root, ".codex", "config.toml");
-    const skillPath = join(root, ".codex", "skills", "caveman", "SKILL.md");
+    const skillPath = join(root, ".agents", "skills", "caveman", "SKILL.md");
     await mkdir(dirname(configPath), { recursive: true });
     await Bun.write(configPath, 'model = "gpt-5"\n');
 

@@ -9,15 +9,27 @@ import {
 
 export const CAVEMAN_OWNERS_FILE = "miru-owners.json";
 
-/** Context for shared Copilot-family Caveman install/uninstall. */
+/** Context for shared `~/.agents/skills` Caveman install/uninstall. */
 export interface CavemanSharedCtx {
   selectedAgents: AgentTarget[];
   allAgents?: AgentTarget[];
   isDetected?: (agent: AgentTarget) => Promise<boolean>;
 }
 
+function uniqueIds(ids: Iterable<string>): string[] {
+  return Array.from(new Set(ids));
+}
+
+function resolvedAgents(ctx: CavemanSharedCtx): AgentTarget[] {
+  return ctx.allAgents ?? AGENT_TARGETS;
+}
+
+function agentsSharingCavemanPath(path: string, allAgents: AgentTarget[]): AgentTarget[] {
+  return allAgents.filter((agent) => agent.cavemanSkillPath === path);
+}
+
 export function isSharedCavemanPath(path: string, allAgents: AgentTarget[]): boolean {
-  return allAgents.filter((agent) => agent.cavemanSkillPath === path).length > 1;
+  return agentsSharingCavemanPath(path, allAgents).length > 1;
 }
 
 export async function readCavemanOwners(skillDir: string): Promise<string[] | null> {
@@ -59,7 +71,7 @@ export async function ensureSharedCavemanOwnersOnInstall(
 ): Promise<void> {
   const existing = await readCavemanOwners(skillDir);
   if (existing !== null) {
-    await writeCavemanOwners(skillDir, Array.from(new Set([...existing, agent.id])));
+    await writeCavemanOwners(skillDir, uniqueIds([...existing, agent.id]));
     return;
   }
 
@@ -68,16 +80,14 @@ export async function ensureSharedCavemanOwnersOnInstall(
     return;
   }
 
-  const all = ctx.allAgents ?? AGENT_TARGETS;
   const detect = ctx.isDetected ?? isAgentDetected;
-  const family = all.filter((member) => member.cavemanSkillPath === skillPath);
   const seeded: string[] = [];
-  for (const member of family) {
+  for (const member of agentsSharingCavemanPath(skillPath, resolvedAgents(ctx))) {
     if (member.id === agent.id || (await detect(member))) {
       seeded.push(member.id);
     }
   }
-  const unique = Array.from(new Set(seeded));
+  const unique = uniqueIds(seeded);
   if (unique.length <= 1) {
     return;
   }
@@ -89,10 +99,9 @@ async function shouldKeepSharedCaveman(
   agent: AgentTarget,
   ctx: CavemanSharedCtx,
 ): Promise<boolean> {
-  const all = ctx.allAgents ?? AGENT_TARGETS;
   const detect = ctx.isDetected ?? isAgentDetected;
-  const siblings = all.filter(
-    (other) => other.id !== agent.id && other.cavemanSkillPath === path,
+  const siblings = agentsSharingCavemanPath(path, resolvedAgents(ctx)).filter(
+    (other) => other.id !== agent.id,
   );
 
   for (const sibling of siblings) {
@@ -121,9 +130,7 @@ export async function resolveSharedCavemanUninstall(
   agent: AgentTarget,
   ctx: CavemanSharedCtx,
 ): Promise<SharedCavemanUninstallDecision> {
-  const selectedSharing = ctx.selectedAgents.filter(
-    (selected) => selected.cavemanSkillPath === path,
-  );
+  const selectedSharing = agentsSharingCavemanPath(path, ctx.selectedAgents);
   const isLast =
     selectedSharing.length === 0 ||
     selectedSharing[selectedSharing.length - 1]?.id === agent.id;
@@ -135,7 +142,7 @@ export async function resolveSharedCavemanUninstall(
   }
 
   const owners = await readCavemanOwners(skillDir);
-  if (owners) {
+  if (owners !== null) {
     const removing = new Set(selectedSharing.map((selected) => selected.id));
     const remaining = owners.filter((ownerId) => !removing.has(ownerId));
     if (remaining.length > 0) {
@@ -151,13 +158,13 @@ export async function resolveSharedCavemanUninstall(
   if (await shouldKeepSharedCaveman(path, agent, ctx)) {
     return {
       kind: "keep",
-      note: "shared skill kept — another Copilot-family IDE is still detected",
+      note: "shared skill kept — another IDE still uses this path",
     };
   }
   return { kind: "remove" };
 }
 
-/** Remove SKILL.md and owners sidecar; cleans orphans if only one remains. */
+/** Remove SKILL.md and owners sidecar; leave sibling skill folders untouched. */
 export async function removeCavemanSkillFiles(
   path: string,
   skillDir: string,

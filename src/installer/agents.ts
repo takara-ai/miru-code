@@ -9,14 +9,30 @@ function copilotHooksPath(home: string): string {
   return join(home, ".copilot", "hooks", "miru-search.json");
 }
 
-/** Shared Copilot / VS Code / Visual Studio config + skills root. */
+/** Shared Copilot / VS Code / Visual Studio config root (MCP, hooks, agents). */
 export function copilotHomeDir(home: string): string {
   return join(home, ".copilot");
 }
 
-/** Shared Copilot / VS Code / Visual Studio Agent Skills root. */
-function copilotCavemanSkillPath(home: string): string {
-  return join(copilotHomeDir(home), "skills", "caveman", "SKILL.md");
+/** Vendors that do not scan `~/.agents/skills/` and need a native skill dir. */
+export type NativeCavemanVendor = "claude" | "kiro";
+
+function cavemanSkillMd(home: string, rootDir: string): string {
+  return join(home, rootDir, "skills", "caveman", "SKILL.md");
+}
+
+/**
+ * Cross-agent Agent Skills root (`~/.agents/skills/…`).
+ * Used by Cursor, Gemini, OpenCode, Codex, Windsurf, and Copilot-family IDEs.
+ * Claude Code and Kiro still use vendor-native skill dirs.
+ */
+export function agentsCavemanSkillPath(home: string): string {
+  return cavemanSkillMd(home, ".agents");
+}
+
+/** Claude Code / Kiro native Caveman skill path. */
+export function nativeCavemanSkillPath(home: string, vendor: NativeCavemanVendor): string {
+  return cavemanSkillMd(home, `.${vendor}`);
 }
 
 function kiroHooksPath(home: string): string {
@@ -35,10 +51,6 @@ export function opencodeConfigDir(home: string): string {
 
 function opencodePluginPath(home: string): string {
   return join(opencodeConfigDir(home), "plugins", "miru-search-guard.ts");
-}
-
-export function opencodeCavemanSkillPath(home: string): string {
-  return join(opencodeConfigDir(home), "skills", "caveman", "SKILL.md");
 }
 
 export type InstallAction =
@@ -185,6 +197,8 @@ function jsonMcp(path: string, key: string, entry: Record<string, unknown>): Mcp
   return { path, key, memberKey: "miru", entry, format: "json" };
 }
 
+const SHARED_CAVEMAN_SKILL = agentsCavemanSkillPath(HOME);
+
 export const AGENT_TARGETS: AgentTarget[] = [
   {
     id: "claude",
@@ -198,7 +212,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     hooksFormat: "claude",
     subagentPath: join(HOME, ".claude", "agents", "miru-code.md"),
     subagentId: "claude",
-    cavemanSkillPath: join(HOME, ".claude", "skills", "caveman", "SKILL.md"),
+    cavemanSkillPath: nativeCavemanSkillPath(HOME, "claude"),
   },
   {
     id: "cursor",
@@ -212,7 +226,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     hooksFormat: "cursor",
     subagentPath: join(HOME, ".cursor", "agents", "miru-code.md"),
     subagentId: "cursor",
-    cavemanSkillPath: join(HOME, ".cursor", "skills", "caveman", "SKILL.md"),
+    cavemanSkillPath: SHARED_CAVEMAN_SKILL,
   },
   {
     id: "gemini",
@@ -226,7 +240,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     hooksFormat: "gemini",
     subagentPath: join(HOME, ".gemini", "agents", "miru-code.md"),
     subagentId: "gemini",
-    cavemanSkillPath: join(HOME, ".gemini", "skills", "caveman", "SKILL.md"),
+    cavemanSkillPath: SHARED_CAVEMAN_SKILL,
   },
   {
     id: "kiro",
@@ -240,7 +254,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     hooksFormat: "kiro",
     subagentPath: join(HOME, ".kiro", "agents", "miru-code.md"),
     subagentId: "kiro",
-    cavemanSkillPath: join(HOME, ".kiro", "skills", "caveman", "SKILL.md"),
+    cavemanSkillPath: nativeCavemanSkillPath(HOME, "kiro"),
   },
   {
     id: "opencode",
@@ -254,7 +268,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     hooksFormat: "opencode",
     subagentPath: join(opencodeConfigDir(HOME), "agents", "miru-code.md"),
     subagentId: "opencode",
-    cavemanSkillPath: opencodeCavemanSkillPath(HOME),
+    cavemanSkillPath: SHARED_CAVEMAN_SKILL,
   },
   {
     id: "copilot",
@@ -268,7 +282,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     hooksFormat: "vscode",
     subagentPath: join(copilotHomeDir(HOME), "agents", "miru-code.agent.md"),
     subagentId: "copilot",
-    cavemanSkillPath: copilotCavemanSkillPath(HOME),
+    cavemanSkillPath: SHARED_CAVEMAN_SKILL,
   },
   {
     id: "codex",
@@ -288,7 +302,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     hooksFormat: "claude",
     subagentPath: null,
     subagentId: null,
-    cavemanSkillPath: join(HOME, ".codex", "skills", "caveman", "SKILL.md"),
+    cavemanSkillPath: SHARED_CAVEMAN_SKILL,
   },
   {
     id: "vscode",
@@ -302,7 +316,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     hooksFormat: "vscode",
     subagentPath: null,
     subagentId: null,
-    cavemanSkillPath: copilotCavemanSkillPath(HOME),
+    cavemanSkillPath: SHARED_CAVEMAN_SKILL,
   },
   {
     id: "windsurf",
@@ -316,7 +330,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     hooksFormat: "windsurf",
     subagentPath: null,
     subagentId: null,
-    cavemanSkillPath: join(HOME, ".codeium", "windsurf", "skills", "caveman", "SKILL.md"),
+    cavemanSkillPath: SHARED_CAVEMAN_SKILL,
   },
   {
     id: "visualstudio",
@@ -330,7 +344,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     hooksFormat: "vscode",
     subagentPath: null,
     subagentId: null,
-    cavemanSkillPath: copilotCavemanSkillPath(HOME),
+    cavemanSkillPath: SHARED_CAVEMAN_SKILL,
   },
 ];
 
@@ -371,8 +385,8 @@ export async function isAgentDetected(agent: AgentTarget): Promise<boolean> {
 }
 
 /**
- * True when Copilot-specific config exists. Does not treat the shared
- * `~/.copilot` directory (skills/hooks used by VS Code / Visual Studio) as enough.
+ * True when Copilot-specific config exists. Does not treat shared
+ * `~/.copilot` hooks (also used by VS Code / Visual Studio) as enough.
  */
 export function isCopilotInstalled(home: string = HOME): boolean {
   if (existsSync(join(home, ".config", "github-copilot"))) {

@@ -70,16 +70,16 @@ miru uninstall   # remove miru config
 
 | IDE            | MCP                                   | Instructions / rules            | Hooks *(experimental)*                            | Caveman *(experimental)*                            |
 | -------------- | ------------------------------------- | ------------------------------- | ------------------------------------------------- | --------------------------------------------------- |
-| Cursor         | `~/.cursor/mcp.json`                  | `~/.cursor/rules/miru-code.mdc` | `~/.cursor/hooks.json`                            | `~/.cursor/skills/caveman/SKILL.md`                 |
+| Cursor         | `~/.cursor/mcp.json`                  | `~/.cursor/rules/miru-code.mdc` | `~/.cursor/hooks.json`                            | `~/.agents/skills/caveman/SKILL.md`                 |
 | Claude Code    | `~/.claude.json`                      | `~/.claude/CLAUDE.md`           | `~/.claude/settings.json`                         | `~/.claude/skills/caveman/SKILL.md`                 |
-| Gemini CLI     | `~/.gemini/settings.json`             | `~/.gemini/GEMINI.md`           | `~/.gemini/settings.json` (`BeforeTool`)          | `~/.gemini/skills/caveman/SKILL.md`                 |
+| Gemini CLI     | `~/.gemini/settings.json`             | `~/.gemini/GEMINI.md`           | `~/.gemini/settings.json` (`BeforeTool`)          | `~/.agents/skills/caveman/SKILL.md`                 |
 | Kiro           | `~/.kiro/settings/mcp.json`           | `~/.kiro/steering/miru.md`      | `~/.kiro/settings/hooks.json`                     | `~/.kiro/skills/caveman/SKILL.md`                   |
-| OpenCode       | `$XDG_CONFIG_HOME/opencode/opencode.json(c)` *(else `~/.config/opencode/…`)* | `…/AGENTS.md` | `…/plugins/miru-search-guard.ts` | `…/skills/caveman/SKILL.md` |
-| GitHub Copilot | `~/.copilot/mcp-config.json`          | —                               | `~/.copilot/hooks/miru-search.json`               | `~/.copilot/skills/caveman/SKILL.md`                |
-| Codex          | `~/.codex/config.toml`                | `~/.codex/AGENTS.md`            | `~/.codex/hooks.json`                             | `~/.codex/skills/caveman/SKILL.md`                  |
-| VS Code        | `…/Code/User/mcp.json`                | —                               | `~/.copilot/hooks/miru-search.json`               | `~/.copilot/skills/caveman/SKILL.md`                |
-| Visual Studio  | `%USERPROFILE%\.mcp.json`             | —                               | `~/.copilot/hooks/miru-search.json`               | `~/.copilot/skills/caveman/SKILL.md`                |
-| Windsurf       | —                                     | —                               | `~/.codeium/windsurf/hooks.json`                  | `~/.codeium/windsurf/skills/caveman/SKILL.md`       |
+| OpenCode       | `$XDG_CONFIG_HOME/opencode/opencode.json(c)` *(else `~/.config/opencode/…`)* | `…/AGENTS.md` | `…/plugins/miru-search-guard.ts` | `~/.agents/skills/caveman/SKILL.md` |
+| GitHub Copilot | `~/.copilot/mcp-config.json`          | —                               | `~/.copilot/hooks/miru-search.json`               | `~/.agents/skills/caveman/SKILL.md`                 |
+| Codex          | `~/.codex/config.toml`                | `~/.codex/AGENTS.md`            | `~/.codex/hooks.json`                             | `~/.agents/skills/caveman/SKILL.md`                 |
+| VS Code        | `…/Code/User/mcp.json`                | —                               | `~/.copilot/hooks/miru-search.json`               | `~/.agents/skills/caveman/SKILL.md`                 |
+| Visual Studio  | `%USERPROFILE%\.mcp.json`             | —                               | `~/.copilot/hooks/miru-search.json`               | `~/.agents/skills/caveman/SKILL.md`                 |
+| Windsurf       | —                                     | —                               | `~/.codeium/windsurf/hooks.json`                  | `~/.agents/skills/caveman/SKILL.md`                 |
 
 ### Plugin packaging
 
@@ -97,7 +97,7 @@ Current limitation:
 
 ### Search hooks
 
-Sub-agent files are also written where supported (see `miru install` plan). Windsurf hooks only *(experimental)* — no MCP entry yet. Caveman is an on-demand Agent Skill (default off): invoke with `/caveman` or “talk like caveman”; stop with “normal mode”. Invocation UI varies by IDE (`/caveman`, `$caveman`, `@caveman`, etc.). Copilot / VS Code / Visual Studio share `~/.copilot/skills/caveman/SKILL.md` — ownership is tracked so uninstalling one keeps the skill while another still owns it; selecting all owners removes it once.
+Sub-agent files are also written where supported (see `miru install` plan). Windsurf hooks only *(experimental)* — no MCP entry yet. Caveman is an on-demand Agent Skill (default off): invoke with `/caveman` or “talk like caveman”; stop with “normal mode”. Invocation UI varies by IDE (`/caveman`, `$caveman`, `@caveman`, etc.). Most IDEs share `~/.agents/skills/caveman/SKILL.md` (including Copilot / VS Code / Visual Studio); Claude Code and Kiro keep vendor-native skill dirs. Ownership is tracked on the shared path so uninstalling one IDE keeps the skill while another still owns it; selecting all owners removes it once.
 
 <details>
 <summary>Caveman mode <em>(experimental)</em></summary>

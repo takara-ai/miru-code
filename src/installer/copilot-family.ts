@@ -1,4 +1,4 @@
-/** Agents that share `~/.copilot` hooks and Caveman skill paths. */
+/** Agents that share `~/.copilot` hooks. Caveman uses `~/.agents/skills`. */
 export const COPILOT_FAMILY_IDS = ["copilot", "vscode", "visualstudio"] as const;
 
 export type CopilotFamilyId = (typeof COPILOT_FAMILY_IDS)[number];
