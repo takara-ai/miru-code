@@ -616,3 +616,76 @@ export async function removeTomlBlock(path: string): Promise<InstallAction> {
   await Bun.write(path, `${remaining}\n`);
   return "removed";
 }
+
+/**
+ * Ensure Codex loads Agent Skills: `[features] skills = true` in config.toml.
+ * Does not disable the flag on uninstall (other skills may still need it).
+ */
+export function codexSkillsFeatureEnabled(text: string): boolean {
+  const lines = text.split("\n");
+  let inFeatures = false;
+  for (const line of lines) {
+    const tableKey = line.split("#")[0]?.trim() ?? "";
+    if (tableKey.startsWith("[") && tableKey.endsWith("]")) {
+      inFeatures = tableKey === "[features]";
+      continue;
+    }
+    if (!inFeatures) {
+      continue;
+    }
+    const value = line.split("#")[0]?.match(/^\s*skills\s*=\s*(true|false)\s*$/i)?.[1];
+    if (value?.toLowerCase() === "true") {
+      return true;
+    }
+  }
+  return false;
+}
+
+export async function ensureCodexSkillsFeature(path: string): Promise<InstallAction> {
+  const existed = await Bun.file(path).exists();
+  const existing = existed ? await Bun.file(path).text() : "";
+  if (codexSkillsFeatureEnabled(existing)) {
+    return "unchanged";
+  }
+  const lines = existing.length > 0 ? existing.split("\n") : [];
+
+  let featuresIdx = -1;
+  let skillsIdx = -1;
+  let inFeatures = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const tableKey = (lines[i] ?? "").split("#")[0]?.trim() ?? "";
+    if (tableKey.startsWith("[") && tableKey.endsWith("]")) {
+      if (tableKey === "[features]") {
+        inFeatures = true;
+        featuresIdx = i;
+        continue;
+      }
+      inFeatures = false;
+      continue;
+    }
+    if (inFeatures && /^\s*skills\s*=/.test(lines[i] ?? "")) {
+      skillsIdx = i;
+    }
+  }
+
+  if (featuresIdx >= 0 && skillsIdx >= 0) {
+    lines[skillsIdx] = "skills = true";
+    const next = `${lines.join("\n").replace(/\n+$/, "")}\n`;
+    await Bun.write(path, next);
+    return "updated";
+  }
+
+  if (featuresIdx >= 0) {
+    lines.splice(featuresIdx + 1, 0, "skills = true");
+    const next = `${lines.join("\n").replace(/\n+$/, "")}\n`;
+    await Bun.write(path, next);
+    return "updated";
+  }
+
+  const block = "[features]\nskills = true\n";
+  const base = existing.replace(/\n+$/, "");
+  const next = base.length > 0 ? `${base}\n\n${block}` : block;
+  await Bun.write(path, next.endsWith("\n") ? next : `${next}\n`);
+  return existed ? "updated" : "created";
+}

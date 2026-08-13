@@ -2,11 +2,11 @@ import { unlink } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { HooksFormat, InstallAction } from "../agents.ts";
 import { stripJsonComments } from "../config.ts";
+import { isCopilotFamilyId } from "../copilot-family.ts";
 
 const HOOK_GUARD_MARKER = "hook-guard";
 const MIRU_HOOK_MARKER = "miru-search";
 const VSCODE_OWNERS_KEY = "miruOwners";
-const SHARED_VSCODE_HOOK_OWNERS = ["copilot", "vscode", "visualstudio"] as const;
 
 const MATCHERS = {
   cursor: "Grep|Glob|Shell|SemanticSearch",
@@ -346,22 +346,11 @@ export async function mergeVscodeHooks(path: string, owner?: string): Promise<In
 
   const currentOwners = Array.isArray(parsed[VSCODE_OWNERS_KEY])
     ? (parsed[VSCODE_OWNERS_KEY] as unknown[]).filter(
-        (item): item is string =>
-          typeof item === "string" &&
-          SHARED_VSCODE_HOOK_OWNERS.includes(item as (typeof SHARED_VSCODE_HOOK_OWNERS)[number]),
+        (item): item is string => typeof item === "string" && isCopilotFamilyId(item),
       )
     : [];
   const nextOwners = owner
-    ? Array.from(
-        new Set([
-          ...currentOwners,
-          ...(SHARED_VSCODE_HOOK_OWNERS.includes(
-            owner as (typeof SHARED_VSCODE_HOOK_OWNERS)[number],
-          )
-            ? [owner]
-            : []),
-        ]),
-      )
+    ? Array.from(new Set([...currentOwners, ...(isCopilotFamilyId(owner) ? [owner] : [])]))
     : currentOwners;
 
   const next = {
