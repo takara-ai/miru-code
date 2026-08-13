@@ -1,4 +1,4 @@
-import { hint, info, warn, writeStderr } from "../cli-ui.ts";
+import { hint, warn, writeStderr } from "../cli-ui.ts";
 import { validateEmbeddingApiKey } from "../embeddings/validate.ts";
 import { promptConfirm } from "../installer/prompt.ts";
 import { promptHidden } from "../prompt.ts";
@@ -35,16 +35,10 @@ async function resolveAuthMode(options: AuthenticateOptions): Promise<AuthMode> 
   if (options.apiKey) {
     return "api_key";
   }
-  if (options.device) {
+  if (options.device || options.interactive) {
     return "device_code";
   }
-  if (!options.interactive) {
-    throw new Error("Choose an auth mode with `miru setup --device` or `miru setup --key TOKEN`.");
-  }
-  writeStderr("");
-  info("Choose how to authenticate.");
-  const useDevice = await promptConfirm("Use device code login?", true);
-  return useDevice ? "device_code" : "api_key";
+  throw new Error("Choose an auth mode with `miru setup --device` or `miru setup --key TOKEN`.");
 }
 
 async function authenticateWithApiKey(
