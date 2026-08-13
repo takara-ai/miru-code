@@ -37,7 +37,7 @@ export function printMainHelp(): void {
   commandRow("locate", "Exact substring location in the index");
   commandRow("expand", "Adjacent chunks in the same file as a hit");
   commandRow("find-related", "Find chunks related to a file:line");
-  commandRow("setup", "Authenticate with Takara and save local credentials");
+  commandRow("setup", "Authenticate with Takara");
   commandRow("install", "Configure miru across coding agents");
   commandRow("uninstall", "Remove miru agent configuration");
   commandRow("benchmark", "Turn MCP benchmark mode on or off");

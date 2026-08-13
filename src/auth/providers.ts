@@ -1,4 +1,4 @@
-import { hint, warn, writeStderr } from "../cli-ui.ts";
+import { dim, warn, writeStderr } from "../cli-ui.ts";
 import { validateEmbeddingApiKey } from "../embeddings/validate.ts";
 import { promptConfirm } from "../installer/prompt.ts";
 import { promptHidden } from "../prompt.ts";
@@ -61,24 +61,26 @@ async function authenticateWithApiKey(
 async function authenticateWithDeviceCode(
   options: AuthenticateOptions,
 ): Promise<AuthenticatedCredentials> {
-  const start = await startDeviceAuthorization();
-  const verificationUrl = start.verificationUriComplete ?? start.verificationUri;
   writeStderr("");
-  hint(`Visit ${verificationUrl}`);
-  if (!start.verificationUriComplete) {
-    hint(`Code: ${start.userCode}`);
-  }
-
-  const shouldOpenBrowser =
-    options.interactive &&
-    (process.env.MIRU_OPEN_BROWSER === undefined || process.env.MIRU_OPEN_BROWSER === "1");
-  if (shouldOpenBrowser) {
-    openBrowserForDeviceLogin(verificationUrl);
-  }
-
-  const spinner = new Spinner("Waiting for authentication");
+  const spinner = new Spinner("Authenticating");
   spinner.start();
   try {
+    const start = await startDeviceAuthorization();
+    const verificationUrl = start.verificationUriComplete ?? start.verificationUri;
+
+    const shouldOpenBrowser =
+      options.interactive &&
+      (process.env.MIRU_OPEN_BROWSER === undefined || process.env.MIRU_OPEN_BROWSER === "1");
+    if (shouldOpenBrowser) {
+      openBrowserForDeviceLogin(verificationUrl);
+    }
+
+    let visit = dim(`  Visit ${verificationUrl}`);
+    if (!start.verificationUriComplete) {
+      visit += `\n${dim(`  Code: ${start.userCode}`)}`;
+    }
+    spinner.follow(visit);
+
     const tokens = await pollDeviceAuthorization(start);
     spinner.succeed("");
     return {

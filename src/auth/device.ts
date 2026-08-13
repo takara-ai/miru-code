@@ -289,8 +289,13 @@ export function openBrowserForDeviceLogin(url: string): boolean {
         ? ["cmd", "/c", "start", "", url]
         : ["xdg-open", url];
   try {
-    const proc = Bun.spawn(command, { stdout: "ignore", stderr: "ignore" });
-    void proc.exited;
+    const proc = Bun.spawn(command, {
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    // Detach so the spinner's event loop / process lifecycle can't kill `open`.
+    proc.unref();
     return true;
   } catch {
     return false;
