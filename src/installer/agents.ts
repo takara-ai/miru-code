@@ -357,21 +357,33 @@ export async function isAgentDetected(agent: AgentTarget): Promise<boolean> {
     }
     return false;
   }
-  // Copilot installer artifacts live under ~/.copilot; CLI config may be absent.
+  // Copilot-specific artifacts only — ~/.copilot alone is shared with VS Code / VS.
   if (agent.id === "copilot") {
-    if (existsSync(copilotHomeDir(HOME))) {
-      return true;
-    }
-    if (agent.configDir && existsSync(agent.configDir)) {
-      return true;
-    }
-    return false;
+    return isCopilotInstalled(HOME);
   }
   if (agent.binary && (await commandOnPath(agent.binary))) {
     return true;
   }
   if (agent.configDir) {
     return Bun.file(agent.configDir).exists();
+  }
+  return false;
+}
+
+/**
+ * True when Copilot-specific config exists. Does not treat the shared
+ * `~/.copilot` directory (skills/hooks used by VS Code / Visual Studio) as enough.
+ */
+export function isCopilotInstalled(home: string = HOME): boolean {
+  if (existsSync(join(home, ".config", "github-copilot"))) {
+    return true;
+  }
+  const copilot = copilotHomeDir(home);
+  if (existsSync(join(copilot, "mcp-config.json"))) {
+    return true;
+  }
+  if (existsSync(join(copilot, "agents"))) {
+    return true;
   }
   return false;
 }

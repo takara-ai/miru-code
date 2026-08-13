@@ -621,9 +621,32 @@ export async function removeTomlBlock(path: string): Promise<InstallAction> {
  * Ensure Codex loads Agent Skills: `[features] skills = true` in config.toml.
  * Does not disable the flag on uninstall (other skills may still need it).
  */
+export function codexSkillsFeatureEnabled(text: string): boolean {
+  const lines = text.split("\n");
+  let inFeatures = false;
+  for (const line of lines) {
+    const tableKey = line.split("#")[0]?.trim() ?? "";
+    if (tableKey.startsWith("[") && tableKey.endsWith("]")) {
+      inFeatures = tableKey === "[features]";
+      continue;
+    }
+    if (!inFeatures) {
+      continue;
+    }
+    const value = line.split("#")[0]?.match(/^\s*skills\s*=\s*(true|false)\s*$/i)?.[1];
+    if (value?.toLowerCase() === "true") {
+      return true;
+    }
+  }
+  return false;
+}
+
 export async function ensureCodexSkillsFeature(path: string): Promise<InstallAction> {
   const existed = await Bun.file(path).exists();
   const existing = existed ? await Bun.file(path).text() : "";
+  if (codexSkillsFeatureEnabled(existing)) {
+    return "unchanged";
+  }
   const lines = existing.length > 0 ? existing.split("\n") : [];
 
   let featuresIdx = -1;
@@ -647,10 +670,6 @@ export async function ensureCodexSkillsFeature(path: string): Promise<InstallAct
   }
 
   if (featuresIdx >= 0 && skillsIdx >= 0) {
-    const value = (lines[skillsIdx] ?? "").split("#")[0]?.match(/=\s*(true|false)\s*$/i)?.[1];
-    if (value?.toLowerCase() === "true") {
-      return "unchanged";
-    }
     lines[skillsIdx] = "skills = true";
     const next = `${lines.join("\n").replace(/\n+$/, "")}\n`;
     await Bun.write(path, next);
