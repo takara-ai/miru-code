@@ -71,16 +71,16 @@ miru uninstall   # remove miru config
 
 | IDE            | MCP                                   | Instructions / rules            | Hooks *(experimental)*                            | Caveman *(experimental)*                            | STE *(experimental)*                         |
 | -------------- | ------------------------------------- | ------------------------------- | ------------------------------------------------- | --------------------------------------------------- | -------------------------------------------- |
-| Cursor         | `~/.cursor/mcp.json`                  | `~/.cursor/rules/miru-code.mdc` | `~/.cursor/hooks.json`                            | `~/.agents/skills/caveman/SKILL.md`                 | `~/.cursor/skills/ste/SKILL.md`              |
+| Cursor         | `~/.cursor/mcp.json`                  | `~/.cursor/rules/miru-code.mdc` | `~/.cursor/hooks.json`                            | `~/.agents/skills/caveman/SKILL.md`                 | `~/.agents/skills/ste/SKILL.md`              |
 | Claude Code    | `~/.claude.json`                      | `~/.claude/CLAUDE.md`           | `~/.claude/settings.json`                         | `~/.claude/skills/caveman/SKILL.md`                 | `~/.claude/skills/ste/SKILL.md`              |
-| Gemini CLI     | `~/.gemini/settings.json`             | `~/.gemini/GEMINI.md`           | `~/.gemini/settings.json` (`BeforeTool`)          | `~/.agents/skills/caveman/SKILL.md`                 | `~/.gemini/skills/ste/SKILL.md`              |
+| Gemini CLI     | `~/.gemini/settings.json`             | `~/.gemini/GEMINI.md`           | `~/.gemini/settings.json` (`BeforeTool`)          | `~/.agents/skills/caveman/SKILL.md`                 | `~/.agents/skills/ste/SKILL.md`              |
 | Kiro           | `~/.kiro/settings/mcp.json`           | `~/.kiro/steering/miru.md`      | `~/.kiro/settings/hooks.json`                     | `~/.kiro/skills/caveman/SKILL.md`                   | `~/.kiro/skills/ste/SKILL.md`                |
-| OpenCode       | `$XDG_CONFIG_HOME/opencode/opencode.json(c)` *(else `~/.config/opencode/…`)* | `…/AGENTS.md` | `…/plugins/miru-search-guard.ts` | `~/.agents/skills/caveman/SKILL.md` | `…/skills/ste/SKILL.md` |
-| GitHub Copilot | `~/.copilot/mcp-config.json`          | —                               | `~/.copilot/hooks/miru-search.json`               | `~/.agents/skills/caveman/SKILL.md`                 | `~/.copilot/skills/ste/SKILL.md`             |
-| Codex          | `~/.codex/config.toml`                | `~/.codex/AGENTS.md`            | `~/.codex/hooks.json`                             | `~/.agents/skills/caveman/SKILL.md`                 | `~/.codex/skills/ste/SKILL.md`               |
-| VS Code        | `…/Code/User/mcp.json`                | —                               | `~/.copilot/hooks/miru-search.json`               | `~/.agents/skills/caveman/SKILL.md`                 | `~/.copilot/skills/ste/SKILL.md`             |
-| Visual Studio  | `%USERPROFILE%\.mcp.json`             | —                               | `~/.copilot/hooks/miru-search.json`               | `~/.agents/skills/caveman/SKILL.md`                 | `~/.copilot/skills/ste/SKILL.md`             |
-| Windsurf       | —                                     | —                               | `~/.codeium/windsurf/hooks.json`                  | `~/.agents/skills/caveman/SKILL.md`                 | `~/.codeium/windsurf/skills/ste/SKILL.md`    |
+| OpenCode       | `$XDG_CONFIG_HOME/opencode/opencode.json(c)` *(else `~/.config/opencode/…`)* | `…/AGENTS.md` | `…/plugins/miru-search-guard.ts` | `~/.agents/skills/caveman/SKILL.md` | `~/.agents/skills/ste/SKILL.md` |
+| GitHub Copilot | `~/.copilot/mcp-config.json`          | —                               | `~/.copilot/hooks/miru-search.json`               | `~/.agents/skills/caveman/SKILL.md`                 | `~/.agents/skills/ste/SKILL.md`              |
+| Codex          | `~/.codex/config.toml`                | `~/.codex/AGENTS.md`            | `~/.codex/hooks.json`                             | `~/.agents/skills/caveman/SKILL.md`                 | `~/.agents/skills/ste/SKILL.md`              |
+| VS Code        | `…/Code/User/mcp.json`                | —                               | `~/.copilot/hooks/miru-search.json`               | `~/.agents/skills/caveman/SKILL.md`                 | `~/.agents/skills/ste/SKILL.md`              |
+| Visual Studio  | `%USERPROFILE%\.mcp.json`             | —                               | `~/.copilot/hooks/miru-search.json`               | `~/.agents/skills/caveman/SKILL.md`                 | `~/.agents/skills/ste/SKILL.md`              |
+| Windsurf       | —                                     | —                               | `~/.codeium/windsurf/hooks.json`                  | `~/.agents/skills/caveman/SKILL.md`                 | `~/.agents/skills/ste/SKILL.md`              |
 
 
 ### Plugin packaging
@@ -99,7 +99,7 @@ Current limitation:
 
 ### Search hooks
 
-Sub-agent files are also written where supported (see `miru install` plan). Windsurf hooks only *(experimental)* — no MCP entry yet. Caveman is an on-demand Agent Skill (default off): invoke with `/caveman` or “talk like caveman”; stop with “normal mode”. Invocation UI varies by IDE (`/caveman`, `$caveman`, `@caveman`, etc.). Most IDEs share `~/.agents/skills/caveman/SKILL.md` (including Copilot / VS Code / Visual Studio); Claude Code and Kiro keep vendor-native skill dirs. Ownership is tracked on the shared path so uninstalling one IDE keeps the skill while another still owns it; selecting all owners removes it once. STE is an on-demand Agent Skill (default off): invoke with `/ste` or “de-slop this”; keep articles and complete sentences. Invocation UI varies by IDE. Copilot / VS Code / Visual Studio share `~/.copilot/skills/ste/`.
+Sub-agent files are also written where supported (see `miru install` plan). Windsurf hooks only *(experimental)* — no MCP entry yet. Caveman is an on-demand Agent Skill (default off): invoke with `/caveman` or “talk like caveman”; stop with “normal mode”. Invocation UI varies by IDE (`/caveman`, `$caveman`, `@caveman`, etc.). Most IDEs share `~/.agents/skills/caveman/SKILL.md` (including Copilot / VS Code / Visual Studio); Claude Code and Kiro keep vendor-native skill dirs. Ownership is tracked on the shared path so uninstalling one IDE keeps the skill while another still owns it; selecting all owners removes it once. STE is an on-demand Agent Skill (default off): invoke with `/ste` or “de-slop this”; keep articles and complete sentences. Most IDEs share `~/.agents/skills/ste/` the same way (ownership via `miru-owners.json`); Claude Code and Kiro keep vendor-native STE dirs.
 
 <details>
 <summary>STE writing <em>(experimental)</em></summary>
@@ -108,7 +108,7 @@ STE helps write **clear technical English** for docs, runbooks, errors, and rele
 
 **Not ASD-certified.** Full dictionary compliance needs the official standard at [asd-ste100.org](https://www.asd-ste100.org). Miru does not ship the copyrighted ASD dictionary.
 
-Not for marketing or brand copy. Off by default; enable STE in the installer for any supported IDE. Restart the IDE (or reload skills) after install. Codex may require its skills feature enabled in `~/.codex/config.toml`.
+Not for marketing or brand copy. Off by default; enable STE in the installer for any supported IDE. Restart the IDE (or reload skills) after install. For Codex, install also sets `[features] skills = true` in `~/.codex/config.toml` (same as Caveman).
 
 </details>
 

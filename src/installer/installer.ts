@@ -1,4 +1,4 @@
-import { mkdir, rm, unlink } from "node:fs/promises";
+import { mkdir, rmdir, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { loadAgentTemplate } from "../agents.ts";
 import { clearBenchmarkHistory } from "../benchmark/history.ts";
@@ -33,8 +33,18 @@ import {
 import { mergeHooks, removeHooks } from "./hooks/install.ts";
 import { promptConfirm, promptMultiSelect, requireInteractiveTerminal } from "./prompt.ts";
 import { CURSOR_RULES_MDC } from "./search-policy.ts";
+import {
+  ensureSharedSkillOwnersOnInstall,
+  isSharedSkillPath,
+  removeSkillMdAndOwners,
+  resolveSharedSkillUninstall,
+  type SkillPathOf,
+} from "./shared-skill.ts";
 import { CAVEMAN_SKILL_MD } from "./style-packs/caveman.ts";
 import { STE_REFERENCE_FILES, STE_SKILL_MD } from "./style-packs/ste/skill.ts";
+
+const steSkillPathOf: SkillPathOf = (agent) =>
+  agent.steSkillDir ? join(agent.steSkillDir, "SKILL.md") : null;
 
 export interface WriteResult {
   path: string;
@@ -55,6 +65,7 @@ export type IntegrationId =
 export interface ApplyCtx {
   selectedAgents: AgentTarget[];
   cavemanSeenPaths: Set<string>;
+  steSeenPaths: Set<string>;
   /** Defaults to AGENT_TARGETS; override in tests. */
   allAgents?: AgentTarget[];
   /** Defaults to isAgentDetected; override in tests. */
@@ -223,23 +234,30 @@ async function withCodexSkillsFeature(
   if (featureAction === "unchanged") {
     return result;
   }
+  const skillsNote = "enabled [features] skills = true in config.toml";
   if (result.action === "unchanged") {
     return {
       ...result,
       action: "updated",
-      note: "enabled [features] skills = true in config.toml",
+      note: result.note ? `${result.note}; ${skillsNote}` : skillsNote,
     };
   }
   return {
     ...result,
-    note: "also sets [features] skills = true in config.toml",
+    note: result.note
+      ? `${result.note}; also sets [features] skills = true in config.toml`
+      : "also sets [features] skills = true in config.toml",
   };
 }
 
 async function applyCaveman(
   agent: AgentTarget,
   mode: InstallMode,
-  ctx: ApplyCtx = { selectedAgents: [agent], cavemanSeenPaths: new Set() },
+  ctx: ApplyCtx = {
+    selectedAgents: [agent],
+    cavemanSeenPaths: new Set(),
+    steSeenPaths: new Set(),
+  },
 ): Promise<WriteResult | null> {
   const path = agent.cavemanSkillPath;
   if (!path) {
@@ -270,7 +288,11 @@ async function applyCaveman(
   }
 
   if (ctx.cavemanSeenPaths.has(path)) {
-    return { path, action: "unchanged", note: "shared skill path already written" };
+    return withCodexSkillsFeature(agent, {
+      path,
+      action: "unchanged",
+      note: "shared skill path already written",
+    });
   }
   ctx.cavemanSeenPaths.add(path);
 
@@ -287,31 +309,114 @@ async function applyCaveman(
   });
 }
 
-async function applySte(agent: AgentTarget, mode: InstallMode): Promise<WriteResult | null> {
+async function stePackMatches(skillDir: string): Promise<boolean> {
+  const skillPath = join(skillDir, "SKILL.md");
+  if (!(await Bun.file(skillPath).exists())) {
+    return false;
+  }
+  if ((await Bun.file(skillPath).text()) !== STE_SKILL_MD) {
+    return false;
+  }
+  for (const file of STE_REFERENCE_FILES) {
+    const path = join(skillDir, file.relativePath);
+    if (!(await Bun.file(path).exists()) || (await Bun.file(path).text()) !== file.content) {
+      return false;
+    }
+  }
+  return true;
+}
+
+async function removeSteSkillFiles(
+  skillDir: string,
+  skillPath: string,
+): Promise<Extract<InstallAction, "removed" | "not-found">> {
+  let removedReference = false;
+  for (const file of STE_REFERENCE_FILES) {
+    const referencePath = join(skillDir, file.relativePath);
+    if (await Bun.file(referencePath).exists()) {
+      await unlink(referencePath);
+      removedReference = true;
+    }
+  }
+
+  // Match Caveman's ownership model: remove Miru's known files only. Leave
+  // any user-created files in this skill directory untouched.
+  try {
+    await rmdir(join(skillDir, "references"));
+  } catch {
+    // User files may keep the directory non-empty.
+  }
+
+  const skillAction = await removeSkillMdAndOwners(skillPath, skillDir);
+  return removedReference && skillAction === "not-found" ? "removed" : skillAction;
+}
+
+async function applySte(
+  agent: AgentTarget,
+  mode: InstallMode,
+  ctx: ApplyCtx = {
+    selectedAgents: [agent],
+    cavemanSeenPaths: new Set(),
+    steSeenPaths: new Set(),
+  },
+): Promise<WriteResult | null> {
   const skillDir = agent.steSkillDir;
   if (!skillDir) {
     return null;
   }
 
   const skillPath = join(skillDir, "SKILL.md");
+  const allAgents = ctx.allAgents ?? AGENT_TARGETS;
+  const shared = isSharedSkillPath(skillPath, allAgents, steSkillPathOf);
+  const sharedCtx = {
+    selectedAgents: ctx.selectedAgents,
+    allAgents: ctx.allAgents,
+    isDetected: ctx.isDetected,
+  };
 
   if (mode === "uninstall") {
-    // Require Miru's SKILL.md before deleting the tree — do not wipe a
-    // third-party ~/.…/skills/ste directory that Miru never installed.
-    if (!(await Bun.file(skillPath).exists())) {
-      return { path: skillPath, action: "not-found" };
+    if (shared) {
+      const decision = await resolveSharedSkillUninstall(
+        skillPath,
+        skillDir,
+        agent,
+        sharedCtx,
+        steSkillPathOf,
+      );
+      if (decision.kind === "defer" || decision.kind === "keep") {
+        return { path: skillPath, action: "unchanged", note: decision.note };
+      }
     }
-    await rm(skillDir, { recursive: true, force: true });
-    return { path: skillPath, action: "removed" };
+    return { path: skillPath, action: await removeSteSkillFiles(skillDir, skillPath) };
   }
 
+  if (shared) {
+    await ensureSharedSkillOwnersOnInstall(skillDir, skillPath, agent, sharedCtx, steSkillPathOf);
+  }
+
+  if (ctx.steSeenPaths.has(skillPath)) {
+    return withCodexSkillsFeature(agent, {
+      path: skillPath,
+      action: "unchanged",
+      note: "shared skill path already written",
+    });
+  }
+  ctx.steSeenPaths.add(skillPath);
+
   const existed = await Bun.file(skillPath).exists();
+  if (existed && (await stePackMatches(skillDir))) {
+    return withCodexSkillsFeature(agent, { path: skillPath, action: "unchanged" });
+  }
+
   await mkdir(join(skillDir, "references"), { recursive: true });
   await Bun.write(skillPath, STE_SKILL_MD);
   for (const file of STE_REFERENCE_FILES) {
     await Bun.write(join(skillDir, file.relativePath), file.content);
   }
-  return { path: skillPath, action: existed ? "updated" : "created" };
+  return withCodexSkillsFeature(agent, {
+    path: skillPath,
+    action: existed ? "updated" : "created",
+  });
 }
 
 const INTEGRATIONS: Integration[] = [
@@ -389,8 +494,8 @@ function formatActionLine(integration: Integration, result: WriteResult): string
   return `   ${icon} ${integration.label.padEnd(13)} ${dim(result.action)}${suffix}\n      ${dim(result.path)}`;
 }
 
-/** Plan footnote for Codex + Caveman; null when nothing should be shown. */
-export function codexCavemanPlanNote(
+/** Plan footnote for Codex + skills (Caveman / STE); null when nothing should be shown. */
+export function codexSkillsPlanNote(
   mode: InstallMode,
   skillsFeatureEnabled: boolean,
 ): string | null {
@@ -403,6 +508,9 @@ export function codexCavemanPlanNote(
   return null;
 }
 
+/** @deprecated Prefer codexSkillsPlanNote. */
+export const codexCavemanPlanNote = codexSkillsPlanNote;
+
 async function printPlan(
   mode: InstallMode,
   agents: AgentTarget[],
@@ -414,21 +522,27 @@ async function printPlan(
 
   for (const agent of agents) {
     writeStdout(` ${agent.displayName}`);
+    let printedCodexSkillsNote = false;
     for (const integration of integrations) {
       const path = integration.planPath(agent);
       if (!path) {
         continue;
       }
       writeStdout(`   ${green("✓")} ${integration.label.padEnd(13)} ${path}`);
-      if (integration.id === "caveman" && agent.id === "codex") {
+      if (
+        !printedCodexSkillsNote &&
+        (integration.id === "caveman" || integration.id === "ste") &&
+        agent.id === "codex"
+      ) {
         let skillsEnabled = false;
         const configPath = agent.mcp?.path;
         if (mode === "uninstall" && configPath && (await Bun.file(configPath).exists())) {
           skillsEnabled = codexSkillsFeatureEnabled(await Bun.file(configPath).text());
         }
-        const note = codexCavemanPlanNote(mode, skillsEnabled);
+        const note = codexSkillsPlanNote(mode, skillsEnabled);
         if (note) {
           writeStdout(`      ${dim(note)}`);
+          printedCodexSkillsNote = true;
         }
       }
     }
@@ -448,6 +562,7 @@ async function apply(
   const ctx: ApplyCtx = {
     selectedAgents: agents,
     cavemanSeenPaths: new Set(),
+    steSeenPaths: new Set(),
   };
 
   for (const agent of agents) {
