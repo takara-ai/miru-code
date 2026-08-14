@@ -406,6 +406,15 @@ This repo includes a repo-local Codex plugin:
 
 The plugin intentionally launches the published package with `bunx @takara-ai/miru-code` instead of the checked-out source tree, so local source edits here do not affect the Codex plugin until a new package version is published.
 
+## Credits
+
+Miru uses work by [MinishLab](https://github.com/MinishLab). Thank you to its authors.
+
+- **[semble](https://github.com/MinishLab/semble)** (MIT). Miru ports parts of semble. These parts include the file walker, the index layout, the BM25 tokenizer, the hybrid search pipeline, and the ranking signals.
+- **[potion-code](https://huggingface.co/minishlab/potion-code-16M)** and **[Model2Vec](https://github.com/MinishLab/model2vec)** (MIT). The WordPiece tokenizer in `tokenizer/tokenizer.json` comes from potion-code.
+
+See [NOTICE](./NOTICE) for the licence text and the Model2Vec citation.
+
 ## License
 
 MIT
