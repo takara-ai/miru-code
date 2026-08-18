@@ -56,7 +56,18 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Install ripgrep
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
+        timeout-minutes: 2
+        run: |
+          if command -v rg >/dev/null 2>&1; then
+            rg --version
+            exit 0
+          fi
+
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get update \
+            -o Acquire::Retries=2 \
+            -o Acquire::http::Timeout=30 \
+            -o Acquire::https::Timeout=30
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ripgrep
 
       - name: Lint
         run: bun run lint
