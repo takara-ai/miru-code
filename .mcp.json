@@ -3,7 +3,7 @@
     "miru": {
       "type": "stdio",
       "command": "bun",
-      "args": ["x", "@takara-ai/miru-code@latest"]
+      "args": ["x", "@takara-ai/miru-code@1.6.0"]
     }
   }
 }

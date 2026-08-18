@@ -9,7 +9,7 @@
       "source": {
         "source": "url",
         "url": "https://github.com/takara-ai/miru-code.git",
-        "ref": "main"
+        "ref": "codex-plugin-v1.6.0"
       },
       "policy": {
         "installation": "AVAILABLE",
