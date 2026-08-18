@@ -1,6 +1,6 @@
 {
   "name": "miru",
-  "version": "1.7.4",
+  "version": "1.7.5",
   "description": "Miru (見る) — hybrid code search for agents. Bun, TypeScript, Takara embeddings.",
   "author": {
     "name": "takara.ai",

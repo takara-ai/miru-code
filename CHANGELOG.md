@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.7.5](https://github.com/takara-ai/miru-code/compare/v1.7.4...v1.7.5) (2026-08-18)
+
+
+### Bug Fixes
+
+* **plugin:** add Takara logo ([e38e6f4](https://github.com/takara-ai/miru-code/commit/e38e6f4e80cdc53769e0284410fe40baf1d5f286))
+* **plugin:** add Takara logo ([aad49e1](https://github.com/takara-ai/miru-code/commit/aad49e1aa3dd7f02f821f7d725fa33ed036d1d3f))
+
 ## [1.7.4](https://github.com/takara-ai/miru-code/compare/v1.7.3...v1.7.4) (2026-08-18)
 
 
