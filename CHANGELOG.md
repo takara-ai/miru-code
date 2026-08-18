@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.1](https://github.com/takara-ai/miru-code/compare/v1.7.0...v1.7.1) (2026-08-18)
+
+
+### Bug Fixes
+
+* **plugin:** format release manifests ([40a779a](https://github.com/takara-ai/miru-code/commit/40a779a37a7277edb783a4de338b981df0693c00))
+
 ## [1.7.0](https://github.com/takara-ai/miru-code/compare/v1.6.0...v1.7.0) (2026-08-18)
 
 
