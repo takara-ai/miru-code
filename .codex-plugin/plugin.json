@@ -30,7 +30,7 @@
     ],
     "websiteURL": "https://takara.ai",
     "composerIcon": "./assets/takara-crane.svg",
-    "logo": "./assets/takara-crane.svg",
+    "logo": "./assets/takara-logo.png",
     "defaultPrompt": [
       "Find where auth is wired in this repo.",
       "Locate similar code paths for this file and line.",

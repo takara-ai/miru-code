@@ -46,6 +46,7 @@ assets/
 # Packaged Codex plugin icon.
 !.codex-plugin/assets/
 !.codex-plugin/assets/takara-crane.svg
+!.codex-plugin/assets/takara-logo.png
 
 # MCP conformance tests download the official schema locally (see scripts/vendor-mcp-schema.ts)
 tests/fixtures/mcp/*.json
