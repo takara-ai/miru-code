@@ -32,9 +32,12 @@ test("Codex, Claude, and Cursor plugin manifests point at the Miru MCP runtime",
   expect(codexPlugin.mcpServers).toBe("./.mcp.json");
   expect(codexPlugin.interface.displayName).toBe("Miru Code Search");
   expect(codexPlugin.interface.composerIcon).toBe("./assets/takara-crane.svg");
-  expect(codexPlugin.interface.logo).toBe("./assets/takara-crane.svg");
+  expect(codexPlugin.interface.logo).toBe("./assets/takara-logo.png");
   expect(
     await Bun.file(new URL("../.codex-plugin/assets/takara-crane.svg", import.meta.url)).exists(),
+  ).toBe(true);
+  expect(
+    await Bun.file(new URL("../.codex-plugin/assets/takara-logo.png", import.meta.url)).exists(),
   ).toBe(true);
 
   expect(claudePlugin.name).toBe("miru");
