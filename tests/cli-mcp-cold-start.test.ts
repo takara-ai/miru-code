@@ -50,14 +50,11 @@ test("cold start with zero stored credentials stays alive and serves tools/list"
     let buffer = "";
     const responses: Array<{ id?: number; result?: { tools?: Array<{ name: string }> } }> = [];
 
-    const deadline = Date.now() + 12_000;
-    while (responses.length < 2 && Date.now() < deadline) {
-      const { done, value } = await Promise.race([
-        reader.read(),
-        new Promise<{ done: true; value: undefined }>((resolve) =>
-          setTimeout(() => resolve({ done: true, value: undefined }), 500),
-        ),
-      ]);
+    // Read until the MCP server has completed both requests. A polling deadline
+    // races the child process' cold start and can discard an otherwise valid
+    // tools/list response on slower CI runners.
+    while (responses.length < 2) {
+      const { done, value } = await reader.read();
       if (value) {
         buffer += decoder.decode(value, { stream: true });
         let newline = buffer.indexOf("\n");
@@ -94,4 +91,4 @@ test("cold start with zero stored credentials stays alive and serves tools/list"
   } finally {
     await rm(credDir, { recursive: true, force: true });
   }
-}, 20_000);
+});
