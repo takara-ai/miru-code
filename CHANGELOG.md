@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.7](https://github.com/takara-ai/miru-code/compare/v1.7.6...v1.7.7) (2026-08-18)
+
+
+### Bug Fixes
+
+* **ci:** bound ripgrep installation ([fa00607](https://github.com/takara-ai/miru-code/commit/fa0060776e75b387f7d0ac8d08425239da35fcac))
+
 ## [1.7.6](https://github.com/takara-ai/miru-code/compare/v1.7.5...v1.7.6) (2026-08-18)
 
 
