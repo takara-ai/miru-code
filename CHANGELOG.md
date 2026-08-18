@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.7.0](https://github.com/takara-ai/miru-code/compare/v1.6.0...v1.7.0) (2026-08-18)
+
+
+### Features
+
+* **installer:** add experimental STE on-demand skill (ref PRD-405) ([d82a2b9](https://github.com/takara-ai/miru-code/commit/d82a2b9e5b050d9988e2bddf298f2264e567596c))
+* **installer:** enable Caveman skill on all Miru IDEs (ref PRD-404) ([1d6176c](https://github.com/takara-ai/miru-code/commit/1d6176c49e5f45f71bbfe7eb1f41e7b4e73096e8))
+* **installer:** enable STE skill on all Miru IDEs (ref PRD-405) ([14e68ed](https://github.com/takara-ai/miru-code/commit/14e68edbe09bfca69d6c1fdf6d929e78f63802d5))
+* **installer:** enable STE skill on all Miru IDEs (ref PRD-405) ([61fa3cf](https://github.com/takara-ai/miru-code/commit/61fa3cf7b935aeda8e00ce3c1edbc8127e2c16f3))
+* **installer:** install Caveman to shared ~/.agents/skills ([de1cd28](https://github.com/takara-ai/miru-code/commit/de1cd287147237e96378440f849d464208fc40eb))
+
+
+### Bug Fixes
+
+* **auth:** recover expired device credentials in MCP ([725725c](https://github.com/takara-ai/miru-code/commit/725725c5027de5e98b79cbf6f475e90807b2b4c9))
+* **auth:** skip device-login confirm on interactive setup ([f3d25c3](https://github.com/takara-ai/miru-code/commit/f3d25c30177ea1171884ebc9652d051c65ada915))
+* **auth:** start device login spinner immediately ([59729b7](https://github.com/takara-ai/miru-code/commit/59729b73d26dc8b76d835a687e00eacddcd7be8e))
+* **ci:** satisfy biome on spinner width and prompt imports ([caf885d](https://github.com/takara-ai/miru-code/commit/caf885d23445f656b9affea3a76ebb1a1f8b2cfc))
+* **cli:** map confirm arrows to Yes/No layout ([3655eeb](https://github.com/takara-ai/miru-code/commit/3655eeb440ec226f4fb5be59e601fd298873e1b8))
+* **cli:** nest help under miru &lt;command&gt; -h ([3380255](https://github.com/takara-ai/miru-code/commit/3380255a187df8951277c25a7e2bf4743b052081))
+* **installer:** align STE with Caveman shared-path ownership (ref PRD-405) ([339de86](https://github.com/takara-ai/miru-code/commit/339de8621955295bf951a4cbff31a2eecdfb33e2))
+* **installer:** harden Caveman shared-path ownership and clean up ([3e66f34](https://github.com/takara-ai/miru-code/commit/3e66f34cac2108b8c47f875ef151156abca82f36))
+* **installer:** preserve user STE files ([fd838b3](https://github.com/takara-ai/miru-code/commit/fd838b3d5a3070f8b610702cf93a53c860848c6a))
+* **plugin:** keep marketplace on main until release ([6633121](https://github.com/takara-ai/miru-code/commit/66331210acece6f6ab52bebeba65f453903c1e64))
+* **plugin:** pin Codex marketplace to npm release ([853f8bc](https://github.com/takara-ai/miru-code/commit/853f8bc62486557314023bf2b049293ecc856edf))
+* **plugin:** run Miru from npm latest ([b06b47e](https://github.com/takara-ai/miru-code/commit/b06b47ea7257e1683af19d67503d0d4755b4e592))
+* **plugin:** use takara.ai publisher name ([c55866f](https://github.com/takara-ai/miru-code/commit/c55866f52aaa33803678795e0c74d6f5bb14e3be))
+* **release:** preserve unprefixed version tags ([0f3f9dc](https://github.com/takara-ai/miru-code/commit/0f3f9dc3b399849586df9bff52d74842e593cea8))
+* **release:** publish manifest releases ([1379889](https://github.com/takara-ai/miru-code/commit/1379889a50073169b13a7abecdcb2f2e67be5350))
+
 ## [1.6.0](https://github.com/takara-ai/miru-code/compare/v1.5.3...v1.6.0) (2026-08-12)
 
 
