@@ -3,7 +3,7 @@
   "version": "1.0.5",
   "description": "Miru (見る) — hybrid code search for agents. Bun, TypeScript, Takara embeddings.",
   "author": {
-    "name": "Takara",
+    "name": "takara.ai",
     "url": "https://github.com/takara-ai"
   },
   "homepage": "https://takara.ai",
@@ -16,7 +16,7 @@
     "displayName": "Miru Code Search",
     "shortDescription": "Semantic code search for coding agents.",
     "longDescription": "Miru adds repo-aware semantic search to Codex via MCP and guides agents away from grep-style exploration.",
-    "developerName": "Takara",
+    "developerName": "takara.ai",
     "category": "Productivity",
     "capabilities": ["Instructions", "Interactive"],
     "websiteURL": "https://takara.ai",
