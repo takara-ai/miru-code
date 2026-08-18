@@ -27,6 +27,14 @@
       "semicolons": "always"
     }
   },
+  "overrides": [
+    {
+      "includes": [".codex-plugin/plugin.json", "plugin.json"],
+      "formatter": {
+        "enabled": false
+      }
+    }
+  ],
   "assist": {
     "enabled": true,
     "actions": {
