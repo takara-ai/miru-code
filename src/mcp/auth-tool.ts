@@ -3,20 +3,54 @@ import {
   checkDeviceAuthorizationOnce,
   type DeviceAuthConfig,
   type DeviceAuthorizationStart,
+  openBrowserForDeviceLogin,
   resolveDeviceAuthConfig,
   startDeviceAuthorization,
 } from "../auth/device.ts";
+import { isCredentialsError } from "../auth/errors.ts";
 import { saveStoredCredentials, setStoredCredentialsEnvToken } from "../credentials.ts";
 import { toolText } from "./index-cache.ts";
 import type { MiruMcpServer } from "./runtime.ts";
+
+type ToolResult = ReturnType<typeof toolText>;
+
+const CHECK_HINT =
+  'Once the user approves, call `auth` again with action "check" to finish signing in.';
+
+/** Appended to credentials failures so an agent knows Miru's own recovery step. */
+const RECOVERY_HINT =
+  'Miru is not signed in. Call the `auth` tool with action "start" — it opens the Takara ' +
+  'device-login page in the browser — then action "check" once the user approves.';
 
 const AUTH_TOOL_DESCRIPTION =
   "Sign in with Takara credentials via device-code login — no terminal required. " +
   "Only call this in direct response to a tool error mentioning missing/expired " +
   "credentials — never speculatively, since it starts a real sign-in prompt for the " +
-  'user. Call with no arguments (or action "start") to begin: it returns a URL and a ' +
-  "short code. Show both to the user and ask them to open the link and approve. Once " +
-  'they confirm, call again with action "check" to complete sign-in.';
+  'user. Call with no arguments (or action "start") to begin: it opens the device-login ' +
+  `page in the user's browser and returns that URL plus a short code. ${CHECK_HINT}`;
+
+/** Browser opener seam; the real one spawns a detached `open`/`xdg-open`/`start`. */
+export type BrowserOpener = (url: string) => boolean;
+
+/** Opening is on unless MIRU_OPEN_BROWSER is set to something other than "1" (matches `miru setup`). */
+function openIfAllowed(open: BrowserOpener, url: string): boolean {
+  const raw = process.env.MIRU_OPEN_BROWSER;
+  if (raw !== undefined && raw !== "1") {
+    return false;
+  }
+  return open(url);
+}
+
+function approvalText(link: string, userCode: string, opened: boolean): string {
+  const lead = opened ? `A browser tab is open at ${link}` : `Ask the user to open ${link}`;
+  return `${lead}. Code: ${userCode}. ${CHECK_HINT}`;
+}
+
+/** Tool-failure text for every Miru tool, with the sign-in step added when relevant. */
+export function toolErrorText(err: unknown): ToolResult {
+  const message = err instanceof Error ? err.message : String(err);
+  return toolText(isCredentialsError(err) ? `${message}\n\n${RECOVERY_HINT}` : message);
+}
 
 type PendingDeviceAuth = {
   start: DeviceAuthorizationStart;
@@ -24,7 +58,7 @@ type PendingDeviceAuth = {
   startedAtMs: number;
 };
 
-function isExpired(entry: Pick<PendingDeviceAuth, "start" | "startedAtMs">): boolean {
+function isExpired(entry: PendingDeviceAuth): boolean {
   return Date.now() >= entry.startedAtMs + entry.start.expiresIn * 1000;
 }
 
@@ -36,31 +70,24 @@ function isExpired(entry: Pick<PendingDeviceAuth, "start" | "startedAtMs">): boo
 class AuthToolState {
   private pending: PendingDeviceAuth | null = null;
 
-  async start(): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-    if (this.pending && !isExpired(this.pending)) {
-      const { userCode, verificationUriComplete, verificationUri } = this.pending.start;
-      return toolText(
-        `A device login is already pending. Open ${verificationUriComplete ?? verificationUri} ` +
-          `and enter code ${userCode} if not already filled in, then call \`auth\` again with ` +
-          'action "check" once approved.',
-      );
+  constructor(private readonly openBrowser: BrowserOpener) {}
+
+  async start(): Promise<ToolResult> {
+    let pending = this.pending;
+    if (!pending || isExpired(pending)) {
+      const config = resolveDeviceAuthConfig();
+      const start = await startDeviceAuthorization({ config });
+      pending = { start, config, startedAtMs: Date.now() };
+      this.pending = pending;
     }
-    this.pending = null;
 
-    const config = resolveDeviceAuthConfig();
-    const start = await startDeviceAuthorization({ config });
-    this.pending = { start, config, startedAtMs: Date.now() };
-
-    const link = start.verificationUriComplete ?? start.verificationUri;
-    return toolText(
-      `Open ${link} and approve the request` +
-        (start.verificationUriComplete ? "." : ` (enter code ${start.userCode} if prompted).`) +
-        ` Code: ${start.userCode}. Once the user confirms they've approved it, call \`auth\` again ` +
-        'with action "check" to finish signing in.',
-    );
+    const { verificationUriComplete, verificationUri, userCode } = pending.start;
+    const link = verificationUriComplete ?? verificationUri;
+    // Reopening on a repeat call is deliberate: the user may have closed the first tab.
+    return toolText(approvalText(link, userCode, openIfAllowed(this.openBrowser, link)));
   }
 
-  async check(): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  async check(): Promise<ToolResult> {
     if (!this.pending) {
       return toolText('No device login is pending. Call `auth` with action "start" first.');
     }
@@ -106,8 +133,11 @@ class AuthToolState {
   }
 }
 
-export function registerAuthTool(server: MiruMcpServer): void {
-  const state = new AuthToolState();
+export function registerAuthTool(
+  server: MiruMcpServer,
+  options?: { openBrowser?: BrowserOpener },
+): void {
+  const state = new AuthToolState(options?.openBrowser ?? openBrowserForDeviceLogin);
 
   server.registerTool(
     "auth",

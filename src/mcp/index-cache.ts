@@ -399,7 +399,8 @@ export async function getIndexForRepo(
     return await cache.get(repo, ref);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`Failed to index ${repo}: ${message}`);
+    // Keep `cause` so the tool boundary can still recognize a credentials failure.
+    throw new Error(`Failed to index ${repo}: ${message}`, { cause: err });
   }
 }
 

@@ -275,7 +275,11 @@ export const AGENT_TARGETS: AgentTarget[] = [
     displayName: "GitHub Copilot",
     binary: null,
     configDir: join(HOME, ".config", "github-copilot"),
-    mcp: jsonMcp(join(copilotHomeDir(HOME), "mcp-config.json"), "mcpServers", BARE_STDIO_SERVER_CONFIG),
+    mcp: jsonMcp(
+      join(copilotHomeDir(HOME), "mcp-config.json"),
+      "mcpServers",
+      BARE_STDIO_SERVER_CONFIG,
+    ),
     instructionsPath: null,
     cursorRulesPath: null,
     hooksPath: copilotHooksPath(HOME),

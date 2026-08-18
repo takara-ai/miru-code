@@ -1,4 +1,5 @@
 import { envFirstString } from "../env.ts";
+import { CredentialsError } from "./errors.ts";
 import type { StoredDeviceCodeCredentials } from "./types.ts";
 
 const DEFAULT_AUTH_BASE_URL = "https://auth.takara.ai";
@@ -239,7 +240,7 @@ export async function refreshDeviceAuthorization(
   options?: { config?: DeviceAuthConfig; fetchImpl?: typeof fetch },
 ): Promise<DeviceAuthorizationTokens> {
   if (!credentials.refresh_token?.trim()) {
-    throw new Error(
+    throw new CredentialsError(
       "Stored device credentials cannot be refreshed because no refresh token exists.",
     );
   }
@@ -256,12 +257,14 @@ export async function refreshDeviceAuthorization(
   const payload = text ? (JSON.parse(text) as OAuthTokenSuccess | OAuthTokenError) : {};
 
   if (!response.ok) {
-    throw new Error(`Device token refresh failed: ${parseTokenError(payload as OAuthTokenError)}`);
+    throw new CredentialsError(
+      `Device token refresh failed: ${parseTokenError(payload as OAuthTokenError)}`,
+    );
   }
 
   const success = payload as OAuthTokenSuccess;
   if (!success.access_token?.trim()) {
-    throw new Error("Token refresh succeeded but did not return an access token.");
+    throw new CredentialsError("Token refresh succeeded but did not return an access token.");
   }
 
   return normalizeTokenSuccess({

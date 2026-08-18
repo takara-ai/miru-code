@@ -34,7 +34,7 @@ import {
   MAX_MCP_TOP_K,
   resolveChunk,
 } from "../utils.ts";
-import { registerAuthTool } from "./auth-tool.ts";
+import { registerAuthTool, toolErrorText } from "./auth-tool.ts";
 import {
   formatExpandResultsText,
   formatLiteralLocateText,
@@ -161,7 +161,7 @@ export function createMcpServer(
         const body = formatResultsText(payload);
         return toolText(skip ? withBenchmarkSkippedNote(body, skip) : body);
       } catch (err) {
-        return toolText(err instanceof Error ? err.message : String(err));
+        return toolErrorText(err);
       }
     },
   );
@@ -247,7 +247,7 @@ export function createMcpServer(
         const body = formatLiteralLocateText(payload);
         return toolText(skip ? withBenchmarkSkippedNote(body, skip) : body);
       } catch (err) {
-        return toolText(err instanceof Error ? err.message : String(err));
+        return toolErrorText(err);
       }
     },
   );
@@ -308,7 +308,7 @@ export function createMcpServer(
           ),
         );
       } catch (err) {
-        return toolText(err instanceof Error ? err.message : String(err));
+        return toolErrorText(err);
       }
     },
   );
@@ -360,7 +360,7 @@ export function createMcpServer(
           ),
         );
       } catch (err) {
-        return toolText(err instanceof Error ? err.message : String(err));
+        return toolErrorText(err);
       }
     },
   );

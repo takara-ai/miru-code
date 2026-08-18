@@ -1,3 +1,5 @@
+import { CredentialsError } from "./auth/errors.ts";
+
 export function envInt(name: string, fallback: number, min = 1): number {
   const raw = process.env[name];
   if (!raw) {
@@ -59,7 +61,7 @@ export function hasTakaraApiKeyInEnv(): boolean {
 export function resolveEmbeddingApiKey(): string {
   const key = process.env[TAKARA_API_KEY_ENV]?.trim() ?? "";
   if (!isUsableTakaraApiKey(key)) {
-    throw new Error(
+    throw new CredentialsError(
       "Takara credentials required. If you're an agent with Miru MCP tools available, call the " +
         "`auth` tool to sign in. Otherwise run `miru setup`, or set TAKARA_API_KEY in your MCP " +
         "server env or .env.local.",

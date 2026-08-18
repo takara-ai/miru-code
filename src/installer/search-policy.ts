@@ -123,7 +123,8 @@ export const MCP_SERVER_INSTRUCTIONS =
   "(3) `find_related` traces similar code in other files, not more context in the same file. " +
   "(4) `locate` finds exact substrings (env vars, symbols, error codes) — prefer over Grep; use mode=count or locations when possible. " +
   "Always pass the project root as `repo`. Local repos return `absolute_path` on each hit — use Read only to edit. " +
-  "Native Grep/Glob only outside the indexed repo or for non-code tasks.";
+  "Native Grep/Glob only outside the indexed repo or for non-code tasks. " +
+  "On credential errors, call this server's `auth` tool — not the host `mcp_auth` tool.";
 
 export const MCP_BENCHMARK_SERVER_INSTRUCTIONS =
   `${MCP_SERVER_INSTRUCTIONS} ` +

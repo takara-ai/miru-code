@@ -1,11 +1,6 @@
 import { mkdir, rmdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
-import {
-  AGENT_TARGETS,
-  type AgentTarget,
-  type InstallAction,
-  isAgentDetected,
-} from "./agents.ts";
+import { AGENT_TARGETS, type AgentTarget, type InstallAction, isAgentDetected } from "./agents.ts";
 
 export const CAVEMAN_OWNERS_FILE = "miru-owners.json";
 
@@ -132,8 +127,7 @@ export async function resolveSharedCavemanUninstall(
 ): Promise<SharedCavemanUninstallDecision> {
   const selectedSharing = agentsSharingCavemanPath(path, ctx.selectedAgents);
   const isLast =
-    selectedSharing.length === 0 ||
-    selectedSharing[selectedSharing.length - 1]?.id === agent.id;
+    selectedSharing.length === 0 || selectedSharing[selectedSharing.length - 1]?.id === agent.id;
   if (!isLast) {
     return {
       kind: "defer",
@@ -143,7 +137,7 @@ export async function resolveSharedCavemanUninstall(
 
   const owners = await readCavemanOwners(skillDir);
   if (owners !== null) {
-    const removing = new Set(selectedSharing.map((selected) => selected.id));
+    const removing = new Set<string>(selectedSharing.map((selected) => selected.id));
     const remaining = owners.filter((ownerId) => !removing.has(ownerId));
     if (remaining.length > 0) {
       await writeCavemanOwners(skillDir, remaining);

@@ -2,9 +2,16 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { IndexCache } from "../src/mcp/index-cache.ts";
-import { createMcpServer } from "../src/mcp/server.ts";
+import { type BrowserOpener, registerAuthTool } from "../src/mcp/auth-tool.ts";
+import { MiruMcpServer } from "../src/mcp/runtime.ts";
 import { MemoryTransport } from "./helpers/mcp-memory-transport.ts";
+
+/** A server with only the `auth` tool — no index cache needed for these tests. */
+function authServer(openBrowser?: BrowserOpener): MiruMcpServer {
+  const server = new MiruMcpServer({ name: "miru", version: "test" });
+  registerAuthTool(server, { openBrowser });
+  return server;
+}
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -33,11 +40,14 @@ function toolTextOf(message: unknown): string {
 describe("auth MCP tool", () => {
   let credDir: string;
   const prevDir = process.env.MIRU_CREDENTIALS_DIR;
+  const prevOpenBrowser = process.env.MIRU_OPEN_BROWSER;
   const originalFetch = globalThis.fetch;
 
   beforeEach(async () => {
     credDir = await mkdtemp(join(tmpdir(), "miru-auth-tool-"));
     process.env.MIRU_CREDENTIALS_DIR = credDir;
+    // Keep the real browser from opening during tests that don't inject a stub opener.
+    process.env.MIRU_OPEN_BROWSER = "0";
   });
 
   afterEach(async () => {
@@ -48,10 +58,15 @@ describe("auth MCP tool", () => {
     } else {
       process.env.MIRU_CREDENTIALS_DIR = prevDir;
     }
+    if (prevOpenBrowser === undefined) {
+      delete process.env.MIRU_OPEN_BROWSER;
+    } else {
+      process.env.MIRU_OPEN_BROWSER = prevOpenBrowser;
+    }
   });
 
   test("check with no pending login tells the caller to start one", async () => {
-    const server = createMcpServer(new IndexCache());
+    const server = authServer();
     const transport = new MemoryTransport([await callAuthTool(1, { action: "check" })]);
     await server.connect(transport);
 
@@ -70,7 +85,7 @@ describe("auth MCP tool", () => {
         interval: 5,
       })) as typeof fetch;
 
-    const server = createMcpServer(new IndexCache());
+    const server = authServer();
     const transport = new MemoryTransport([await callAuthTool(1, { action: "start" })]);
     await server.connect(transport);
 
@@ -78,6 +93,56 @@ describe("auth MCP tool", () => {
     expect(text).toContain("ABCD-1234");
     expect(text).toContain("https://example.vercel.app/platform/device?user_code=ABCD-1234");
     expect(text).toMatch(/action "check"/);
+  });
+
+  test("start opens the verification page in the browser and says so", async () => {
+    process.env.MIRU_OPEN_BROWSER = "1";
+    globalThis.fetch = (async (_input, _init) =>
+      jsonResponse(200, {
+        device_code: "device-abc",
+        user_code: "ABCD-1234",
+        verification_uri: "https://auth.dev.takara.ai/device/approve",
+        verification_uri_complete: "https://example.vercel.app/platform/device?user_code=ABCD-1234",
+        expires_in: 600,
+        interval: 5,
+      })) as typeof fetch;
+
+    const opened: string[] = [];
+    const server = authServer((url) => {
+      opened.push(url);
+      return true;
+    });
+    const transport = new MemoryTransport([await callAuthTool(1, { action: "start" })]);
+    await server.connect(transport);
+
+    expect(opened).toEqual(["https://example.vercel.app/platform/device?user_code=ABCD-1234"]);
+    const text = toolTextOf(transport.responseFor(1));
+    expect(text).toContain("A browser tab is open");
+    expect(text).toContain("ABCD-1234");
+  });
+
+  test("start asks the user to open the link when the browser is disabled", async () => {
+    process.env.MIRU_OPEN_BROWSER = "0";
+    globalThis.fetch = (async (_input, _init) =>
+      jsonResponse(200, {
+        device_code: "device-abc",
+        user_code: "ABCD-1234",
+        verification_uri: "https://auth.dev.takara.ai/device/approve",
+        expires_in: 600,
+        interval: 5,
+      })) as typeof fetch;
+
+    let called = false;
+    const server = authServer(() => {
+      called = true;
+      return true;
+    });
+    const transport = new MemoryTransport([await callAuthTool(1, { action: "start" })]);
+    await server.connect(transport);
+
+    expect(called).toBe(false);
+    const text = toolTextOf(transport.responseFor(1));
+    expect(text).toContain("Ask the user to open");
   });
 
   test("start reuses an existing pending login instead of requesting a new one", async () => {
@@ -93,7 +158,7 @@ describe("auth MCP tool", () => {
       });
     }) as typeof fetch;
 
-    const server = createMcpServer(new IndexCache());
+    const server = authServer();
     const transport = new MemoryTransport([
       await callAuthTool(1, { action: "start" }),
       await callAuthTool(2, { action: "start" }),
@@ -101,8 +166,8 @@ describe("auth MCP tool", () => {
     await server.connect(transport);
 
     expect(calls).toBe(1);
-    const second = toolTextOf(transport.responseFor(2));
-    expect(second).toMatch(/already pending/);
+    // The repeat call re-serves the same code instead of burning a new device code.
+    expect(toolTextOf(transport.responseFor(2))).toContain("ABCD-1234");
   });
 
   test("check reports pending, then succeeds and saves device_code credentials", async () => {
@@ -132,7 +197,7 @@ describe("auth MCP tool", () => {
       });
     }) as typeof fetch;
 
-    const server = createMcpServer(new IndexCache());
+    const server = authServer();
     const transport = new MemoryTransport([
       await callAuthTool(1, { action: "start" }),
       await callAuthTool(2, { action: "check" }),
@@ -180,7 +245,7 @@ describe("auth MCP tool", () => {
       });
     }) as typeof fetch;
 
-    const server = createMcpServer(new IndexCache());
+    const server = authServer();
     const transport = new MemoryTransport([
       await callAuthTool(1, { action: "start" }),
       await callAuthTool(2, { action: "check" }),
@@ -205,7 +270,7 @@ describe("auth MCP tool", () => {
       });
     }) as typeof fetch;
 
-    const server = createMcpServer(new IndexCache());
+    const server = authServer();
     const first = new MemoryTransport([await callAuthTool(1, { action: "start" })]);
     await server.connect(first);
     expect(calls).toBe(1);
@@ -234,7 +299,7 @@ describe("auth MCP tool", () => {
       return jsonResponse(400, { error: "access_denied" });
     }) as typeof fetch;
 
-    const server = createMcpServer(new IndexCache());
+    const server = authServer();
     const transport = new MemoryTransport([
       await callAuthTool(1, { action: "start" }),
       await callAuthTool(2, { action: "check" }),
