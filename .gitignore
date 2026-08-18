@@ -43,5 +43,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # brand art sources (regenerate via scripts/render-crane-art.ts)
 assets/
 
+# Packaged Codex plugin icon.
+!.codex-plugin/assets/
+!.codex-plugin/assets/takara-crane.svg
+
 # MCP conformance tests download the official schema locally (see scripts/vendor-mcp-schema.ts)
 tests/fixtures/mcp/*.json
