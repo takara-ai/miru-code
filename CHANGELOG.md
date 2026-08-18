@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.7.6](https://github.com/takara-ai/miru-code/compare/v1.7.5...v1.7.6) (2026-08-18)
+
+
+### Bug Fixes
+
+* **plugin:** use PNG logo asset ([b0bb604](https://github.com/takara-ai/miru-code/commit/b0bb604c2c8311c64582352de7f60a9075fe99e3))
+* **plugin:** use PNG logo asset ([532d1a9](https://github.com/takara-ai/miru-code/commit/532d1a97e6dd0dcd6f23ee2e88d009057e6dabac))
+
 ## [1.7.5](https://github.com/takara-ai/miru-code/compare/v1.7.4...v1.7.5) (2026-08-18)
 
 
