@@ -185,7 +185,9 @@ export function printCommandHelp(command: string): void {
         "Caveman = chat compression (/caveman). STE = clear docs (/ste). Off by default.",
       );
       writeStdout("Caveman is supported on all Miru installer IDEs (shared path for most IDEs).");
-      writeStdout("STE is supported on all Miru installer IDEs (same shared-path ownership model).");
+      writeStdout(
+        "STE is supported on all Miru installer IDEs (same shared-path ownership model).",
+      );
       writeStdout("Run miru setup first, or set TAKARA_API_KEY for MCP env expansion.");
       writeStdout("");
       return;

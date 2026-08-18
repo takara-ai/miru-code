@@ -1,11 +1,6 @@
 import { mkdir, rmdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
-import {
-  AGENT_TARGETS,
-  type AgentTarget,
-  type InstallAction,
-  isAgentDetected,
-} from "./agents.ts";
+import { AGENT_TARGETS, type AgentTarget, type InstallAction, isAgentDetected } from "./agents.ts";
 
 /** Sidecar next to a shared Agent Skill (`SKILL.md`) tracking which IDEs own it. */
 export const SKILL_OWNERS_FILE = "miru-owners.json";
@@ -146,8 +141,7 @@ export async function resolveSharedSkillUninstall(
 ): Promise<SharedSkillUninstallDecision> {
   const selectedSharing = agentsSharingPath(path, ctx.selectedAgents, pathOf);
   const isLast =
-    selectedSharing.length === 0 ||
-    selectedSharing[selectedSharing.length - 1]?.id === agent.id;
+    selectedSharing.length === 0 || selectedSharing[selectedSharing.length - 1]?.id === agent.id;
   if (!isLast) {
     return {
       kind: "defer",

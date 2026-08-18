@@ -1,14 +1,14 @@
+import type { AgentTarget, InstallAction } from "./agents.ts";
 import {
   ensureSharedSkillOwnersOnInstall,
   isSharedSkillPath,
   removeSkillMdAndOwners,
   resolveSharedSkillUninstall,
-  SKILL_OWNERS_FILE,
   type SharedSkillCtx,
   type SharedSkillUninstallDecision,
+  SKILL_OWNERS_FILE,
   type SkillPathOf,
 } from "./shared-skill.ts";
-import type { AgentTarget, InstallAction } from "./agents.ts";
 
 /** @deprecated Prefer SKILL_OWNERS_FILE — same sidecar name for all shared skills. */
 export const CAVEMAN_OWNERS_FILE = SKILL_OWNERS_FILE;
