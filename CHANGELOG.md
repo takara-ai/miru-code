@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.2](https://github.com/takara-ai/miru-code/compare/v1.7.1...v1.7.2) (2026-08-18)
+
+
+### Bug Fixes
+
+* **release:** allow generated plugin manifests ([77b56cc](https://github.com/takara-ai/miru-code/commit/77b56ccc6cef53990823255fe5bf5cbf2b8073a2))
+
 ## [1.7.1](https://github.com/takara-ai/miru-code/compare/v1.7.0...v1.7.1) (2026-08-18)
 
 
