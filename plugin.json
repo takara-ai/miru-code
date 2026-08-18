@@ -1,6 +1,6 @@
 {
   "name": "miru",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "description": "Semantic code search for coding agents. Find code by meaning, not grep.",
   "author": {
     "name": "Takara",
