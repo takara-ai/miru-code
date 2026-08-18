@@ -9,19 +9,9 @@
   "homepage": "https://takara.ai",
   "repository": "https://github.com/takara-ai/miru-code",
   "license": "MIT",
-  "keywords": [
-    "code-search",
-    "semantic-search",
-    "mcp",
-    "agents",
-    "takara"
-  ],
+  "keywords": ["code-search", "semantic-search", "mcp", "agents", "takara"],
   "category": "Productivity",
-  "tags": [
-    "mcp",
-    "semantic-search",
-    "developer-tools"
-  ],
+  "tags": ["mcp", "semantic-search", "developer-tools"],
   "skills": "./skills/",
   "rules": "./.cursor/rules/miru-code-search.mdc",
   "mcpServers": "./.mcp.json"
