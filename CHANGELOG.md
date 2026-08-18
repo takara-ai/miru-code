@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.7.3](https://github.com/takara-ai/miru-code/compare/v1.7.2...v1.7.3) (2026-08-18)
+
+
+### Bug Fixes
+
+* **release:** publish from trusted workflow ([1e93b66](https://github.com/takara-ai/miru-code/commit/1e93b667ba540cb058969840d80cc3b3ff1d0ddb))
+* **release:** publish from trusted workflow ([5168211](https://github.com/takara-ai/miru-code/commit/5168211b36f9d5ac9a5fc6f4dd75d35c7bd76c92))
+
 ## [1.7.2](https://github.com/takara-ai/miru-code/compare/v1.7.1...v1.7.2) (2026-08-18)
 
 
