@@ -178,18 +178,23 @@ export function printCommandHelp(command: string): void {
     case "install":
       commandHeader("install", "Interactive global agent setup.");
       writeStdout("Configures MCP server, instructions, sub-agent files, and optional");
-      writeStdout("experimental integrations (search hooks, Caveman skill) under");
+      writeStdout("experimental integrations (search hooks, Caveman, STE writing) under");
       writeStdout("your user config (~/.claude, ~/.cursor, etc.).");
       writeStdout("");
-      writeStdout("Caveman = on-demand chat compression (/caveman). Off by default.");
-      writeStdout("Supported on all Miru installer IDEs (shared Copilot path for VS Code / VS).");
+      writeStdout(
+        "Caveman = chat compression (/caveman). STE = clear docs (/ste). Off by default.",
+      );
+      writeStdout("Caveman is supported on all Miru installer IDEs (shared path for most IDEs).");
+      writeStdout(
+        "STE is supported on all Miru installer IDEs (same shared-path ownership model).",
+      );
       writeStdout("Run miru setup first, or set TAKARA_API_KEY for MCP env expansion.");
       writeStdout("");
       return;
     case "uninstall":
       commandHeader("uninstall", "Remove miru configuration from agents.");
       writeStdout("Removes MCP entries, marked instruction blocks, global sub-agents,");
-      writeStdout("and selected optional integrations (hooks, Caveman skill).");
+      writeStdout("and selected optional integrations (hooks, Caveman, STE skills).");
       writeStdout("Also deletes the global benchmark report from Miru's state directory.");
       writeStdout("");
       return;
