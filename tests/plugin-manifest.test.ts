@@ -77,7 +77,7 @@ test("host marketplace manifests point at the Miru repo", async () => {
       url: "https://github.com/takara-ai/miru-code.git",
       ref: "main",
     },
-    policy: { installation: "AVAILABLE", authentication: "ON_USE" },
+    policy: { installation: "AVAILABLE", authentication: "ON_INSTALL" },
     category: "Productivity",
   });
 

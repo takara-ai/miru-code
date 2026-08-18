@@ -19,13 +19,14 @@ const CHECK_HINT =
 
 /** Appended to credentials failures so an agent knows Miru's own recovery step. */
 const RECOVERY_HINT =
-  'Miru is not signed in. Call the `auth` tool with action "start" — it opens the Takara ' +
-  'device-login page in the browser — then action "check" once the user approves.';
+  'Miru could not authorize its current credentials. Call the `auth` tool with action "start" ' +
+  'to open the Takara device-login page, then action "check" once the user approves. If access ' +
+  "is still denied after signing in, check the account token balance.";
 
 const AUTH_TOOL_DESCRIPTION =
   "Sign in with Takara credentials via device-code login — no terminal required. " +
-  "Only call this in direct response to a tool error mentioning missing/expired " +
-  "credentials — never speculatively, since it starts a real sign-in prompt for the " +
+  "Only call this in direct response to a tool error mentioning missing, expired, rejected, or " +
+  "invalid credentials — never speculatively, since it starts a real sign-in prompt for the " +
   'user. Call with no arguments (or action "start") to begin: it opens the device-login ' +
   `page in the user's browser and returns that URL plus a short code. ${CHECK_HINT}`;
 

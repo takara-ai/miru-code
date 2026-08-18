@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { CredentialsError, isCredentialsError } from "../src/auth/errors.ts";
+import { EmbeddingApiError } from "../src/embeddings/openai.ts";
 import { toolErrorText } from "../src/mcp/auth-tool.ts";
 
 function textOf(result: { content: Array<{ text: string }> }): string {
@@ -40,7 +41,14 @@ describe("toolErrorText", () => {
     });
     const text = textOf(toolErrorText(wrapped));
     expect(text).toContain("Failed to index /repo");
-    expect(text).toContain("Miru is not signed in");
+    expect(text).toContain("Miru could not authorize its current credentials");
+  });
+
+  test("rejected embedding credentials offer device-code recovery", () => {
+    const text = textOf(toolErrorText(new EmbeddingApiError(401, "unauthorized")));
+    expect(text).toContain("Not authorized");
+    expect(text).toContain("`auth`");
+    expect(text).toContain('action "start"');
   });
 
   test("plain errors pass through unchanged", () => {

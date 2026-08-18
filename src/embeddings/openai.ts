@@ -1,3 +1,4 @@
+import { CredentialsError } from "../auth/errors.ts";
 import { mapPool, resolveWorkerConcurrency } from "../concurrency.ts";
 import { loadStoredCredentials } from "../credentials.ts";
 import { envFirstString, envOptionalInt, resolveEmbeddingApiKey } from "../env.ts";
@@ -330,7 +331,7 @@ export interface EmbeddingClient {
 export const EMBEDDING_AUTH_ERROR_MESSAGE =
   "Not authorized. Check your API key and/or token balance.";
 
-class EmbeddingApiError extends Error {
+export class EmbeddingApiError extends Error {
   readonly status: number;
   readonly body: string;
 
@@ -339,7 +340,13 @@ class EmbeddingApiError extends Error {
       status === 401 || status === 403
         ? EMBEDDING_AUTH_ERROR_MESSAGE
         : `Embedding API error ${status}: ${body.slice(0, 500)}`;
-    super(message);
+    // A 401/403 means the existing credential cannot authorize embeddings. Preserve
+    // the HTTP details while marking it recoverable so MCP tools can offer the
+    // device-code flow instead of leaving agents to fall back to shell commands.
+    super(
+      message,
+      status === 401 || status === 403 ? { cause: new CredentialsError(message) } : undefined,
+    );
     this.name = "EmbeddingApiError";
     this.status = status;
     this.body = body;
