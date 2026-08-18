@@ -146,7 +146,7 @@ In descriptions, aim for about **25 words or fewer** per sentence. Keep **one to
 ### R7 — Condition before command
 State the condition first. Then give the command.
 
-Example: \`If the node is down, stop the job.\`  
+Example: \`If the node is down, stop the job.\`
 Not: \`Stop the job if the node is down.\` when the condition is the safety gate.
 
 ### R8 — Active voice and simple tense
