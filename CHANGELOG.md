@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.7.4](https://github.com/takara-ai/miru-code/compare/v1.7.3...v1.7.4) (2026-08-18)
+
+
+### Bug Fixes
+
+* **auth:** recover from rejected credentials ([8d63e78](https://github.com/takara-ai/miru-code/commit/8d63e788265443683b3d7595f022c5c542edfe6a))
+* **auth:** recover from rejected credentials ([36a9721](https://github.com/takara-ai/miru-code/commit/36a9721d5c775abf86a6b37006f15145518c5ad0))
+
 ## [1.7.3](https://github.com/takara-ai/miru-code/compare/v1.7.2...v1.7.3) (2026-08-18)
 
 
