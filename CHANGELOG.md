@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.8](https://github.com/takara-ai/miru-code/compare/v1.7.7...v1.7.8) (2026-08-18)
+
+
+### Bug Fixes
+
+* **ci:** bound release job duration ([f4ce8c9](https://github.com/takara-ai/miru-code/commit/f4ce8c96efffe179a648586675ead72849122a81))
+
 ## [1.7.7](https://github.com/takara-ai/miru-code/compare/v1.7.6...v1.7.7) (2026-08-18)
 
 
