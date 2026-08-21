@@ -1,0 +1,23 @@
+{
+  "name": "sagemaker-marketplace-endpoint-cdk",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CDK app to deploy a SageMaker real-time endpoint from the DS1 AWS Marketplace model package, for use with Miru.",
+  "bin": {
+    "sagemaker-marketplace-endpoint": "bin/app.ts"
+  },
+  "scripts": {
+    "build": "tsc",
+    "cdk": "cdk"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "aws-cdk": "^2.170.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.170.0",
+    "constructs": "^10.4.2"
+  }
+}

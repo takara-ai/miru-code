@@ -1,0 +1,104 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Deploy a SageMaker real-time endpoint from the DS1 AWS Marketplace model package, for use with Miru
+
+Parameters:
+  ModelPackageArn:
+    Type: String
+    Description: >-
+      ARN of the subscribed DS1 AWS Marketplace model package for this region
+      (copy from the AWS Marketplace listing page after subscribing)
+  EndpointName:
+    Type: String
+    Default: ds1-endpoint
+    Description: Name for the SageMaker endpoint
+  InstanceType:
+    Type: String
+    Default: ml.c5.xlarge
+    Description: SageMaker instance type for the endpoint
+  InitialInstanceCount:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    Description: Number of instances for the production variant
+  Region:
+    Type: String
+    Description: >-
+      AWS region you are deploying into. Must match the --region you pass to
+      the deploy command and the region of your ModelPackageArn — this
+      parameter does not change where the stack deploys, it documents and
+      lets you cross-check the intended region.
+
+Resources:
+  SageMakerExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub sagemaker-marketplace-exec-${EndpointName}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: sagemaker.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: sagemaker-marketplace-logs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: Logs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogStreams
+                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/sagemaker/Endpoints/${EndpointName}*
+
+  Model:
+    Type: AWS::SageMaker::Model
+    DependsOn:
+      - SageMakerExecutionRole
+    Properties:
+      ModelName: !Sub ${EndpointName}-model
+      ExecutionRoleArn: !GetAtt SageMakerExecutionRole.Arn
+      EnableNetworkIsolation: true
+      PrimaryContainer:
+        ModelPackageName: !Ref ModelPackageArn
+
+  EndpointConfig:
+    Type: AWS::SageMaker::EndpointConfig
+    DependsOn:
+      - Model
+    Properties:
+      EndpointConfigName: !Sub ${EndpointName}-config
+      ProductionVariants:
+        - VariantName: AllTraffic
+          ModelName: !GetAtt Model.ModelName
+          InitialInstanceCount: !Ref InitialInstanceCount
+          InstanceType: !Ref InstanceType
+          ContainerStartupHealthCheckTimeoutInSeconds: 900
+
+  Endpoint:
+    Type: AWS::SageMaker::Endpoint
+    DependsOn:
+      - EndpointConfig
+    Properties:
+      EndpointName: !Ref EndpointName
+      EndpointConfigName: !GetAtt EndpointConfig.EndpointConfigName
+      Tags:
+        - Key: ExpectedRegion
+          Value: !Ref Region
+
+Outputs:
+  ExecutionRoleArn:
+    Description: IAM role ARN used by the SageMaker endpoint (needed for Miru configuration)
+    Value: !GetAtt SageMakerExecutionRole.Arn
+  EndpointArn:
+    Description: SageMaker endpoint ARN (needed for Miru configuration)
+    Value: !GetAtt Endpoint.EndpointArn
+  EndpointNameOut:
+    Description: Endpoint name
+    Value: !Ref EndpointName
+  RegionOut:
+    Description: AWS region the stack was deployed into
+    Value: !Ref AWS::Region
