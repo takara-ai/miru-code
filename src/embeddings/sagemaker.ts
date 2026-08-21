@@ -108,11 +108,32 @@ export const SAGEMAKER_AUTH_ERROR_MESSAGE =
   "(AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/AWS_SESSION_TOKEN or AWS_PROFILE) and that the " +
   "identity has sagemaker:InvokeEndpoint permission on the endpoint.";
 
+/** Shown when the endpoint name in the stored/env config no longer exists. */
+export const SAGEMAKER_NOT_FOUND_ERROR_MESSAGE =
+  "SageMaker endpoint not found — it may have been deleted, renamed, or deployed in a " +
+  "different region. Confirm the endpoint still exists, then run `miru setup --sagemaker` " +
+  "again to re-authenticate and re-point Miru at the correct endpoint.";
+
+/** Shown for DNS/connection-level failures reaching the SageMaker Runtime API itself. */
+export const SAGEMAKER_UNREACHABLE_ERROR_MESSAGE =
+  "Could not reach the SageMaker endpoint (network error). Check your network/VPN/VPC " +
+  "access and that the configured region is correct, then run `miru setup --sagemaker` " +
+  "again to re-authenticate and re-validate the connection.";
+
 const AUTH_EXCEPTION_NAMES = new Set([
   "AccessDeniedException",
   "UnrecognizedClientException",
   "ExpiredTokenException",
   "CredentialsProviderError",
+]);
+
+/** Node/undici connection-level error codes — the request never reached AWS. */
+const NETWORK_ERROR_CODES = new Set([
+  "ENOTFOUND",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ETIMEDOUT",
+  "EAI_AGAIN",
 ]);
 
 class SageMakerInvokeError extends Error {
@@ -125,10 +146,11 @@ class SageMakerInvokeError extends Error {
   }
 }
 
-function toInvokeError(err: unknown): SageMakerInvokeError {
+export function toInvokeError(err: unknown): SageMakerInvokeError {
   const awsErr = err as {
     name?: string;
     message?: string;
+    code?: string;
     $metadata?: { httpStatusCode?: number };
     OriginalStatusCode?: string | number;
     OriginalMessage?: string;
@@ -136,6 +158,17 @@ function toInvokeError(err: unknown): SageMakerInvokeError {
 
   if (awsErr?.name && AUTH_EXCEPTION_NAMES.has(awsErr.name)) {
     return new SageMakerInvokeError(403, SAGEMAKER_AUTH_ERROR_MESSAGE);
+  }
+
+  // SageMaker returns a generic ValidationError for both "endpoint doesn't exist" and
+  // malformed-request cases — only the message distinguishes them.
+  if (awsErr?.name === "ValidationError" && /not found/i.test(awsErr?.message ?? "")) {
+    return new SageMakerInvokeError(404, SAGEMAKER_NOT_FOUND_ERROR_MESSAGE);
+  }
+
+  const errorCode = awsErr?.code ?? (err as { cause?: { code?: string } })?.cause?.code;
+  if (errorCode && NETWORK_ERROR_CODES.has(errorCode)) {
+    return new SageMakerInvokeError(503, SAGEMAKER_UNREACHABLE_ERROR_MESSAGE);
   }
 
   // ModelError wraps the embedding container's real status/message (e.g. 424 when the
