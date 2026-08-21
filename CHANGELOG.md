@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.0](https://github.com/takara-ai/miru-code/compare/v1.7.8...v1.8.0) (2026-08-21)
+
+
+### Features
+
+* add CloudFormation and CDK examples for self-hosted SageMaker Marketplace endpoint ([#44](https://github.com/takara-ai/miru-code/issues/44)) ([8a57541](https://github.com/takara-ai/miru-code/commit/8a575416fb0ec46ec8cdf4017fc59460dc93fb75))
+
 ## [1.7.8](https://github.com/takara-ai/miru-code/compare/v1.7.7...v1.7.8) (2026-08-18)
 
 
