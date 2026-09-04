@@ -1,0 +1,15 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "miru",
+  "version": "1.7.8",
+  "description": "Semantic code search for coding agents. Find code by meaning, not grep.",
+  "author": {
+    "name": "Takara",
+    "url": "https://github.com/takara-ai"
+  },
+  "homepage": "https://takara.ai",
+  "repository": "https://github.com/takara-ai/miru-code",
+  "license": "MIT",
+  "keywords": ["code-search", "semantic-search", "mcp", "modernization", "dependency-mapping"],
+  "skills": "./skills/"
+}

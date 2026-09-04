@@ -26,6 +26,22 @@ test("Codex, Claude, and Cursor plugin manifests point at the Miru MCP runtime",
   const mcp = JSON.parse(await Bun.file(new URL("../.mcp.json", import.meta.url)).text()) as {
     mcpServers: Record<string, { type: string; command: string; args: string[] }>;
   };
+  const kiroPlugin = JSON.parse(
+    await Bun.file(new URL("../.kiro-plugin/plugin.json", import.meta.url)).text(),
+  ) as {
+    $schema: string;
+    name: string;
+    version: string;
+    description: string;
+    license: string;
+    skills: string;
+  };
+  const kiroMcp = JSON.parse(
+    await Bun.file(new URL("../.kiro-plugin/mcp.json", import.meta.url)).text(),
+  ) as {
+    $schema: string;
+    mcpServers: Record<string, { type: string; command: string; args: string[] }>;
+  };
 
   expect(codexPlugin.name).toBe("miru");
   expect(codexPlugin.skills).toBe("./skills/");
@@ -52,6 +68,21 @@ test("Codex, Claude, and Cursor plugin manifests point at the Miru MCP runtime",
     type: "stdio",
     command: "bun",
     args: ["x", "@takara-ai/miru-code@latest"],
+  });
+
+  expect(kiroPlugin.$schema).toBe("https://agent-plugins.org/schemas/1.0.0/plugin.schema.json");
+  expect(kiroPlugin.name).toBe("miru");
+  expect(kiroPlugin.description).toBe(
+    "Semantic code search for coding agents. Find code by meaning, not grep.",
+  );
+  expect(kiroPlugin.license).toBe("MIT");
+  expect(kiroPlugin.skills).toBe("./skills/");
+
+  expect(kiroMcp.$schema).toBe("https://agent-plugins.org/schemas/1.0.0/mcp.schema.json");
+  expect(kiroMcp.mcpServers.miru).toEqual({
+    type: "stdio",
+    command: "bunx",
+    args: ["@takara-ai/miru-code"],
   });
 });
 
