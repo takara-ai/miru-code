@@ -4,7 +4,7 @@
     "miru": {
       "type": "stdio",
       "command": "bunx",
-      "args": ["@takara-ai/miru-code"]
+      "args": ["@takara-ai/miru-code@latest"]
     }
   }
 }

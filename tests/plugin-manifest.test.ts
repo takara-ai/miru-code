@@ -82,7 +82,7 @@ test("Codex, Claude, and Cursor plugin manifests point at the Miru MCP runtime",
   expect(kiroMcp.mcpServers.miru).toEqual({
     type: "stdio",
     command: "bunx",
-    args: ["@takara-ai/miru-code"],
+    args: ["@takara-ai/miru-code@latest"],
   });
 });
 
