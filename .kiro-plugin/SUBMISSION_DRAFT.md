@@ -8,7 +8,7 @@ Draft copy for the submission form at `kiro.dev/powers/submit`. Fill in real nam
 - **Use-case summary (3–4 words):** Semantic code search
 - **GitHub repository URL:** https://github.com/takara-ai/miru-code
 - **Domain / problem-space description (optional):**
-  Miru adds repo-aware semantic code search to Kiro via MCP, replacing grep-style exploration with meaning-based search (`search`, `locate`, `expand`, `find_related`). Includes a modernization/assessment-focused skill for legacy-codebase dependency mapping and migration-readiness work.
+  Miru adds repo-aware semantic code search to Kiro via MCP, replacing grep-style exploration with meaning-based search (`search`, `locate`, `expand`, `find_related`). Includes a modernization/assessment-focused skill for legacy-codebase dependency mapping and migration-readiness work. Default/recommended config for this channel is self-hosted SageMaker embeddings, not Takara-hosted — run `miru setup --sagemaker` first (see `docs/self-hosted-sagemaker.md`).
 
 ## Pre-submission checklist (per kiro.dev/powers/submit requirements)
 
@@ -19,5 +19,6 @@ Draft copy for the submission form at `kiro.dev/powers/submit`. Fill in real nam
 - [ ] Privacy Policy link in repo docs — **not yet present, needed before submission**
 - [ ] Support contact (email or link) in repo docs — **not yet present, needed before submission**
 - [ ] Locally tested in Kiro (Powers panel → Add Custom Power → Import from folder) — **do this before submitting**
+- [ ] Spec (PRD-453) reviewed with stakeholders — currently first-pass, unreviewed (see `docs/miru-aws-transform-kiro-power-spec.md` §2)
 
 Two items are unmet: a Privacy Policy link and a support contact aren't currently documented anywhere in the repo. Add both (e.g. to the README or a new `PRIVACY.md`) before actually filling out the form.

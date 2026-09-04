@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "miru",
   "version": "1.7.8",
-  "description": "Semantic code search for coding agents. Find code by meaning, not grep.",
+  "description": "Semantic code search for coding agents, built for AWS Transform modernization work — defaults to self-hosted SageMaker embeddings, not Takara-hosted.",
   "author": {
     "name": "Takara",
     "url": "https://github.com/takara-ai"
