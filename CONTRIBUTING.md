@@ -29,6 +29,7 @@ Driven by [`.pre-commit-config.yaml`](.pre-commit-config.yaml). Hooks run:
 - Standard checks (trailing whitespace, end-of-file fixer, YAML/JSON validity, large files, merge conflicts, private keys, mixed line endings)
 - `commitizen` on commit messages (Conventional Commits format)
 - `biome check .` (lint)
+- `scripts/build-kiro-plugin.ts` on changes under `skills/` — regenerates the gitignored `.kiro-plugin/skills/` copy so Kiro's "Import from folder" (which doesn't follow symlinks) always sees current skills. **This hook only runs if you've installed the git hooks** (`bun install`, or `prek install --install-hooks` if `prek` wasn't on your `PATH` yet — see step 2 above). If you skip that, `.kiro-plugin/skills/` goes stale after editing `skills/`; run `bun scripts/build-kiro-plugin.ts` manually before testing in Kiro.
 
 To run all hooks against the whole repo without committing:
 
