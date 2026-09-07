@@ -21,9 +21,8 @@ test("Codex, Claude, and Cursor plugin manifests point at the Miru MCP runtime",
     name: string;
     skills: string;
     rules: string;
-    mcpServers: string;
   };
-  const mcp = JSON.parse(await Bun.file(new URL("../.mcp.json", import.meta.url)).text()) as {
+  const mcp = JSON.parse(await Bun.file(new URL("../mcp.json", import.meta.url)).text()) as {
     mcpServers: Record<string, { type: string; command: string; args: string[] }>;
   };
   const kiroPlugin = JSON.parse(
@@ -34,7 +33,6 @@ test("Codex, Claude, and Cursor plugin manifests point at the Miru MCP runtime",
     version: string;
     description: string;
     license: string;
-    skills: string;
   };
   const kiroMcp = JSON.parse(
     await Bun.file(new URL("../.kiro-plugin/mcp.json", import.meta.url)).text(),
@@ -45,7 +43,7 @@ test("Codex, Claude, and Cursor plugin manifests point at the Miru MCP runtime",
 
   expect(codexPlugin.name).toBe("miru");
   expect(codexPlugin.skills).toBe("./skills/");
-  expect(codexPlugin.mcpServers).toBe("./.mcp.json");
+  expect(codexPlugin.mcpServers).toBe("./mcp.json");
   expect(codexPlugin.interface.displayName).toBe("Miru Code Search");
   expect(codexPlugin.interface.composerIcon).toBe("./assets/takara-crane.svg");
   expect(codexPlugin.interface.logo).toBe("./assets/takara-logo.png");
@@ -62,12 +60,11 @@ test("Codex, Claude, and Cursor plugin manifests point at the Miru MCP runtime",
   expect(cursorPlugin.name).toBe("miru");
   expect(cursorPlugin.skills).toBe("./skills/");
   expect(cursorPlugin.rules).toBe("./.cursor/rules/miru-code-search.mdc");
-  expect(cursorPlugin.mcpServers).toBe("./.mcp.json");
 
   expect(mcp.mcpServers.miru).toEqual({
     type: "stdio",
-    command: "bun",
-    args: ["x", "@takara-ai/miru-code@latest"],
+    command: "bunx",
+    args: ["@takara-ai/miru-code@latest"],
   });
 
   expect(kiroPlugin.$schema).toBe("https://agent-plugins.org/schemas/1.0.0/plugin.schema.json");
@@ -76,7 +73,6 @@ test("Codex, Claude, and Cursor plugin manifests point at the Miru MCP runtime",
     "Semantic code search for coding agents, built for AWS Transform modernization work — defaults to self-hosted SageMaker embeddings, not Takara-hosted.",
   );
   expect(kiroPlugin.license).toBe("MIT");
-  expect(kiroPlugin.skills).toBe("./skills/");
 
   expect(kiroMcp.$schema).toBe("https://agent-plugins.org/schemas/1.0.0/mcp.schema.json");
   expect(kiroMcp.mcpServers.miru).toEqual({

@@ -414,7 +414,7 @@ Local MCP: `"command": "bun", "args": ["/path/to/miru-code/src/cli.ts"]`
 This repo includes a repo-local Codex plugin:
 
 - `.codex-plugin/plugin.json`
-- `.mcp.json`
+- `mcp.json`
 - `.agents/plugins/marketplace.json`
 
 The plugin intentionally launches the published package with `bunx @takara-ai/miru-code` instead of the checked-out source tree, so local source edits here do not affect the Codex plugin until a new package version is published.

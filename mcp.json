@@ -3,8 +3,8 @@
   "mcpServers": {
     "miru": {
       "type": "stdio",
-      "command": "bun",
-      "args": ["x", "@takara-ai/miru-code@latest"]
+      "command": "bunx",
+      "args": ["@takara-ai/miru-code@latest"]
     }
   }
 }
