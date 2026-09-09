@@ -1,0 +1,64 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  IAM Identity Center permission set and group assignment that lets Miru
+  invoke a single SageMaker endpoint. Deploy in the Identity Center
+  management (or delegated admin) account, in the Identity Center region.
+
+Parameters:
+  InstanceArn:
+    Type: String
+    Description: Identity Center instance ARN (Identity Center > Settings)
+    AllowedPattern: ^arn:aws:sso:::instance/(sso)?ins-[a-zA-Z0-9-.]{16}$
+  GroupId:
+    Type: String
+    Description: >-
+      Identity Center group ID to grant access to (Identity Center > Groups >
+      the group > General information). For federated setups this is the
+      group synced from your IdP.
+  EndpointAccountId:
+    Type: String
+    Description: AWS account ID where the SageMaker endpoint is deployed
+    AllowedPattern: ^\d{12}$
+  EndpointArn:
+    Type: String
+    Description: Full ARN of the SageMaker endpoint Miru will call
+    AllowedPattern: ^arn:aws:sagemaker:[a-z0-9-]+:\d{12}:endpoint/[a-zA-Z0-9-]+$
+  PermissionSetName:
+    Type: String
+    Default: MiruInvoke
+  SessionDuration:
+    Type: String
+    Default: PT1H
+    Description: ISO 8601 duration, PT1H to PT12H
+
+Resources:
+  MiruInvokePermissionSet:
+    Type: AWS::SSO::PermissionSet
+    Properties:
+      InstanceArn: !Ref InstanceArn
+      Name: !Ref PermissionSetName
+      Description: Allows invocation of the Miru SageMaker endpoint
+      SessionDuration: !Ref SessionDuration
+      InlinePolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: sagemaker:InvokeEndpoint
+            Resource: !Ref EndpointArn
+
+  MiruInvokeAssignment:
+    Type: AWS::SSO::Assignment
+    Properties:
+      InstanceArn: !Ref InstanceArn
+      PermissionSetArn: !GetAtt MiruInvokePermissionSet.PermissionSetArn
+      PrincipalType: GROUP
+      PrincipalId: !Ref GroupId
+      TargetType: AWS_ACCOUNT
+      TargetId: !Ref EndpointAccountId
+
+Outputs:
+  PermissionSetArn:
+    Value: !GetAtt MiruInvokePermissionSet.PermissionSetArn
+  RoleNamePrefix:
+    Description: The role provisioned in the endpoint account starts with this
+    Value: !Sub AWSReservedSSO_${PermissionSetName}_
