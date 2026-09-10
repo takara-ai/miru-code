@@ -14,7 +14,8 @@
     "benchmark": {
       "type": "boolean",
       "title": "Benchmark mode",
-      "description": "Add a compact token-savings block to search/locate responses."
+      "description": "Add a compact token-savings block to search/locate responses.",
+      "default": false
     }
   }
 }
