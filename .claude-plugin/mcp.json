@@ -4,9 +4,9 @@
     "miru": {
       "type": "stdio",
       "command": "bunx",
-      "args": ["@takara-ai/miru-code@latest"],
+      "args": ["@takara-ai/miru-code@latest", "--benchmark=${user_config.benchmark}"],
       "env": {
-        "MIRU_CREDENTIALS_DIR": "${PLUGIN_DATA}"
+        "MIRU_CREDENTIALS_DIR": "${CLAUDE_PLUGIN_DATA}"
       }
     }
   }
