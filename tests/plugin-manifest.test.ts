@@ -14,6 +14,17 @@ test("Codex, Claude, and Cursor plugin manifests point at the Miru MCP runtime",
   ) as {
     name: string;
     skills: string[];
+    agents: string[];
+    mcpServers: string;
+    userConfig: Record<string, { type: string }>;
+  };
+  const claudeMcp = JSON.parse(
+    await Bun.file(new URL("../.claude-plugin/mcp.json", import.meta.url)).text(),
+  ) as {
+    mcpServers: Record<
+      string,
+      { type: string; command: string; args: string[]; env: Record<string, string> }
+    >;
   };
   const cursorPlugin = JSON.parse(
     await Bun.file(new URL("../plugin.json", import.meta.url)).text(),
@@ -23,7 +34,10 @@ test("Codex, Claude, and Cursor plugin manifests point at the Miru MCP runtime",
     rules: string;
   };
   const mcp = JSON.parse(await Bun.file(new URL("../mcp.json", import.meta.url)).text()) as {
-    mcpServers: Record<string, { type: string; command: string; args: string[] }>;
+    mcpServers: Record<
+      string,
+      { type: string; command: string; args: string[]; env: Record<string, string> }
+    >;
   };
   const kiroPlugin = JSON.parse(
     await Bun.file(new URL("../.kiro-plugin/plugin.json", import.meta.url)).text(),
@@ -56,6 +70,17 @@ test("Codex, Claude, and Cursor plugin manifests point at the Miru MCP runtime",
 
   expect(claudePlugin.name).toBe("miru");
   expect(claudePlugin.skills).toEqual(["./skills/"]);
+  expect(claudePlugin.agents).toEqual(["./agents/miru-code.md"]);
+  expect(claudePlugin.mcpServers).toBe("./.claude-plugin/mcp.json");
+  expect(claudePlugin.userConfig.benchmark.type).toBe("boolean");
+  expect(await Bun.file(new URL("../agents/miru-code.md", import.meta.url)).exists()).toBe(true);
+
+  expect(claudeMcp.mcpServers.miru).toEqual({
+    type: "stdio",
+    command: "bunx",
+    args: ["@takara-ai/miru-code@latest", "--benchmark=${user_config.benchmark}"],
+    env: { MIRU_CREDENTIALS_DIR: "${CLAUDE_PLUGIN_DATA}" },
+  });
 
   expect(cursorPlugin.name).toBe("miru");
   expect(cursorPlugin.skills).toBe("./skills/");
@@ -65,6 +90,7 @@ test("Codex, Claude, and Cursor plugin manifests point at the Miru MCP runtime",
     type: "stdio",
     command: "bunx",
     args: ["@takara-ai/miru-code@latest"],
+    env: { MIRU_CREDENTIALS_DIR: "${PLUGIN_DATA}" },
   });
 
   expect(kiroPlugin.$schema).toBe("https://agent-plugins.org/schemas/1.0.0/plugin.schema.json");

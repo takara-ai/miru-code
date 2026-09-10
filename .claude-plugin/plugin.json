@@ -8,5 +8,13 @@
     "url": "https://github.com/takara-ai"
   },
   "skills": ["./skills/"],
-  "mcpServers": "./mcp.json"
+  "agents": ["./agents/miru-code.md"],
+  "mcpServers": "./.claude-plugin/mcp.json",
+  "userConfig": {
+    "benchmark": {
+      "type": "boolean",
+      "title": "Benchmark mode",
+      "description": "Add a compact token-savings block to search/locate responses."
+    }
+  }
 }
