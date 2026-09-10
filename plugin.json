@@ -1,4 +1,5 @@
 {
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "miru",
   "version": "1.7.8",
   "description": "Semantic code search for coding agents. Find code by meaning, not grep.",
@@ -23,6 +24,5 @@
     "developer-tools"
   ],
   "skills": "./skills/",
-  "rules": "./.cursor/rules/miru-code-search.mdc",
-  "mcpServers": "./.mcp.json"
+  "rules": "./.cursor/rules/miru-code-search.mdc"
 }
