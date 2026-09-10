@@ -38,6 +38,23 @@ Restart Claude Code (or reload plugins) when prompted. Update: `/plugin marketpl
 
 **Any other IDE, or if marketplace install isn't available:** use the CLI install below.
 
+### What you get from a plugin install vs the CLI
+
+Plugin installs don't carry full CLI parity — what each one gives you depends on the IDE's own plugin capabilities, not just Miru's packaging:
+
+| | Claude Code | Codex | Cursor |
+|---|---|---|---|
+| MCP tools (`search`, `locate`, `expand`, `find_related`) | ✅ | ✅ | ❌ *(plugin ships skills + rules only — no MCP entry yet)* |
+| `miru` / Caveman / STE skills | ✅ | ✅ | ✅ |
+| Dedicated sub-agent (`miru:miru-code`) | ✅ | — | — |
+| Benchmark mode toggle (`/plugin configure`) | ✅ | — | — |
+| Search hooks | — | — | — |
+| Credentials | own plugin-scoped dir | own plugin-scoped dir | n/a |
+
+`—` means the IDE's plugin schema has no equivalent mechanism to port these to (not a packaging gap we can close): Codex's and Cursor's plugin manifests have no `agents` or `userConfig` fields, so the dedicated sub-agent and the benchmark toggle are Claude-Code-only. Search hooks aren't shipped to any plugin — they're slated for removal from Miru entirely (tracked internally), so not worth packaging.
+
+**Credentials are plugin-scoped, not shared with your CLI install.** Claude Code and Codex plugins each store auth in their own IDE-managed data directory (survives plugin updates, removed on uninstall). This means `miru setup` done via the CLI does **not** carry over to a plugin install, or vice versa — each authenticates independently on first use (interactive device-code login bootstraps automatically). If you use both the CLI and a plugin, you'll sign in twice.
+
 ## Install (CLI)
 
 ```bash
@@ -105,10 +122,8 @@ miru uninstall   # remove miru config
 
 ### Plugin packaging
 
-This repo now includes plugin packaging for:
-
-- Codex: `.codex-plugin/plugin.json` and `.agents/plugins/marketplace.json`
-- Claude Code: `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`
+- Codex: `.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`, shares the root `mcp.json`
+- Claude Code: `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, its own `.claude-plugin/mcp.json` (needed for the `userConfig` benchmark toggle — see [What you get from a plugin install vs the CLI](#what-you-get-from-a-plugin-install-vs-the-cli))
 - Cursor: `plugin.json` and `.cursor/rules/miru-code-search.mdc`
 
 Current limitation:
