@@ -22,6 +22,9 @@ logs
 _.log
 report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
+# Locally generated benchmark reports
+reports/
+
 # dotenv environment variable files
 .env
 .env.development.local
