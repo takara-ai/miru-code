@@ -2,14 +2,15 @@
  * Compare Miru `locate` MCP response tokens vs the costlier native Grep path.
  *
  * Miru side counts the agent-facing text body (`formatLiteralLocateText`), not
- * the intermediate JSON payload. Baseline mirrors Cursor/Claude Grep-style
- * output: fixed-string matches with ±GREP_CONTEXT lines (not slim `rg -n`).
- * That is the expensive path agents take without `locate`, so savings measure
- * real workflow cost — not an apples-to-apples contest against minimal ripgrep.
+ * the intermediate JSON payload. The grep baseline requests only the same
+ * information: counts for `count`, line locations for `locations`, and context
+ * for `lines`. It also mirrors locate's include/exclude scope and variants.
  */
 
+import { join } from "node:path";
 import {
   DEFAULT_LITERAL_MODE,
+  filterChunksByGlob,
   formatLiteralLocate,
   type LiteralLocateOptions,
   type LiteralLocateResult,
@@ -28,6 +29,8 @@ export interface LocateBenchmarkComparison {
   result: LiteralLocateResult;
   payload: Record<string, unknown>;
   benchmark: AgentBenchmarkSummary;
+  /** Baseline match stats; compare with `result.n`/`result.files` for exact-literal parity. */
+  grep: { n: number; files: number };
   latency_ms: {
     miru: number;
     grep: number;
@@ -48,22 +51,30 @@ export async function benchmarkLocateComparison(options: {
   const payload = formatLiteralLocate(result);
   const miruTok = countTokens(formatLiteralLocateText(payload));
 
-  // Unbounded agent-style Grep dump (±context) — the costlier path without locate.
-  // Never use less context than the caller actually requested via context_lines,
-  // or a locate call that returns inline context looks artificially expensive
-  // against a baseline that didn't have to fetch that context at all. Likewise,
-  // grep every variant `match_variants`/an array `literal` actually matched —
-  // one grep pattern isn't equivalent recall, so it isn't a fair baseline.
+  // Grep every variant `match_variants`/an array `literal` actually matched — one
+  // pattern is not equivalent recall. Keep contextual lines only for `lines` mode.
+  const context =
+    locateOpts.mode === "lines" ? Math.max(GREP_CONTEXT, locateOpts.context_lines ?? 0) : 0;
+  const indexedPaths = [
+    ...new Set(
+      filterChunksByGlob(options.index.chunks, locateOpts.include, locateOpts.exclude).map(
+        (chunk) => join(options.repoPath, chunk.file_path),
+      ),
+    ),
+  ];
   const grep = await rgLiteralOutput(options.repoPath, result.literals ?? [options.literal], {
-    context: Math.max(GREP_CONTEXT, locateOpts.context_lines ?? 0),
+    context,
     maxCount: 0,
     ignoreCase: locateOpts.ignore_case,
+    countOnly: locateOpts.mode === "count",
+    paths: indexedPaths,
   });
 
   return {
     result,
     payload,
     benchmark: agentBenchmarkFromTokens(miruTok, grep.tokens, result.n > 0),
+    grep: { n: grep.n, files: grep.files },
     latency_ms: { miru: miruMs, grep: grep.latency_ms },
   };
 }

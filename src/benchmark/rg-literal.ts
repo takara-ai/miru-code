@@ -12,6 +12,20 @@ export interface RgLiteralOutput {
   files: number;
 }
 
+export interface RgLiteralOptions {
+  context?: number;
+  maxCount?: number;
+  ignoreCase?: boolean;
+  /** Return per-file match counts rather than matching lines. */
+  countOnly?: boolean;
+  /** Gitignore-style globs included by the comparable locate call. */
+  include?: string[];
+  /** Gitignore-style globs excluded by the comparable locate call. */
+  exclude?: string[];
+  /** Absolute or repo-relative files in the same corpus as the compared tool. */
+  paths?: string[];
+}
+
 /** Count match lines (path:line:…) and unique files from `rg -n` output. */
 export function parseRgLiteralStats(text: string, repoRoot: string): { n: number; files: number } {
   const files = new Set<string>();
@@ -59,14 +73,33 @@ function parsePathLinePrefix(line: string): { path: string; line: number } | nul
   return null;
 }
 
+function parseCountStats(text: string, repoRoot: string): { n: number; files: number } {
+  let n = 0;
+  let files = 0;
+  for (const line of text.split("\n")) {
+    const colon = line.lastIndexOf(":");
+    if (colon < 0) {
+      continue;
+    }
+    const count = Number(line.slice(colon + 1));
+    if (!Number.isFinite(count) || count <= 0) {
+      continue;
+    }
+    // Ensure this is a path under the requested root, rather than an arbitrary line.
+    const path = line.slice(0, colon);
+    if (relative(repoRoot, path).startsWith("..")) {
+      continue;
+    }
+    n += count;
+    files += 1;
+  }
+  return { n, files };
+}
+
 export async function rgLiteralOutput(
   repoRoot: string,
   literal: string | readonly string[],
-  options: {
-    context?: number;
-    maxCount?: number;
-    ignoreCase?: boolean;
-  } = {},
+  options: RgLiteralOptions = {},
 ): Promise<RgLiteralOutput> {
   const literals = Array.isArray(literal) ? literal : [literal as string];
   const context = options.context ?? 0;
@@ -77,11 +110,24 @@ export async function rgLiteralOutput(
   }
   const start = performance.now();
   const text = await spawnBenchmarkSearch(
-    buildLiteralArgs(tool, repoRoot, literals, context, maxCount, !!options.ignoreCase),
+    buildLiteralArgs(
+      tool,
+      repoRoot,
+      literals,
+      context,
+      maxCount,
+      !!options.ignoreCase,
+      options.countOnly,
+      options.include,
+      options.exclude,
+      options.paths,
+    ),
     tool === "findstr" ? repoRoot : undefined,
   );
   const latency_ms = performance.now() - start;
-  const stats = parseRgLiteralStats(text, repoRoot);
+  const stats = options.countOnly
+    ? parseCountStats(text, repoRoot)
+    : parseRgLiteralStats(text, repoRoot);
   return { text, tokens: countTokens(text), latency_ms, ...stats };
 }
 
@@ -96,9 +142,22 @@ function buildLiteralArgs(
   context: number,
   maxCount: number,
   ignoreCase: boolean,
+  countOnly = false,
+  include: string[] = [],
+  exclude: string[] = [],
+  paths?: string[],
 ): string[] {
   if (tool === "rg") {
     const args = ["rg", "-F", "-n", "--no-heading", ...RG_EXCLUDE_ARGS];
+    if (countOnly) {
+      args.splice(2, 2, "--count");
+    }
+    for (const glob of include) {
+      args.push("-g", glob);
+    }
+    for (const glob of exclude) {
+      args.push("-g", `!${glob}`);
+    }
     if (ignoreCase) {
       args.push("-i");
     }
@@ -111,7 +170,7 @@ function buildLiteralArgs(
     for (const l of literals) {
       args.push("-e", l);
     }
-    args.push(repoRoot);
+    args.push(...(paths?.length ? paths : [repoRoot]));
     return args;
   }
   if (tool === "grep") {
@@ -124,7 +183,19 @@ function buildLiteralArgs(
       "--exclude-dir=node_modules",
       "--exclude-dir=.git",
       "--exclude-dir=tokenizer",
+      "--exclude=*.map",
+      "--exclude=*.min.js",
+      "--exclude=*.min.css",
     ];
+    for (const glob of include) {
+      args.push(`--include=${glob}`);
+    }
+    for (const glob of exclude) {
+      args.push(`--exclude=${glob}`);
+    }
+    if (countOnly) {
+      args.push("-c");
+    }
     if (ignoreCase) {
       args.push("-i");
     }
@@ -137,7 +208,7 @@ function buildLiteralArgs(
     for (const l of literals) {
       args.push("-e", l);
     }
-    args.push(repoRoot);
+    args.push(...(paths?.length ? paths : [repoRoot]));
     return args;
   }
   const args = ["findstr", "/S", "/N", "/P"];

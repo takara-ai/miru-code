@@ -4,6 +4,7 @@
  * Models what agents actually need for useful context:
  * - Miru: snippet search (top_k) + expand on rank-1 hit (MCP expand defaults)
  * - Grep: keyword rg output (top_k files) + Read on rank-1 grep file
+ * - Recovery: read candidates in rank order until a labelled relevant file is reached.
  *
  * Usage:
  *   bun run benchmark:workflow
@@ -12,19 +13,23 @@
  */
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { type GrepFileHit, grepSearch } from "../src/benchmark/grep.ts";
 import { loadStoredCredentials } from "../src/credentials.ts";
 import { normalizeTakaraApiKeyEnv } from "../src/env.ts";
 import { loadEnvFiles } from "../src/env-files.ts";
+import { formatExpandResultsText, formatResultsText } from "../src/mcp/format-text.ts";
 import { MiruIndex } from "../src/miru-index.ts";
-import { applySnippetsToResults, estimateResultTokens } from "../src/snippet.ts";
-import type { SearchResult } from "../src/types.ts";
+import { applySnippetsToResults } from "../src/snippet.ts";
+import { countTokens } from "../src/token-count.ts";
+import type { Chunk, SearchResult } from "../src/types.ts";
 import {
   DEFAULT_EXPAND_AFTER,
   DEFAULT_EXPAND_BEFORE,
   dedupeResultsByFile,
   expandChunksAtLine,
+  formatExpandResults,
+  formatResults,
 } from "../src/utils.ts";
-import { type GrepFileHit, grepSearch } from "./benchmark-grep.ts";
 import { pathMatches } from "./benchmark-lib.ts";
 import { pathExists, REPO_BENCHES, TOP_K } from "./search-ab-queries.ts";
 
@@ -33,10 +38,6 @@ normalizeTakaraApiKeyEnv();
 await loadStoredCredentials();
 
 process.env.MIRU_SEARCH_V2 = "1";
-
-function estTokens(text: string): number {
-  return Math.floor(text.length / 4);
-}
 
 function parseArgs(): { repos: Set<string> | null; json: boolean } {
   const argv = process.argv.slice(2);
@@ -77,7 +78,7 @@ function miruExpandTokens(
   }
   const [{ meta }] = applySnippetsToResults([top], query);
   const line = meta.truncated ? meta.anchor_line : top.chunk.start_line;
-  const { chunks } = expandChunksAtLine(
+  const { anchor, chunks } = expandChunksAtLine(
     index.chunks,
     top.chunk.file_path,
     line,
@@ -85,8 +86,19 @@ function miruExpandTokens(
     DEFAULT_EXPAND_BEFORE,
     DEFAULT_EXPAND_AFTER,
   );
+  if (!anchor) {
+    return { tokens: 0, lineSpan: 0, file: null };
+  }
   return {
-    tokens: chunks.reduce((sum, chunk) => sum + estTokens(chunk.content), 0),
+    tokens: countTokens(
+      formatExpandResultsText(
+        formatExpandResults(top.chunk.file_path, line, anchor, chunks, {
+          repoRoot: repoPath,
+          before: DEFAULT_EXPAND_BEFORE,
+          after: DEFAULT_EXPAND_AFTER,
+        }),
+      ),
+    ),
     lineSpan: expandLineSpan(chunks),
     file: top.chunk.file_path,
   };
@@ -117,7 +129,7 @@ function firstGrepMatchLine(hit: GrepFileHit | undefined): number | null {
 async function readFileTokens(absPath: string): Promise<number> {
   try {
     const text = await readFile(absPath, "utf-8");
-    return estTokens(text);
+    return countTokens(text);
   } catch {
     return 0;
   }
@@ -137,7 +149,7 @@ async function readLineWindowTokens(
     const half = Math.max(1, Math.floor(lineSpan / 2));
     const start = Math.max(1, centerLine - half);
     const end = Math.min(lines.length, centerLine + half);
-    return estTokens(lines.slice(start - 1, end).join("\n"));
+    return countTokens(lines.slice(start - 1, end).join("\n"));
   } catch {
     return 0;
   }
@@ -160,7 +172,42 @@ function grepExpandEquivTokens(
     DEFAULT_EXPAND_BEFORE,
     DEFAULT_EXPAND_AFTER,
   );
-  return chunks.reduce((sum, chunk) => sum + estTokens(chunk.content), 0);
+  return countTokens(
+    formatExpandResultsText(
+      formatExpandResults(file, line, undefined, chunks, {
+        repoRoot: repoPath,
+        before: DEFAULT_EXPAND_BEFORE,
+        after: DEFAULT_EXPAND_AFTER,
+      }),
+    ),
+  );
+}
+
+async function loadSnippetSources(
+  repoPath: string,
+  results: SearchResult[],
+): Promise<Map<string, Chunk>> {
+  const sources = new Map<string, Chunk>();
+  await Promise.all(
+    [...new Set(results.map((result) => result.chunk.file_path))].map(async (filePath) => {
+      try {
+        const content = await readFile(join(repoPath, filePath), "utf-8");
+        const indexed = results.find((result) => result.chunk.file_path === filePath)?.chunk;
+        if (indexed && content.includes(indexed.content)) {
+          sources.set(filePath, {
+            content,
+            file_path: filePath,
+            start_line: 1,
+            end_line: content.split("\n").length,
+            language: indexed.language,
+          });
+        }
+      } catch {
+        // Preserve the indexed hit when a source file is unavailable.
+      }
+    }),
+  );
+  return sources;
 }
 
 interface WorkflowRow {
@@ -176,10 +223,20 @@ interface WorkflowRow {
   grepWorkflowFull: number;
   grepWorkflowMatched: number;
   grepExpandEquiv: number;
+  miruRecovery: number;
+  grepRecoveryFull: number;
+  grepRecoveryMatched: number;
+  grepRecoveryExpandEquiv: number;
+  miruRelevantRank: number | null;
+  grepRelevantRank: number | null;
   miruTop: string | null;
   grepTop: string | null;
   miruRecall: boolean;
   grepRecall: boolean;
+  miruPrecisionAtK: number;
+  grepPrecisionAtK: number;
+  miruTop1: boolean;
+  grepTop1: boolean;
 }
 
 async function evaluateWorkflow(
@@ -191,8 +248,15 @@ async function evaluateWorkflow(
   const results = dedupeResultsByFile(
     await index.search({ query: spec.query, topK: TOP_K, rerank: true }),
   ).slice(0, TOP_K);
-  const snippetResults = applySnippetsToResults(results, spec.query).map((e) => e.result);
-  const miruSearch = estimateResultTokens(snippetResults);
+  const miruSearch = countTokens(
+    formatResultsText(
+      formatResults(spec.query, results, {
+        repoRoot: repoPath,
+        snippet: true,
+        snippetSourceChunks: await loadSnippetSources(repoPath, results),
+      }),
+    ),
+  );
   const topMiru = results[0];
   const expand = miruExpandTokens(index, repoPath, topMiru, spec.query);
   const miruWorkflow = miruSearch + expand.tokens;
@@ -215,6 +279,38 @@ async function evaluateWorkflow(
   const miruFiles = results.map((r) => r.chunk.file_path);
   const miruRecall = spec.relevant.some((want) => miruFiles.some((f) => pathMatches(f, want)));
   const grepRecall = spec.relevant.some((want) => grep.files.some((f) => pathMatches(f, want)));
+  const miruRelevantCount = miruFiles.filter((file) =>
+    spec.relevant.some((want) => pathMatches(file, want)),
+  ).length;
+  const grepRelevantCount = grep.files.filter((file) =>
+    spec.relevant.some((want) => pathMatches(file, want)),
+  ).length;
+  const miruRelevantIndex = results.findIndex((result) =>
+    spec.relevant.some((want) => pathMatches(result.chunk.file_path, want)),
+  );
+  const grepRelevantIndex = grep.hits.findIndex((hit) =>
+    spec.relevant.some((want) => pathMatches(hit.file, want)),
+  );
+  const miruCandidateCount = miruRelevantIndex >= 0 ? miruRelevantIndex + 1 : results.length;
+  const grepCandidateCount = grepRelevantIndex >= 0 ? grepRelevantIndex + 1 : grep.hits.length;
+
+  let miruRecoveryExpand = 0;
+  for (const result of results.slice(0, miruCandidateCount)) {
+    miruRecoveryExpand += miruExpandTokens(index, repoPath, result, spec.query).tokens;
+  }
+
+  let grepRecoveryFullRead = 0;
+  let grepRecoveryMatchedRead = 0;
+  let grepRecoveryEquivRead = 0;
+  for (const hit of grep.hits.slice(0, grepCandidateCount)) {
+    const hitPath = join(repoPath, hit.file);
+    const hitLine = firstGrepMatchLine(hit);
+    grepRecoveryFullRead += await readFileTokens(hitPath);
+    if (hitLine != null) {
+      grepRecoveryMatchedRead += await readLineWindowTokens(hitPath, hitLine, matchedSpan);
+    }
+    grepRecoveryEquivRead += grepExpandEquivTokens(index, repoPath, hit.file, hitLine);
+  }
 
   return {
     repo,
@@ -229,10 +325,20 @@ async function evaluateWorkflow(
     grepWorkflowFull: grepSearchTokens + grepReadFull,
     grepWorkflowMatched: grepSearchTokens + grepReadMatched,
     grepExpandEquiv: grepSearchTokens + grepExpandEquiv,
+    miruRecovery: miruSearch + miruRecoveryExpand,
+    grepRecoveryFull: grepSearchTokens + grepRecoveryFullRead,
+    grepRecoveryMatched: grepSearchTokens + grepRecoveryMatchedRead,
+    grepRecoveryExpandEquiv: grepSearchTokens + grepRecoveryEquivRead,
+    miruRelevantRank: miruRelevantIndex >= 0 ? miruRelevantIndex + 1 : null,
+    grepRelevantRank: grepRelevantIndex >= 0 ? grepRelevantIndex + 1 : null,
     miruTop: topMiru?.chunk.file_path ?? null,
     grepTop,
     miruRecall,
     grepRecall,
+    miruPrecisionAtK: miruRelevantCount / Math.max(1, miruFiles.length),
+    grepPrecisionAtK: grepRelevantCount / Math.max(1, grep.files.length),
+    miruTop1: miruRelevantIndex === 0,
+    grepTop1: grepRelevantIndex === 0,
   };
 }
 
@@ -302,6 +408,12 @@ const summary = {
     miru: rows.filter((r) => r.miruRecall).length / rows.length,
     grep: rows.filter((r) => r.grepRecall).length / rows.length,
   },
+  accuracy: {
+    miruTop1: mean(rows, (r) => Number(r.miruTop1)),
+    grepTop1: mean(rows, (r) => Number(r.grepTop1)),
+    miruPrecisionAtK: mean(rows, (r) => r.miruPrecisionAtK),
+    grepPrecisionAtK: mean(rows, (r) => r.grepPrecisionAtK),
+  },
   meanTokens: {
     miruSearchOnly: mean(rows, (r) => r.miruSearch),
     miruExpandOnly: mean(rows, (r) => r.miruExpand),
@@ -312,6 +424,10 @@ const summary = {
     grepWorkflowFull: mean(rows, (r) => r.grepWorkflowFull),
     grepWorkflowMatched: mean(rows, (r) => r.grepWorkflowMatched),
     grepExpandEquiv: mean(rows, (r) => r.grepExpandEquiv),
+    miruRecovery: mean(rows, (r) => r.miruRecovery),
+    grepRecoveryFull: mean(rows, (r) => r.grepRecoveryFull),
+    grepRecoveryMatched: mean(rows, (r) => r.grepRecoveryMatched),
+    grepRecoveryExpandEquiv: mean(rows, (r) => r.grepRecoveryExpandEquiv),
   },
   rows,
 };
@@ -344,6 +460,12 @@ if (json) {
   console.log(
     `  grep search+chunk-equiv      ${m.grepExpandEquiv.toFixed(0)}  (indexed chunks on grep rank-1)`,
   );
+  console.log("");
+  console.log("Label-aware recovery within top-k (reads until a labelled relevant file):");
+  console.log(`  miru search+expands          ${m.miruRecovery.toFixed(0)}`);
+  console.log(`  grep search+Reads(full)      ${m.grepRecoveryFull.toFixed(0)}`);
+  console.log(`  grep search+Reads(window)    ${m.grepRecoveryMatched.toFixed(0)}`);
+  console.log(`  grep search+chunk-equiv      ${m.grepRecoveryExpandEquiv.toFixed(0)}`);
   console.log("");
   console.log(
     `Recall@${TOP_K}: miru ${(summary.recall.miru * 100).toFixed(0)}%  |  grep ${(summary.recall.grep * 100).toFixed(0)}%`,
