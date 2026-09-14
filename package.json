@@ -54,6 +54,7 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "prepare": "bun run scripts/install-git-hooks.ts",
+    "build:kiro-plugin": "bun run scripts/build-kiro-plugin.ts",
     "vendor-grammars": "bun run scripts/vendor-grammars.ts",
     "prepublishOnly": "bun run vendor-grammars && bun run typecheck && bun test",
     "benchmark:ab": "bun run scripts/search-ab-local.ts",

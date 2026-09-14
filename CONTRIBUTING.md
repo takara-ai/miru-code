@@ -37,6 +37,18 @@ To run all hooks against the whole repo without committing:
 prek run --all-files
 ```
 
+## Kiro Power package
+
+`.kiro-plugin/` is the canonical package root for Kiro's Power format (`plugin.json` + `mcp.json` + `skills/`), not the repo root. Root's `plugin.json`/`mcp.json` are the generic `agent-plugins.org` manifests shared by the Claude Code and Codex plugins; `.kiro-plugin/` has its own `plugin.json`/`mcp.json` tailored to the AWS Transform / Kiro Power listing (self-hosted SageMaker guidance, Kiro-specific description).
+
+`.kiro-plugin/skills/` is generated, not hand-edited — it's a real-file copy of `skills/` (Kiro's "Import from folder" doesn't follow symlinks). Before importing into Kiro or submitting to `kiro.dev/powers/submit`:
+
+```bash
+bun run build:kiro-plugin
+```
+
+This runs automatically via the pre-commit hook on `skills/` changes (see above), but run it manually to be sure before packaging `.kiro-plugin/` for submission.
+
 ## Commit message standards
 
 Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/):
