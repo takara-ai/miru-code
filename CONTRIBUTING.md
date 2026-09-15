@@ -29,12 +29,25 @@ Driven by [`.pre-commit-config.yaml`](.pre-commit-config.yaml). Hooks run:
 - Standard checks (trailing whitespace, end-of-file fixer, YAML/JSON validity, large files, merge conflicts, private keys, mixed line endings)
 - `commitizen` on commit messages (Conventional Commits format)
 - `biome check .` (lint)
+- `scripts/build-kiro-plugin.ts` on changes under `skills/` — regenerates the gitignored `.kiro-plugin/skills/` copy so Kiro's "Import from folder" (which doesn't follow symlinks) always sees current skills. **This hook only runs if you've installed the git hooks** (`bun install`, or `prek install --install-hooks` if `prek` wasn't on your `PATH` yet — see step 2 above). If you skip that, `.kiro-plugin/skills/` goes stale after editing `skills/`; run `bun scripts/build-kiro-plugin.ts` manually before testing in Kiro.
 
 To run all hooks against the whole repo without committing:
 
 ```bash
 prek run --all-files
 ```
+
+## Kiro Power package
+
+`.kiro-plugin/` is the canonical package root for Kiro's Power format (`plugin.json` + `mcp.json` + `skills/`), not the repo root. Root's `plugin.json`/`mcp.json` are the generic `agent-plugins.org` manifests shared by the Claude Code and Codex plugins; `.kiro-plugin/` has its own `plugin.json`/`mcp.json` tailored to the AWS Transform / Kiro Power listing (self-hosted SageMaker guidance, Kiro-specific description).
+
+`.kiro-plugin/skills/` is generated, not hand-edited — it's a real-file copy of `skills/` (Kiro's "Import from folder" doesn't follow symlinks). Before importing into Kiro or submitting to `kiro.dev/powers/submit`:
+
+```bash
+bun run build:kiro-plugin
+```
+
+This runs automatically via the pre-commit hook on `skills/` changes (see above), but run it manually to be sure before packaging `.kiro-plugin/` for submission.
 
 ## Commit message standards
 

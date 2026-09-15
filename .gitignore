@@ -50,3 +50,6 @@ assets/
 
 # MCP conformance tests download the official schema locally (see scripts/vendor-mcp-schema.ts)
 tests/fixtures/mcp/*.json
+
+# generated copy of skills/ for Kiro import (see scripts/build-kiro-plugin.ts)
+.kiro-plugin/skills/

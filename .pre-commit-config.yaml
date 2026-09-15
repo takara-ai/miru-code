@@ -26,3 +26,10 @@ repos:
         entry: bun run lint
         language: system
         pass_filenames: false
+
+      - id: sync-kiro-plugin-skills
+        name: sync .kiro-plugin/skills from skills/
+        entry: bun scripts/build-kiro-plugin.ts
+        language: system
+        pass_filenames: false
+        files: ^skills/

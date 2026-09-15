@@ -18,7 +18,27 @@ Miru returns the best **chunks** (path, lines, snippet) for questions like *"whe
 Miru replaces the grep/glob-style search agents fall back on today. Install once, and every connected agent gets `search` and `find_related` MCP tools automatically.
 
 
-## Install
+## Install via a plugin marketplace
+
+Prefer this when your IDE has a plugin marketplace — no `bun add -g` step, and updates go through the IDE's own plugin flow. Run `miru setup` first if you have not authenticated yet (see [Set up credentials](#set-up-credentials)).
+
+**Claude Code:**
+
+```
+/plugin marketplace add takara-ai/miru-code
+/plugin install miru
+```
+
+Restart Claude Code (or reload plugins) when prompted. Update: `/plugin marketplace update miru` then reinstall. Remove: `/plugin uninstall miru`.
+
+**Cursor:**
+
+1. Dashboard → Plugins → Team Marketplaces → **Add Marketplace** → Import from Repo → `takara-ai/miru-code`
+2. Customize (sidebar) → find `miru` → **Install** → choose project or user scope
+
+**Any other IDE, or if marketplace install isn't available:** use the CLI install below.
+
+## Install (CLI)
 
 ```bash
 bun add -g @takara-ai/miru-code
@@ -282,6 +302,7 @@ const results = await index.search({ query: "BM25 tokenize", topK: 10 });
 | `MIRU_MCP_WATCH`              | Set `0` to disable MCP file watch                                        |
 | `MIRU_AST_CHUNKING`           | Set `0` to disable tree-sitter AST chunking                              |
 | `MIRU_BENCHMARK_HISTORY_PATH` | Override; see [Benchmark mode](#benchmark-mode)                          |
+| `MIRU_CACHE_HOME`             | Override the platform cache root (see [How it works](#how-it-works))    |
 | `MIRU_QUIET`                  | Set `1` to skip the framed CLI banner (subtitle only on color terminals) |
 | `NO_COLOR`                    | Disable CLI colors                                                       |
 
@@ -408,16 +429,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for pre-commit hooks, commit message conv
 Local MCP: `"command": "bun", "args": ["/path/to/miru-code/src/cli.ts"]`
 
 `miru -h` / setup print a framed wordmark on color terminals (`MIRU_QUIET=1` for subtitle only). Crane art lives in `src/brand-banner.ts`; regenerate with `bun run scripts/render-crane-art.ts` (ImageMagick). The crane is a registered mark of Takara.ai Ltd.
-
-## Codex plugin in this repo
-
-This repo includes a repo-local Codex plugin:
-
-- `.codex-plugin/plugin.json`
-- `.mcp.json`
-- `.agents/plugins/marketplace.json`
-
-The plugin intentionally launches the published package with `bunx @takara-ai/miru-code` instead of the checked-out source tree, so local source edits here do not affect the Codex plugin until a new package version is published.
 
 ## Credits
 

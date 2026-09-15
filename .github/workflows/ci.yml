@@ -30,6 +30,11 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
+      - name: Kiro plugin skills in sync
+        run: |
+          bun scripts/build-kiro-plugin.ts
+          diff -rq skills .kiro-plugin/skills
+
   test:
     runs-on: ${{ matrix.os }}
     needs: lint-typecheck
