@@ -19,7 +19,7 @@ import { formatLiteralLocateText } from "../mcp/format-text.ts";
 import type { MiruIndex } from "../miru-index.ts";
 import { countTokens } from "../token-count.ts";
 import { GREP_CONTEXT } from "./grep.ts";
-import { rgLiteralOutput } from "./rg-literal.ts";
+import { rgLiteralOutput, selectComparableLiteralSearchTool } from "./rg-literal.ts";
 import { agentBenchmarkFromTokens } from "./summary.ts";
 import type { AgentBenchmarkSummary } from "./types.ts";
 
@@ -43,6 +43,16 @@ export async function benchmarkLocateComparison(options: {
   index: MiruIndex;
   locate?: LiteralLocateOptions;
 }): Promise<LocateBenchmarkComparison> {
+  if (options.locate?.limit != null) {
+    throw new Error(
+      "Cannot benchmark a limited locate response against native grep: rg/grep limits are per file, while locate.limit is global. Omit limit to keep token and recall comparisons valid.",
+    );
+  }
+  if (!selectComparableLiteralSearchTool()) {
+    throw new Error(
+      "A comparable literal benchmark requires rg or compatible grep; findstr is not equivalent for scoped locate output.",
+    );
+  }
   const locateOpts: LiteralLocateOptions = { mode: DEFAULT_LITERAL_MODE, ...options.locate };
 
   const miruStart = performance.now();

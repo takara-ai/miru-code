@@ -79,7 +79,7 @@ for (const literal of LITERALS) {
       literal,
       repoPath: REPO_ROOT,
       index,
-      locate: { mode, limit: 20 },
+      locate: { mode },
     });
     tools.push({
       tool: `miru locate --mode ${mode}`,

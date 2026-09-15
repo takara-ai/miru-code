@@ -10,6 +10,7 @@ import {
   recordFromBenchmark,
 } from "../benchmark/history.ts";
 import { benchmarkLocateComparison } from "../benchmark/locate-compare.ts";
+import { selectComparableLiteralSearchTool } from "../benchmark/rg-literal.ts";
 import { appendAgentBenchmark } from "../benchmark/summary.ts";
 import {
   MCP_BENCHMARK_SERVER_INSTRUCTIONS,
@@ -51,6 +52,10 @@ const REPO_DESCRIPTION =
 
 const BENCHMARK_SKIP_NOTES = {
   local_repo_only: "Benchmark comparisons require a local repo path; git URL repos are skipped.",
+  limited_locate:
+    "Benchmark comparison skipped: locate.limit is global, while rg/grep limits are per file. Omit limit for a valid token and recall comparison.",
+  incompatible_literal_baseline:
+    "Benchmark comparison skipped: a comparable literal baseline requires rg or compatible grep. Windows findstr does not preserve locate scope, context, or count semantics.",
   grep_timeout:
     "Benchmark Grep baseline timed out; Miru results are still returned. " +
     "Raise MIRU_BENCHMARK_SEARCH_TIMEOUT (seconds) if needed.",
@@ -272,20 +277,27 @@ export function createMcpServer(
         let skip: BenchmarkSkipReason | undefined;
         const repoRoot = localRepoRoot(repo);
         if (benchmark && repoRoot && typeof literal === "string") {
-          const comparison = await withGrepTimeoutFallback(() =>
-            benchmarkLocateComparison({
-              literal,
-              repoPath: repoRoot,
-              index,
-              locate: locateOpts,
-            }),
-          );
-          if (comparison) {
-            await persistBenchmarkQuery(recordFromAgentSummary(repoRoot, comparison.benchmark));
-            const body = formatLiteralLocateText(comparison.payload);
-            return toolText(appendAgentBenchmark(body, comparison.benchmark));
+          if (locateOpts.limit != null) {
+            skip = "limited_locate";
+          } else if (!selectComparableLiteralSearchTool()) {
+            skip = "incompatible_literal_baseline";
           }
-          skip = "grep_timeout";
+          if (!skip) {
+            const comparison = await withGrepTimeoutFallback(() =>
+              benchmarkLocateComparison({
+                literal,
+                repoPath: repoRoot,
+                index,
+                locate: locateOpts,
+              }),
+            );
+            if (comparison) {
+              await persistBenchmarkQuery(recordFromAgentSummary(repoRoot, comparison.benchmark));
+              const body = formatLiteralLocateText(comparison.payload);
+              return toolText(appendAgentBenchmark(body, comparison.benchmark));
+            }
+            skip = "grep_timeout";
+          }
         } else if (benchmark && !repoRoot) {
           skip = "local_repo_only";
         }

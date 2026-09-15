@@ -4,6 +4,9 @@ import { relative } from "node:path";
 import { countTokens } from "../token-count.ts";
 import { RG_EXCLUDE_ARGS, selectBenchmarkSearchTool, spawnBenchmarkSearch } from "./grep.ts";
 
+/** Keep each native-search invocation well below platform command-line limits. */
+const MAX_LITERAL_PATH_ARGUMENT_CHARS = 4_096;
+
 export interface RgLiteralOutput {
   text: string;
   tokens: number;
@@ -24,6 +27,38 @@ export interface RgLiteralOptions {
   exclude?: string[];
   /** Absolute or repo-relative files in the same corpus as the compared tool. */
   paths?: string[];
+}
+
+/**
+ * `findstr` cannot reproduce the scoped, contextual, count-mode literal baseline.
+ * Do not silently substitute it and report the result as an equivalent grep comparison.
+ */
+export function selectComparableLiteralSearchTool(
+  options?: Parameters<typeof selectBenchmarkSearchTool>[0],
+): "rg" | "grep" | null {
+  const tool = selectBenchmarkSearchTool(options);
+  return tool === "rg" || tool === "grep" ? tool : null;
+}
+
+/** Split an indexed corpus into safe native-command argument batches. */
+export function batchLiteralPaths(paths: readonly string[]): string[][] {
+  const batches: string[][] = [];
+  let batch: string[] = [];
+  let chars = 0;
+  for (const path of paths) {
+    const nextChars = chars + path.length + 1;
+    if (batch.length > 0 && nextChars > MAX_LITERAL_PATH_ARGUMENT_CHARS) {
+      batches.push(batch);
+      batch = [];
+      chars = 0;
+    }
+    batch.push(path);
+    chars += path.length + 1;
+  }
+  if (batch.length > 0) {
+    batches.push(batch);
+  }
+  return batches;
 }
 
 /** Count match lines (path:line:…) and unique files from `rg -n` output. */
@@ -104,26 +139,34 @@ export async function rgLiteralOutput(
   const literals = Array.isArray(literal) ? literal : [literal as string];
   const context = options.context ?? 0;
   const maxCount = options.maxCount ?? 20;
-  const tool = selectBenchmarkSearchTool();
+  const tool = selectComparableLiteralSearchTool();
   if (!tool) {
-    throw new Error("No search tool found in PATH (tried rg, grep, and findstr on Windows)");
+    throw new Error(
+      "A comparable literal benchmark requires rg or compatible grep; findstr cannot preserve locate scope, context, and count semantics.",
+    );
   }
   const start = performance.now();
-  const text = await spawnBenchmarkSearch(
-    buildLiteralArgs(
-      tool,
-      repoRoot,
-      literals,
-      context,
-      maxCount,
-      !!options.ignoreCase,
-      options.countOnly,
-      options.include,
-      options.exclude,
-      options.paths,
-    ),
-    tool === "findstr" ? repoRoot : undefined,
-  );
+  const pathBatches = options.paths?.length ? batchLiteralPaths(options.paths) : [undefined];
+  const output: string[] = [];
+  for (const paths of pathBatches) {
+    output.push(
+      await spawnBenchmarkSearch(
+        buildLiteralArgs(
+          tool,
+          repoRoot,
+          literals,
+          context,
+          maxCount,
+          !!options.ignoreCase,
+          options.countOnly,
+          options.include,
+          options.exclude,
+          paths,
+        ),
+      ),
+    );
+  }
+  const text = output.filter(Boolean).join("\n");
   const latency_ms = performance.now() - start;
   const stats = options.countOnly
     ? parseCountStats(text, repoRoot)
@@ -136,7 +179,7 @@ export async function rgLiteralOutput(
  * to get the same recall as `literals`/`match_variants` (one pattern isn't equivalent).
  */
 function buildLiteralArgs(
-  tool: "rg" | "grep" | "findstr",
+  tool: "rg" | "grep",
   repoRoot: string,
   literals: readonly string[],
   context: number,
@@ -211,13 +254,5 @@ function buildLiteralArgs(
     args.push(...(paths?.length ? paths : [repoRoot]));
     return args;
   }
-  const args = ["findstr", "/S", "/N", "/P"];
-  for (const l of literals) {
-    args.push(`/C:${l}`);
-  }
-  args.push("*");
-  if (ignoreCase) {
-    args.splice(4, 0, "/I");
-  }
-  return args;
+  throw new Error(`Unsupported comparable literal benchmark tool: ${tool}`);
 }
