@@ -100,6 +100,8 @@ npx cdk deploy \
   --parameters Region=<region>
 ```
 
+If CDK reports that the account/region is not bootstrapped, run `npx cdk bootstrap` once and retry.
+
 `CDK_DEFAULT_ACCOUNT` / `CDK_DEFAULT_REGION` are set automatically from your AWS credentials/profile —
 confirm they match the region your `ModelPackageArn` was issued for. Outputs are printed after deploy
 completes, or re-fetch them any time with:
@@ -114,10 +116,8 @@ aws cloudformation describe-stacks \
 ### Advanced: manual deployment
 
 If you can't use CloudFormation/CDK, you can create the execution role, model, endpoint config, and
-endpoint by hand (console or `aws sagemaker create-*` calls) — mirror the resources and settings in
-[`sagemaker-marketplace-endpoint.yml`](../examples/sagemaker-marketplace/cloudformation/sagemaker-marketplace-endpoint.yml)
-exactly, since Miru's setup and error messages assume that shape. This path is unsupported and untested
-against Miru — prefer the template.
+endpoint by hand (console or `aws sagemaker create-*` calls). It must accept Miru's embedding request and
+return embeddings; this path has less coverage, so prefer the template.
 
 ## 3. Create an invoke-only AWS profile (admin runbook)
 
