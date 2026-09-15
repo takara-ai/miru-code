@@ -15,7 +15,11 @@ describe("version", () => {
   });
 
   test("fetchLatestPublishedVersion returns a semver string", async () => {
-    const latest = await fetchLatestPublishedVersion();
+    const fetchLatest = (_input: string, _init?: RequestInit) =>
+      Promise.resolve(
+        new Response(JSON.stringify({ "dist-tags": { latest: "1.8.0" } }), { status: 200 }),
+      );
+    const latest = await fetchLatestPublishedVersion(fetchLatest);
     expect(latest).toMatch(/^\d+\.\d+\.\d+/);
   }, 10_000);
 });
