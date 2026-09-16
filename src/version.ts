@@ -9,6 +9,8 @@ const UPDATE_CHECK_FILENAME = "update-check.json";
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 2_000;
 
+type Fetcher = (input: string, init?: RequestInit) => Promise<Response>;
+
 interface UpdateCheckCache {
   checkedAt: number;
   latest: string;
@@ -93,8 +95,8 @@ async function writeUpdateCheckCache(latest: string): Promise<void> {
   await Bun.write(updateCheckPath(), `${JSON.stringify(payload)}\n`);
 }
 
-export async function fetchLatestPublishedVersion(): Promise<string> {
-  const response = await fetch(REGISTRY_URL, {
+export async function fetchLatestPublishedVersion(fetchImpl: Fetcher = fetch): Promise<string> {
+  const response = await fetchImpl(REGISTRY_URL, {
     headers: { accept: "application/json" },
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });

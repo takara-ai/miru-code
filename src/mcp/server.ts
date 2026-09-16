@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import * as z from "zod";
 import packageJson from "../../package.json";
 import { benchmarkSearchComparison, toAgentBenchmarkSummary } from "../benchmark/compare.ts";
@@ -9,6 +10,7 @@ import {
   recordFromBenchmark,
 } from "../benchmark/history.ts";
 import { benchmarkLocateComparison } from "../benchmark/locate-compare.ts";
+import { selectComparableLiteralSearchTool } from "../benchmark/rg-literal.ts";
 import { appendAgentBenchmark } from "../benchmark/summary.ts";
 import {
   MCP_BENCHMARK_SERVER_INSTRUCTIONS,
@@ -20,7 +22,7 @@ import {
   MCP_SERVER_INSTRUCTIONS,
 } from "../installer/search-policy.ts";
 import { formatLiteralLocate } from "../literal.ts";
-import type { ContentType } from "../types.ts";
+import type { Chunk, ContentType, SearchResult } from "../types.ts";
 import {
   clampMcpTopK,
   DEFAULT_EXPAND_AFTER,
@@ -50,6 +52,10 @@ const REPO_DESCRIPTION =
 
 const BENCHMARK_SKIP_NOTES = {
   local_repo_only: "Benchmark comparisons require a local repo path; git URL repos are skipped.",
+  limited_locate:
+    "Benchmark comparison skipped: locate.limit is global, while rg/grep limits are per file. Omit limit for a valid token and recall comparison.",
+  incompatible_literal_baseline:
+    "Benchmark comparison skipped: a comparable literal baseline requires rg or compatible grep. Windows findstr does not preserve locate scope, context, or count semantics.",
   grep_timeout:
     "Benchmark Grep baseline timed out; Miru results are still returned. " +
     "Raise MIRU_BENCHMARK_SEARCH_TIMEOUT (seconds) if needed.",
@@ -62,6 +68,45 @@ function withBenchmarkSkippedNote(body: string, reason: BenchmarkSkipReason): st
     benchmark_skipped: reason,
     note: BENCHMARK_SKIP_NOTES[reason],
   })}`;
+}
+
+/**
+ * Use the source file for final snippet shaping when it is locally available.
+ * Index chunks can intentionally split a large declaration; source-backed
+ * snippets let the structural guard return a complete declaration instead.
+ */
+async function loadSnippetSources(
+  root: string | null,
+  results: SearchResult[],
+): Promise<Map<string, Chunk> | undefined> {
+  if (!root) {
+    return undefined;
+  }
+  const sources = new Map<string, Chunk>();
+  await Promise.all(
+    [...new Set(results.map((result) => result.chunk.file_path))].map(async (filePath) => {
+      try {
+        const content = await Bun.file(join(root, filePath)).text();
+        const indexed = results.find((result) => result.chunk.file_path === filePath)?.chunk;
+        // Synthetic index entries (for example package entry-point metadata) do
+        // not occur verbatim in the source file and must retain their own chunk.
+        if (!indexed || !content.includes(indexed.content)) {
+          return;
+        }
+        const lines = content.split("\n");
+        sources.set(filePath, {
+          content,
+          file_path: filePath,
+          start_line: 1,
+          end_line: lines.length,
+          language: indexed.language,
+        });
+      } catch {
+        // A stale index entry is still safe to format from its indexed chunk.
+      }
+    }),
+  );
+  return sources;
 }
 
 async function persistBenchmarkQuery(
@@ -139,7 +184,11 @@ export function createMcpServer(
             }
             await persistBenchmarkQuery(recordFromBenchmark(repoRoot, comparison.benchmark));
             const body = formatResultsText(
-              formatResults(query, results, { repoRoot, snippet: true }),
+              formatResults(query, results, {
+                repoRoot,
+                snippet: true,
+                snippetSourceChunks: await loadSnippetSources(index.root, results),
+              }),
             );
             return toolText(
               appendAgentBenchmark(body, toAgentBenchmarkSummary(comparison.benchmark)),
@@ -157,7 +206,11 @@ export function createMcpServer(
         if (results.length === 0) {
           return toolText("No results found.");
         }
-        const payload = formatResults(query, results, { repoRoot, snippet: true });
+        const payload = formatResults(query, results, {
+          repoRoot,
+          snippet: true,
+          snippetSourceChunks: await loadSnippetSources(index.root, results),
+        });
         const body = formatResultsText(payload);
         return toolText(skip ? withBenchmarkSkippedNote(body, skip) : body);
       } catch (err) {
@@ -224,20 +277,27 @@ export function createMcpServer(
         let skip: BenchmarkSkipReason | undefined;
         const repoRoot = localRepoRoot(repo);
         if (benchmark && repoRoot && typeof literal === "string") {
-          const comparison = await withGrepTimeoutFallback(() =>
-            benchmarkLocateComparison({
-              literal,
-              repoPath: repoRoot,
-              index,
-              locate: locateOpts,
-            }),
-          );
-          if (comparison) {
-            await persistBenchmarkQuery(recordFromAgentSummary(repoRoot, comparison.benchmark));
-            const body = formatLiteralLocateText(comparison.payload);
-            return toolText(appendAgentBenchmark(body, comparison.benchmark));
+          if (locateOpts.limit != null) {
+            skip = "limited_locate";
+          } else if (!selectComparableLiteralSearchTool()) {
+            skip = "incompatible_literal_baseline";
           }
-          skip = "grep_timeout";
+          if (!skip) {
+            const comparison = await withGrepTimeoutFallback(() =>
+              benchmarkLocateComparison({
+                literal,
+                repoPath: repoRoot,
+                index,
+                locate: locateOpts,
+              }),
+            );
+            if (comparison) {
+              await persistBenchmarkQuery(recordFromAgentSummary(repoRoot, comparison.benchmark));
+              const body = formatLiteralLocateText(comparison.payload);
+              return toolText(appendAgentBenchmark(body, comparison.benchmark));
+            }
+            skip = "grep_timeout";
+          }
         } else if (benchmark && !repoRoot) {
           skip = "local_repo_only";
         }
@@ -356,6 +416,7 @@ export function createMcpServer(
             formatResults(`Chunks related to ${filePath}:${anchorLine}`, results, {
               repoRoot,
               snippet: true,
+              snippetSourceChunks: await loadSnippetSources(index.root, results),
             }),
           ),
         );

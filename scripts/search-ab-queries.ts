@@ -1,9 +1,11 @@
 import { stat } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const BENCH_ROOT = `${process.env.HOME ?? ""}/.cache/miru-bench`;
-export const MIRU_ROOT = dirname(fileURLToPath(new URL("..", import.meta.url)));
+// `dirname(fileURLToPath(new URL("..")))` walks one directory too far because
+// the URL already denotes the repository directory with a trailing slash.
+export const MIRU_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const TOP_K = 5;
 
 export interface BenchQuery {

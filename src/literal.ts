@@ -124,7 +124,7 @@ function expandLiterals(literals: readonly string[], matchVariants: boolean): st
   return [...seen];
 }
 
-function filterChunksByGlob(
+export function filterChunksByGlob(
   chunks: readonly Chunk[],
   include: string[] | undefined,
   exclude: string[] | undefined,

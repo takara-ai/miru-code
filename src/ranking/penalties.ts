@@ -1,5 +1,6 @@
 import { basename } from "node:path";
 import type { Chunk } from "../types.ts";
+import { rankingConfig } from "./config.ts";
 
 const TEST_FILE_RE =
   /(?:^|\/)(?:test_[^/]*\.py|[^/]*_test\.py|[^/]*_test\.go|[^/]*Tests?\.java|[^/]*Test\.php|[^/]*_spec\.rb|[^/]*_test\.rb|[^/]*\.test\.[jt]sx?|[^/]*\.spec\.[jt]sx?|[^/]*Tests?\.kt|[^/]*Spec\.kt|[^/]*Tests?\.swift|[^/]*Spec\.swift|[^/]*Tests?\.cs|test_[^/]*\.cpp|[^/]*_test\.cpp|test_[^/]*\.c|[^/]*_test\.c|[^/]*Spec\.scala|[^/]*Suite\.scala|[^/]*Test\.scala|[^/]*_test\.dart|test_[^/]*\.dart|[^/]*_spec\.lua|[^/]*_test\.lua|test_[^/]*\.lua|test_helpers?[^/]*\.\w+)$/;
@@ -15,7 +16,6 @@ const MILD_PENALTY = 0.7;
 
 const REEXPORT_FILENAMES = new Set(["__init__.py", "package-info.java"]);
 const FILE_SATURATION_THRESHOLD = 1;
-const FILE_SATURATION_DECAY = 0.5;
 
 function filePathPenalty(filePath: string): number {
   const normalised = filePath.replace(/\\/g, "/");
@@ -49,6 +49,7 @@ export function rerankTopk(
   }
 
   const penaltyCache = new Map<string, number>();
+  const tuning = rankingConfig();
   const penalised = new Map<string, number>();
 
   for (const [key, score] of scores) {
@@ -57,7 +58,7 @@ export function rerankTopk(
       continue;
     }
     let pen = score;
-    if (penalisePaths) {
+    if (penalisePaths && tuning.pathPenalties) {
       let mult = penaltyCache.get(chunk.file_path);
       if (mult === undefined) {
         mult = filePathPenalty(chunk.file_path);
@@ -88,7 +89,7 @@ export function rerankTopk(
     let effScore = penScore;
     if (already >= FILE_SATURATION_THRESHOLD) {
       const excess = already - FILE_SATURATION_THRESHOLD + 1;
-      effScore *= FILE_SATURATION_DECAY ** excess;
+      effScore *= tuning.fileSaturationDecay ** excess;
     }
 
     selected.push({ score: effScore, key });

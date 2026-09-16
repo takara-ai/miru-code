@@ -13,6 +13,7 @@ import {
 } from "../utils.ts";
 
 const CACHE_MAX_SIZE = 10;
+const BUN_WATCH_RECONCILE_INTERVAL_MS = 500;
 
 /** Directory names we skip for MCP fs.watch update triggers (aligned with file-walker). */
 const WATCH_IGNORED_DIR_NAMES = new Set([
@@ -35,7 +36,7 @@ const WATCH_IGNORED_DIR_NAMES = new Set([
   ".eggs",
 ]);
 
-type WatcherHandle = ReturnType<typeof watch>;
+type WatcherHandle = { close(): void };
 
 type CacheEntry = {
   source: string;
@@ -274,12 +275,18 @@ export class IndexCache {
 
       try {
         await index.applyFileChanges(paths);
-        if (!isGitUrl(source)) {
-          await index.saveToCache(resolve(source), { force: true });
-        }
       } catch {
         for (const p of paths) {
           entry.pendingPaths.add(p);
+        }
+        return;
+      }
+      if (!isGitUrl(source)) {
+        try {
+          await index.saveToCache(resolve(source), { force: true });
+        } catch {
+          // The in-memory index is already current. A cache write failure must
+          // not requeue the change and repeatedly re-embed the same file.
         }
       }
     };
@@ -351,10 +358,48 @@ export class IndexCache {
       return;
     }
 
-    const watcher = watch(resolved, { recursive: true }, (_event, filename) => {
-      this.noteFileChange(resolved, filename);
+    let nativeWatcher: ReturnType<typeof watch> | null = null;
+    try {
+      nativeWatcher = watch(resolved, { recursive: true }, (_event, filename) => {
+        this.noteFileChange(path, filename);
+      });
+    } catch {
+      // Recursive fs.watch is unavailable on some platforms. The reconciliation
+      // fallback below keeps local indexes current there.
+    }
+
+    // Bun 1.3 on macOS can create a recursive watcher without delivering file
+    // events. Reconcile periodically in Bun so a silent watcher cannot leave an
+    // MCP index stale. Native watchers remain the fast path everywhere else.
+    let reconcileInFlight = false;
+    const reconcile = (): void => {
+      if (reconcileInFlight) {
+        return;
+      }
+      const cacheKey = computeSourceCacheKey(path);
+      const entry = this.entries.get(cacheKey);
+      if (!entry?.index) {
+        return;
+      }
+      reconcileInFlight = true;
+      void this.checkAndQueueStaleFiles(path, entry.index, cacheKey).finally(() => {
+        reconcileInFlight = false;
+      });
+    };
+    const interval =
+      process.versions.bun || !nativeWatcher
+        ? setInterval(reconcile, BUN_WATCH_RECONCILE_INTERVAL_MS)
+        : null;
+    interval?.unref();
+
+    this.watchers.set(resolved, {
+      close: () => {
+        nativeWatcher?.close();
+        if (interval) {
+          clearInterval(interval);
+        }
+      },
     });
-    this.watchers.set(resolved, watcher);
   }
 
   get watcher(): WatcherHandle | null {

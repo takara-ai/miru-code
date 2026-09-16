@@ -5,12 +5,32 @@ import {
   spawnBenchmarkSearch,
   withGrepTimeoutFallback,
 } from "../src/benchmark/grep.ts";
+import {
+  batchLiteralPaths,
+  selectComparableLiteralSearchTool,
+} from "../src/benchmark/rg-literal.ts";
 
 afterEach(() => {
   delete process.env.MIRU_BENCHMARK_SEARCH_TIMEOUT;
 });
 
 describe("benchmark search tool selection", () => {
+  test("batches literal benchmark paths before command-line limits", () => {
+    const paths = Array.from({ length: 3 }, (_, i) => `${"a".repeat(2_000)}-${i}.ts`);
+    expect(batchLiteralPaths(paths)).toEqual([[paths[0], paths[1]], [paths[2]]]);
+  });
+
+  test("literal benchmark selection never returns findstr", () => {
+    expect(
+      selectComparableLiteralSearchTool({
+        platform: "win32",
+        hasRg: false,
+        hasGrep: false,
+        hasFindstr: true,
+      }),
+    ).toBeNull();
+  });
+
   test("prefers rg when available", () => {
     expect(
       selectBenchmarkSearchTool({

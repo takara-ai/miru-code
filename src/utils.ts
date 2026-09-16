@@ -196,11 +196,17 @@ export function formatRelevanceScore(score: number, maxScore: number): string {
 export function formatResults(
   query: string,
   results: SearchResult[],
-  options?: { repoRoot?: string | null; snippet?: boolean },
+  options?: {
+    repoRoot?: string | null;
+    snippet?: boolean;
+    snippetSourceChunks?: ReadonlyMap<string, Chunk>;
+  },
 ): { query: string; results: Record<string, unknown>[] } {
   const repoRoot = options?.repoRoot ?? null;
   const useSnippet = options?.snippet ?? searchSnippetsEnabled();
-  const payload = useSnippet ? applySnippetsToResults(results, query) : null;
+  const payload = useSnippet
+    ? applySnippetsToResults(results, query, undefined, options?.snippetSourceChunks)
+    : null;
   const maxScore = results.reduce((max, result) => Math.max(max, result.score), 0);
 
   return {

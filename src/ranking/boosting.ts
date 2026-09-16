@@ -2,6 +2,7 @@ import { basename, dirname } from "node:path";
 import { splitIdentifier } from "../tokens.ts";
 import type { Chunk } from "../types.ts";
 import { chunkKey } from "../types.ts";
+import { rankingConfig } from "./config.ts";
 import { searchImprovementsEnabled } from "./features.ts";
 import {
   boostExactStemMatches,
@@ -16,7 +17,6 @@ const EMBEDDED_SYMBOL_RE =
   /\b(?:[A-Z][a-z][a-zA-Z0-9]*[A-Z][a-zA-Z0-9]*|[a-z][a-zA-Z0-9]*[A-Z][a-zA-Z0-9]+)\b/g;
 
 const EMBEDDED_STEM_MIN_LEN = 4;
-const EMBEDDED_SYMBOL_BOOST_SCALE = 0.5;
 
 const DEFINITION_KEYWORDS = [
   "class",
@@ -48,10 +48,6 @@ const SQL_DEFINITION_KEYWORDS = [
   "CREATE PROCEDURE",
   "CREATE FUNCTION",
 ];
-
-const DEFINITION_BOOST_MULTIPLIER = 3.0;
-const STEM_BOOST_MULTIPLIER = 1.0;
-const FILE_COHERENCE_BOOST_FRAC = 0.2;
 
 const STOPWORDS = new Set(
   "a an and are as at be by do does for from has have how if in is it not of on or the to was what when where which who why with".split(
@@ -147,7 +143,7 @@ export function boostMultiChunkFiles(
   }
 
   const maxFileSum = Math.max(...fileSum.values());
-  const boostUnit = maxScore * FILE_COHERENCE_BOOST_FRAC;
+  const boostUnit = maxScore * rankingConfig().fileCoherenceBoost;
 
   for (const [fp, key] of bestChunk) {
     const current = scores.get(key) ?? 0;
@@ -192,7 +188,7 @@ function boostSymbolDefinitions(
   if (symbolName !== query.trim()) {
     names.add(query.trim());
   }
-  const boostUnit = maxScore * DEFINITION_BOOST_MULTIPLIER;
+  const boostUnit = maxScore * rankingConfig().definitionBoost;
 
   for (const key of [...boosted.keys()]) {
     const chunk = chunksByKey.get(key);
@@ -235,7 +231,8 @@ function boostEmbeddedSymbols(
     return;
   }
 
-  const boostUnit = maxScore * DEFINITION_BOOST_MULTIPLIER * EMBEDDED_SYMBOL_BOOST_SCALE;
+  const tuning = rankingConfig();
+  const boostUnit = maxScore * tuning.definitionBoost * tuning.embeddedSymbolScale;
   const symbolsLower = new Set([...names].map((s) => s.toLowerCase()));
 
   for (const key of [...boosted.keys()]) {
@@ -309,7 +306,7 @@ function boostStemMatches(
     return;
   }
 
-  const boost = maxScore * STEM_BOOST_MULTIPLIER;
+  const boost = maxScore * rankingConfig().exactStemBoost;
   const pathCache = new Map<string, Set<string>>();
 
   for (const key of [...boosted.keys()]) {

@@ -396,13 +396,15 @@ export class MiruIndex {
    */
   async search(options: {
     query: string;
+    /** Optional precomputed embedding for high-throughput callers. */
+    queryVector?: Float32Array;
     topK?: number;
     alpha?: number | null;
     filterLanguages?: string[];
     filterPaths?: string[];
     rerank?: boolean;
   }): Promise<SearchResult[]> {
-    const { query, topK = 10, alpha, filterLanguages, filterPaths, rerank } = options;
+    const { query, queryVector, topK = 10, alpha, filterLanguages, filterPaths, rerank } = options;
 
     if (!this.chunks.length || !query.trim()) {
       return [];
@@ -412,6 +414,7 @@ export class MiruIndex {
 
     return hybridSearch({
       query,
+      queryVector,
       embeddings: this.embeddings,
       semanticIndex: this.semanticIndex,
       bm25Index: this.bm25Index,
