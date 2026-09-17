@@ -12,7 +12,7 @@ The embedding model is sold on AWS Marketplace:
 | ---- | --------- | ------------------------------------------------------------------------------ |
 | 1    | AWS admin | Subscribe on Marketplace                                                       |
 | 2    | AWS admin | Deploy the endpoint with the CloudFormation/CDK template (below)               |
-| 3    | AWS admin | Create an invoke-only IAM user / profile (runbook below)                       |
+| 3    | AWS admin | Create an invoke-only IAM user / profile or IAM Identity Center permission set |
 | 4    | Developer | `miru setup --sagemaker` — Miru validates and saves the endpoint               |
 
 Miru **never** creates IAM users, IAM roles, SageMaker resources, or writes `~/.aws`. It only inherits a profile you already have and checks that it can call the endpoint.
@@ -125,6 +125,7 @@ This is separate from the endpoint's execution role above — it's the identity 
 call the endpoint from `miru setup` / indexing / search. You need an AWS identity that can call
 `sagemaker:InvokeEndpoint` on the endpoint ARN from step 2. The simplest path for a laptop / CI user is a
 **least-privilege IAM user** scoped to that one endpoint, installed as a named profile.
+Organizations using IAM Identity Center should use the [federated access guide](self-hosted-sagemaker-identity-center.md) instead. It avoids long-lived IAM users and access keys.
 
 From a checkout of this repo, with the [AWS CLI](https://docs.aws.amazon.com/cli/) available and **admin**
 credentials in your current shell:
