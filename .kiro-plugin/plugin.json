@@ -10,11 +10,5 @@
   "homepage": "https://takara.ai",
   "repository": "https://github.com/takara-ai/miru-code",
   "license": "MIT",
-  "keywords": [
-    "code-search",
-    "semantic-search",
-    "mcp",
-    "modernization",
-    "dependency-mapping"
-  ]
+  "keywords": ["code-search", "semantic-search", "mcp", "modernization", "dependency-mapping"]
 }
