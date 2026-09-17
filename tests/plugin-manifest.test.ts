@@ -70,7 +70,7 @@ test("Codex, Claude, and Cursor plugin manifests point at the Miru MCP runtime",
   expect(kiroPlugin.$schema).toBe("https://agent-plugins.org/schemas/1.0.0/plugin.schema.json");
   expect(kiroPlugin.name).toBe("miru");
   expect(kiroPlugin.description).toBe(
-    "Semantic code search for coding agents, built for AWS Transform modernization work — defaults to self-hosted SageMaker embeddings, not Takara-hosted.",
+    "Semantic code search for coding agents, built for AWS Transform modernization work — includes guidance for configuring self-hosted SageMaker embeddings via `miru setup --sagemaker`.",
   );
   expect(kiroPlugin.license).toBe("MIT");
 
