@@ -75,9 +75,11 @@ Requires the AWS CLI v2 and Miru 1.5.0 or later.
 bun add -g @takara-ai/miru-code
 miru --version
 
-# Create an SSO profile. Log in as yourself when the browser opens,
-# choose the endpoint account and the MiruInvoke role, and name the profile "miru".
-aws configure sso
+# Create an SSO profile. Choose the endpoint account and the MiruInvoke role.
+aws configure sso --profile miru
+
+# Log in as yourself when the browser opens.
+aws sso login --profile miru
 
 # Confirm you are the SSO role in the right account
 aws sts get-caller-identity --profile miru
@@ -86,9 +88,9 @@ aws sts get-caller-identity --profile miru
 miru setup --sagemaker --arn <endpoint-arn> --profile miru
 ```
 
-`aws configure sso` writes an `sso-session` block and a `[profile miru]` block to `~/.aws/config`. No keys are stored anywhere.
+`aws configure sso` writes an `sso-session` block and a `[profile miru]` block to `~/.aws/config`. No long-lived access keys are stored; the AWS CLI caches short-lived SSO tokens locally.
 
-If the account does not appear in the picker, either you logged in as a user without the assignment, or the login pre-dates provisioning. Run `aws sso logout` and `aws configure sso` again.
+If the account does not appear in the picker, either you logged in as a user without the assignment, or the login pre-dates provisioning. Run `aws sso logout`, then `aws configure sso --profile miru` and `aws sso login --profile miru` again.
 
 ## When the session expires
 

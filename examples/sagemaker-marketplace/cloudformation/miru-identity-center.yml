@@ -8,7 +8,7 @@ Parameters:
   InstanceArn:
     Type: String
     Description: Identity Center instance ARN (Identity Center > Settings)
-    AllowedPattern: ^arn:aws:sso:::instance/(sso)?ins-[a-zA-Z0-9-.]{16}$
+    AllowedPattern: ^arn:aws(-[a-z]{1,5}){0,3}:sso:::instance/(sso)?ins-[a-zA-Z0-9-.]{16}$
   GroupId:
     Type: String
     Description: >-
@@ -22,7 +22,7 @@ Parameters:
   EndpointArn:
     Type: String
     Description: Full ARN of the SageMaker endpoint Miru will call
-    AllowedPattern: ^arn:aws:sagemaker:[a-z0-9-]+:\d{12}:endpoint/[a-zA-Z0-9-]+$
+    AllowedPattern: ^arn:aws(-[a-z]{1,5}){0,3}:sagemaker:[a-z0-9-]+:\d{12}:endpoint/[a-zA-Z0-9-]+$
   PermissionSetName:
     Type: String
     Default: MiruInvoke
