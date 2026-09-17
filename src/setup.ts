@@ -192,6 +192,7 @@ export async function runSageMakerSetup(options: RunSetupOptions = {}): Promise<
     const config: SageMakerEmbeddingConfig = {
       endpointName: parsed.endpointName,
       region: parsed.region,
+      profile,
       normalize: true,
       truncate: true,
       truncationDirection: "Right",
