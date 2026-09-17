@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.8.0](https://github.com/takara-ai/miru-code/compare/v1.7.8...v1.8.0) (2026-09-17)
+
+
+### Features
+
+* add CloudFormation and CDK examples for self-hosted SageMaker Marketplace endpoint ([#44](https://github.com/takara-ai/miru-code/issues/44)) ([8a57541](https://github.com/takara-ai/miru-code/commit/8a575416fb0ec46ec8cdf4017fc59460dc93fb75))
+* add Kiro plugin scaffold and AWS Transform modernization skill ([eabaf80](https://github.com/takara-ai/miru-code/commit/eabaf80890fb8c919b3e016e975fc1bdd3f9ef50))
+* add Kiro plugin scaffold and AWS Transform modernization skill ([#48](https://github.com/takara-ai/miru-code/issues/48)) ([a5c4943](https://github.com/takara-ai/miru-code/commit/a5c49431c565fa424b263f927b4fadaed04842cc))
+* **benchmark:** add calibrated search and locate comparisons ([6a26fe5](https://github.com/takara-ai/miru-code/commit/6a26fe58372de966d17931c20afd6d9a2d4150d8))
+* improve search snippets and benchmark rigor ([0761f34](https://github.com/takara-ai/miru-code/commit/0761f3420d24bd515e52db6b232aae3aa039445e))
+* **ranking:** tune hybrid retrieval defaults ([1c93e46](https://github.com/takara-ai/miru-code/commit/1c93e46443b881de20b7a51ca489d057ac209028))
+* **search:** add structural source-aware snippets ([bc8212d](https://github.com/takara-ai/miru-code/commit/bc8212dab6998c0b1aaabfa3edec189a2b7dd011))
+
+
+### Bug Fixes
+
+* align Kiro plugin with self-hosted SageMaker default and correct locate guidance ([af40b73](https://github.com/takara-ai/miru-code/commit/af40b73c34204490926567127b7575d59f85992a))
+* **benchmark:** require comparable locate baselines ([2671254](https://github.com/takara-ai/miru-code/commit/2671254835d33db8aed2336583fa43345b874ec5))
+* **embeddings:** support case-insensitive AWS profile keys ([acb6ca7](https://github.com/takara-ai/miru-code/commit/acb6ca7942cc83e18f9021c7dadefa65be1daa64))
+* **embeddings:** support case-insensitive AWS profile keys ([acb6ca7](https://github.com/takara-ai/miru-code/commit/acb6ca7942cc83e18f9021c7dadefa65be1daa64))
+* **embeddings:** support case-insensitive AWS profile keys ([4209c65](https://github.com/takara-ai/miru-code/commit/4209c65332937d5317adbd6ddbdf5940707241f9))
+* **mcp:** keep incremental indexes current ([a4169ac](https://github.com/takara-ai/miru-code/commit/a4169ac0bd6fea4aca2e1a6197d2e1379ec519c2))
+* pin Kiro mcp.json to @takara-ai/miru-code@latest ([316dc73](https://github.com/takara-ai/miru-code/commit/316dc73ef375a4bbbfd9ffe6d1d4cff294bee9bf))
+* propagate .mcp.json rename and normalize to bunx across manifests ([1b62afd](https://github.com/takara-ai/miru-code/commit/1b62afd67da473f184d64dea1c9b8f9236c3bfca))
+* wire mcpServers into Claude/Codex plugin manifests, add Kiro skills sync ([6795aaa](https://github.com/takara-ai/miru-code/commit/6795aaa4fbe9fffb738206aa66a0ae72015417ff))
+
 ## [1.7.8](https://github.com/takara-ai/miru-code/compare/v1.7.7...v1.7.8) (2026-08-18)
 
 
