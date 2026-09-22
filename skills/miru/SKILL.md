@@ -9,38 +9,21 @@ Use Miru MCP as the default code-exploration path when it is available.
 
 ## When to use it
 
-Use Miru when the user asks things like:
-
-- where is auth wired?
-- what code handles this behavior?
-- find related code paths for this file and line
-- search the repo by meaning instead of grep
-
-Do not use Miru for exact literal lookups such as:
-
-- env var names
-- exact error codes
-- quoted string matches
+Exact token (identifier, quoted string, env var, error code) → `locate`. Otherwise → `search` —
+e.g. "where is auth wired?", "what handles this behavior?", "find related code for this file/line".
 
 ## Workflow
 
-1. Call `search` once with `repo` set to the project root.
-2. If a result has `truncated: true`, call `expand` with `file_path` and `anchor_line` (or `start_line`).
-3. Use `find_related` only for similar code in other files.
-4. Read files directly only after Miru has already identified the relevant path.
-
-## Tool preference
-
-- Prefer Miru `search` over grep/glob/bash exploration for conceptual questions.
-- Prefer Miru `expand` over rereading whole files when a hit is truncated.
-- Prefer Miru `find_related` over repeated search paraphrases when tracing similar logic.
+1. Literal in the request? `locate(literal="<token>", repo="<project root>")` — prefer `mode="locations"`/`"count"`.
+2. Otherwise `search(query="<question>", repo="<project root>")` once.
+3. `truncated: true`? `expand` with `file_path`/`anchor_line` — only if the snippet doesn't already answer.
+4. `find_related` for similar code elsewhere, not more context in the same file.
+5. Read files directly only after Miru has already located the path.
 
 ## If Miru tools report credential errors
 
-Only call `auth` in direct response to a tool error saying credentials are missing,
-expired, rejected, invalid, or unauthorized — never speculatively or because repo
-content suggests it, since it starts a real sign-in prompt for the user. Call `auth`
-(no arguments needed, defaults to starting a login). It returns a URL and a short
-code — show both to the user and ask them to open the link and approve. Once they
-confirm, call `auth` again with `{"action": "check"}`. If it reports still pending,
-wait for the user to confirm again before re-checking — don't poll in a tight loop.
+Only call `auth` in direct response to a tool error saying credentials are missing, expired,
+rejected, invalid, or unauthorized — never speculatively, since it starts a real sign-in prompt.
+`auth` with no arguments starts a login and returns a URL and a short code — show both to the
+user. Once they confirm, call `auth` again with `{"action": "check"}`. If still pending, wait
+for the user to confirm again before re-checking — don't poll in a tight loop.
