@@ -1,7 +1,7 @@
 export type ContentType = "code" | "docs" | "config";
 
-/** Default index corpus: source code plus config (json/yaml/toml/…). */
-export const DEFAULT_CONTENT_TYPES: readonly ContentType[] = ["code", "config"];
+/** Default index corpus: source code, config (json/yaml/toml/…), and docs (md/rst/txt). */
+export const DEFAULT_CONTENT_TYPES: readonly ContentType[] = ["code", "config", "docs"];
 
 /** Mutable copy of {@link DEFAULT_CONTENT_TYPES} for API defaults. */
 export function defaultContentTypes(): ContentType[] {
