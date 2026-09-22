@@ -1,5 +1,6 @@
 import { watch } from "node:fs";
 import { relative, resolve } from "node:path";
+import { isCredentialsError } from "../auth/errors.ts";
 import { walkFiles } from "../index/file-walker.ts";
 import { getExtensions } from "../index/files.ts";
 import { normalizeRelativePath, relativePathFromRoot } from "../index/incremental.ts";
@@ -45,6 +46,8 @@ type CacheEntry = {
   pendingPaths: Set<string>;
   flushQueued: boolean;
   updateChain: Promise<void>;
+  /** Dead-credentials failure from a background re-embed; `get()` throws it until a retry clears it. */
+  lastError: Error | null;
 };
 
 export function mcpWatchEnabled(): boolean {
@@ -98,6 +101,7 @@ export class IndexCache {
         pendingPaths: new Set(),
         flushQueued: false,
         updateChain: Promise.resolve(),
+        lastError: null,
       };
       this.entries.set(cacheKey, entry);
     }
@@ -171,6 +175,9 @@ export class IndexCache {
       throw new Error(`Failed to load index for ${source}`);
     }
     await entry.updateChain;
+    if (entry.lastError) {
+      throw entry.lastError;
+    }
     return index;
   }
 
@@ -253,34 +260,38 @@ export class IndexCache {
         return;
       }
 
+      const requeue = (err?: unknown): void => {
+        if (err !== undefined && isCredentialsError(err)) {
+          entry.lastError = err instanceof Error ? err : new Error(String(err));
+        }
+        for (const p of paths) {
+          entry.pendingPaths.add(p);
+        }
+      };
+
       // Prefer an index already in hand (or published on the entry). Never await
       // entry.task while that task is itself waiting on this flush — that deadlocks.
       let index = knownIndex ?? entry.index;
       if (!index && entry.task) {
         try {
           index = await entry.task;
-        } catch {
-          for (const p of paths) {
-            entry.pendingPaths.add(p);
-          }
+        } catch (err) {
+          requeue(err);
           return;
         }
       }
       if (!index) {
-        for (const p of paths) {
-          entry.pendingPaths.add(p);
-        }
+        requeue();
         return;
       }
 
       try {
         await index.applyFileChanges(paths);
-      } catch {
-        for (const p of paths) {
-          entry.pendingPaths.add(p);
-        }
+      } catch (err) {
+        requeue(err);
         return;
       }
+      entry.lastError = null;
       if (!isGitUrl(source)) {
         try {
           await index.saveToCache(resolve(source), { force: true });

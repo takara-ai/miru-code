@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import type { EmbeddingBackend } from "../src/embeddings/openai.ts";
+import { EmbeddingApiError, type EmbeddingBackend } from "../src/embeddings/openai.ts";
 import { createIndexFromPath } from "../src/index/create.ts";
 import { IndexCache } from "../src/mcp/index-cache.ts";
 import { MiruIndex } from "../src/miru-index.ts";
@@ -15,6 +15,29 @@ function hashToVector(text: string, dim = 32): Float32Array {
     h = (Math.imul(31, h) + (text.charCodeAt(i) ?? 0)) >>> 0;
   }
   return unitVector(dim, h % dim);
+}
+
+function credentialsFailingEmbeddings(): EmbeddingBackend & { setFailing(v: boolean): void } {
+  let failing = false;
+  return {
+    model: "mock-cred-fail",
+    dimensions: 32,
+    setFailing(v: boolean) {
+      failing = v;
+    },
+    async embedDocuments(texts: string[]) {
+      if (failing) {
+        throw new EmbeddingApiError(401, "unauthorized");
+      }
+      return texts.map((text) => hashToVector(text));
+    },
+    async embedQuery(text: string) {
+      if (failing) {
+        throw new EmbeddingApiError(401, "unauthorized");
+      }
+      return hashToVector(text);
+    },
+  };
 }
 
 function trackingEmbeddings(): EmbeddingBackend & {
@@ -487,4 +510,60 @@ describe("incremental integration", () => {
     },
     { timeout: 20_000 },
   );
+
+  test("get() fails loudly after a background re-embed hits dead credentials, then recovers", async () => {
+    const root = await buildTempRepo();
+    try {
+      const embeddings = credentialsFailingEmbeddings();
+      const built = await createIndexFromPath(root, embeddings, ["code"], root);
+      const index = new MiruIndex({
+        embeddings,
+        bm25Index: built.bm25,
+        semanticIndex: built.semantic,
+        chunks: built.chunks,
+        embeddingModel: embeddings.model,
+        root,
+        content: ["code"],
+      });
+
+      const cache = new IndexCache(["code"]);
+      const cacheKey = computeSourceCacheKey(root);
+      const internals = cacheInternals(cache);
+      const entry = internals.ensureEntry(cacheKey);
+      entry.index = index;
+      entry.task = Promise.resolve(index);
+
+      await writeFile(
+        join(root, "src/auth.ts"),
+        "export function authenticateUser() {\n  return 'miruDeadCredsToken';\n}\n",
+        "utf-8",
+      );
+
+      embeddings.setFailing(true);
+      internals.noteFileChange(root, "src/auth.ts");
+      await new Promise<void>((resolve) => queueMicrotask(resolve));
+      await entry.updateChain;
+
+      await expect(cache.get(root)).rejects.toThrow(/unauthorized|Not authorized/i);
+      await expect(cache.get(root)).rejects.toThrow(/unauthorized|Not authorized/i);
+
+      embeddings.setFailing(false);
+      internals.noteFileChange(root, "src/auth.ts");
+      await new Promise<void>((resolve) => queueMicrotask(resolve));
+      await entry.updateChain;
+      await expect(cache.get(root)).resolves.toBe(index);
+
+      const after = await index.search({
+        query: "miruDeadCredsToken",
+        topK: 1,
+        alpha: 0,
+        rerank: false,
+      });
+      expect(after[0]?.chunk.content).toContain("miruDeadCredsToken");
+
+      cache.close();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });
