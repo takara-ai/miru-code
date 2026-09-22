@@ -226,9 +226,16 @@ export function createMcpServer(
       inputSchema: {
         literal: z
           .union([z.string().min(1), z.array(z.string().min(1)).min(1)])
+          .optional()
           .describe(
             "Exact substring to find (env var, symbol, error code, quoted text). " +
               "Pass an array to OR-match several substrings (e.g. spelling/casing variants) in one call.",
+          ),
+        query: z
+          .union([z.string().min(1), z.array(z.string().min(1)).min(1)])
+          .optional()
+          .describe(
+            "Alias for `literal` — accepted so a call shaped like `search(query=...)` still resolves as an exact-substring lookup.",
           ),
         repo: z.string().describe(REPO_DESCRIPTION),
         mode: z
@@ -270,13 +277,17 @@ export function createMcpServer(
           .describe("Lines of context before/after each match, like `grep -C` (mode=lines only)."),
       },
     },
-    async ({ literal, repo, ...locateOpts }) => {
+    async ({ literal, query, repo, ...locateOpts }) => {
+      const lit = literal ?? query;
+      if (lit == null) {
+        return toolErrorText(new Error("locate requires `literal` (exact substring to find)."));
+      }
       try {
         const index = await getIndexForRepo(repo, cache);
 
         let skip: BenchmarkSkipReason | undefined;
         const repoRoot = localRepoRoot(repo);
-        if (benchmark && repoRoot && typeof literal === "string") {
+        if (benchmark && repoRoot && typeof lit === "string") {
           if (locateOpts.limit != null) {
             skip = "limited_locate";
           } else if (!selectComparableLiteralSearchTool()) {
@@ -285,7 +296,7 @@ export function createMcpServer(
           if (!skip) {
             const comparison = await withGrepTimeoutFallback(() =>
               benchmarkLocateComparison({
-                literal,
+                literal: lit,
                 repoPath: repoRoot,
                 index,
                 locate: locateOpts,
@@ -302,7 +313,7 @@ export function createMcpServer(
           skip = "local_repo_only";
         }
 
-        const result = index.locateLiteral(literal, locateOpts);
+        const result = index.locateLiteral(lit, locateOpts);
         const payload = formatLiteralLocate(result);
         const body = formatLiteralLocateText(payload);
         return toolText(skip ? withBenchmarkSkippedNote(body, skip) : body);
