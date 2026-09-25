@@ -338,6 +338,10 @@ describe("incremental integration", () => {
       expect(entry.pendingPaths.size).toBe(0);
       expect(embeddings.documentEmbedCount).toBeGreaterThan(0);
 
+      embeddings.resetEmbedCount();
+      await internals.checkAndQueueStaleFiles(resolvedRoot, index, cacheKey);
+      expect(embeddings.documentEmbedCount).toBe(0);
+
       const hit = await index.search({
         query: "miruRaceFixToken",
         topK: 1,
@@ -347,6 +351,40 @@ describe("incremental integration", () => {
       expect(hit[0]?.chunk.file_path).toBe("src/auth.ts");
       expect(hit[0]?.chunk.content).toContain("miruRaceFixToken");
 
+      cache.close();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("saving a fresh index seeds the mtime snapshot for reconciliation", async () => {
+    const root = await buildTempRepo();
+    const resolvedRoot = resolve(root);
+    try {
+      const embeddings = trackingEmbeddings();
+      const built = await createIndexFromPath(resolvedRoot, embeddings, ["code"], resolvedRoot);
+      const index = new MiruIndex({
+        embeddings,
+        bm25Index: built.bm25,
+        semanticIndex: built.semantic,
+        chunks: built.chunks,
+        embeddingModel: embeddings.model,
+        root: resolvedRoot,
+        content: ["code"],
+      });
+
+      const cache = new IndexCache(["code"]);
+      const cacheKey = computeSourceCacheKey(resolvedRoot);
+      const internals = cacheInternals(cache);
+      const entry = internals.ensureEntry(cacheKey, resolvedRoot);
+      entry.index = index;
+      entry.task = Promise.resolve(index);
+
+      await index.saveToCache(resolvedRoot);
+      embeddings.resetEmbedCount();
+      await internals.checkAndQueueStaleFiles(resolvedRoot, index, cacheKey);
+
+      expect(embeddings.documentEmbedCount).toBe(0);
       cache.close();
     } finally {
       await rm(root, { recursive: true, force: true });
