@@ -38,6 +38,7 @@ jobs:
   test:
     runs-on: ${{ matrix.os }}
     needs: lint-typecheck
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:

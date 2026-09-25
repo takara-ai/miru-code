@@ -10,9 +10,10 @@ import { join } from "node:path";
 // ever registered. This spawns the real CLI entrypoint the same way (no args) and
 // asserts the process stays alive and answers tools/list, rather than testing the
 // pieces `runMcpWithCredentials` calls in isolation.
-test("cold start with zero stored credentials stays alive and serves tools/list", async () => {
-  const credDir = await mkdtemp(join(tmpdir(), "miru-cli-cold-start-"));
-  try {
+test(
+  "cold start with zero stored credentials stays alive and serves tools/list",
+  async () => {
+    const credDir = await mkdtemp(join(tmpdir(), "miru-cli-cold-start-"));
     const proc = Bun.spawn({
       cmd: ["bun", "src/cli.ts"],
       cwd: join(import.meta.dir, ".."),
@@ -27,68 +28,88 @@ test("cold start with zero stored credentials stays alive and serves tools/list"
       stderr: "pipe",
     });
 
-    const writer = proc.stdin;
-    const send = (message: unknown) => writer.write(`${JSON.stringify(message)}\n`);
+    try {
+      const writer = proc.stdin;
+      const send = (message: unknown) => writer.write(`${JSON.stringify(message)}\n`);
 
-    send({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: {
-        protocolVersion: "2025-03-26",
-        capabilities: {},
-        clientInfo: { name: "cold-start-test", version: "1.0.0" },
-      },
-    });
-    send({ jsonrpc: "2.0", method: "notifications/initialized" });
-    send({ jsonrpc: "2.0", id: 2, method: "tools/list" });
-    // Keep stdin open until we have both replies. Ending the pipe early signals EOF
-    // to StdioTransport, which closes the server mid-flight — flaky on Windows CI.
+      send({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-03-26",
+          capabilities: {},
+          clientInfo: { name: "cold-start-test", version: "1.0.0" },
+        },
+      });
+      send({ jsonrpc: "2.0", method: "notifications/initialized" });
+      send({ jsonrpc: "2.0", id: 2, method: "tools/list" });
+      // Keep stdin open until we have both replies. Ending the pipe early signals EOF
+      // to StdioTransport, which closes the server mid-flight — flaky on Windows CI.
 
-    const reader = proc.stdout.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    const responses: Array<{ id?: number; result?: { tools?: Array<{ name: string }> } }> = [];
+      const reader = proc.stdout.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      const responses: Array<{ id?: number; result?: { tools?: Array<{ name: string }> } }> = [];
 
-    // Read until the MCP server has completed both requests. A polling deadline
-    // races the child process' cold start and can discard an otherwise valid
-    // tools/list response on slower CI runners.
-    while (responses.length < 2) {
-      const { done, value } = await reader.read();
-      if (value) {
-        buffer += decoder.decode(value, { stream: true });
-        let newline = buffer.indexOf("\n");
-        while (newline !== -1) {
-          const line = buffer.slice(0, newline).replace(/\r$/, "").trim();
-          buffer = buffer.slice(newline + 1);
-          if (line) {
-            responses.push(JSON.parse(line));
-          }
-          newline = buffer.indexOf("\n");
-        }
+      try {
+        // A locked, idle reader on the child's stdout pipe can pin the process
+        // forever on Windows if the child never writes/closes again (observed:
+        // github.com/takara-ai/miru-code/actions/runs/36142996260 hung 1h25m on
+        // windows-latest with no output past this point). Race the read loop
+        // against a hard deadline so a stuck child fails the test instead of
+        // hanging the whole CI job.
+        await Promise.race([
+          (async () => {
+            while (responses.length < 2) {
+              const { done, value } = await reader.read();
+              if (value) {
+                buffer += decoder.decode(value, { stream: true });
+                let newline = buffer.indexOf("\n");
+                while (newline !== -1) {
+                  const line = buffer.slice(0, newline).replace(/\r$/, "").trim();
+                  buffer = buffer.slice(newline + 1);
+                  if (line) {
+                    responses.push(JSON.parse(line));
+                  }
+                  newline = buffer.indexOf("\n");
+                }
+              }
+              if (done && proc.exitCode !== null) {
+                break;
+              }
+            }
+          })(),
+          new Promise<never>((_, reject) => {
+            setTimeout(
+              () => reject(new Error("timed out waiting for tools/list response")),
+              15_000,
+            );
+          }),
+        ]);
+      } finally {
+        reader.releaseLock();
       }
-      if (done && proc.exitCode !== null) {
-        break;
-      }
+
+      await writer.end();
+
+      // The process must not have exited on its own before we killed it — a crash
+      // on cold start is exactly the regression this test guards against.
+      expect(responses.length).toBe(2);
+
+      const toolsListResponse = responses.find((r) => r.id === 2);
+      const toolNames = toolsListResponse?.result?.tools?.map((t) => t.name) ?? [];
+      expect(toolNames).toContain("auth");
+      expect(toolNames).toContain("search");
+    } finally {
+      // Always kill the child, even on timeout/failure — an orphaned subprocess
+      // with an open stdout pipe is exactly what pinned the CI job (see above).
+      proc.kill();
+      const exitCode = await proc.exited;
+      // 143 = SIGTERM from our own proc.kill(), not a crash exit code.
+      expect([0, 143, null]).toContain(exitCode);
+      await rm(credDir, { recursive: true, force: true });
     }
-
-    reader.releaseLock();
-    await writer.end();
-    proc.kill();
-    const exitCode = await proc.exited;
-
-    // The process must not have exited on its own before we killed it — a crash
-    // on cold start is exactly the regression this test guards against.
-    expect(responses.length).toBe(2);
-
-    const toolsListResponse = responses.find((r) => r.id === 2);
-    const toolNames = toolsListResponse?.result?.tools?.map((t) => t.name) ?? [];
-    expect(toolNames).toContain("auth");
-    expect(toolNames).toContain("search");
-
-    // 143 = SIGTERM from our own proc.kill(), not a crash exit code.
-    expect([0, 143, null]).toContain(exitCode);
-  } finally {
-    await rm(credDir, { recursive: true, force: true });
-  }
-});
+  },
+  { timeout: 20_000 },
+);
