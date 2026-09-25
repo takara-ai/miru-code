@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.1](https://github.com/takara-ai/miru-code/compare/v1.8.0...v1.8.1) (2026-09-25)
+
+
+### Bug Fixes
+
+* **mcp:** stop repeated incremental re-embeddings ([3be9c77](https://github.com/takara-ai/miru-code/commit/3be9c77225dd590f2c86b1d9c67e5d062d6557d2))
+
 ## [1.8.0](https://github.com/takara-ai/miru-code/compare/v1.7.8...v1.8.0) (2026-09-17)
 
 
