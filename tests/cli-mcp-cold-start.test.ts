@@ -15,7 +15,13 @@ test(
   async () => {
     const credDir = await mkdtemp(join(tmpdir(), "miru-cli-cold-start-"));
     const proc = Bun.spawn({
-      cmd: ["bun", "src/cli.ts"],
+      // process.execPath (not the bare "bun" string) so this doesn't depend on
+      // resolving an extension-less command name via PATH — Windows CreateProcess
+      // doesn't do PATHEXT lookup itself the way a shell does, and a previous
+      // version of this test spawning ["bun", "src/cli.ts"] produced a child with
+      // zero bytes on both stdout and stderr and a near-instant exit on
+      // windows-latest CI, consistent with the executable never actually starting.
+      cmd: [process.execPath, "src/cli.ts"],
       cwd: join(import.meta.dir, ".."),
       env: {
         ...process.env,
@@ -52,6 +58,7 @@ test(
 
     const responses: Array<{ id?: number; result?: { tools?: Array<{ name: string }> } }> = [];
     let readError: Error | null = null;
+    let exitCode: number | null = null;
 
     try {
       const writer = proc.stdin;
@@ -127,7 +134,7 @@ test(
       // Always kill the child, even on timeout/failure — an orphaned subprocess
       // with an open stdout pipe is what pinned the CI job before (see above).
       proc.kill();
-      const exitCode = await proc.exited;
+      exitCode = await proc.exited;
       await stderrDrain;
       // 143 = SIGTERM from our own proc.kill(), not a crash exit code.
       expect([0, 143, null]).toContain(exitCode);
@@ -137,7 +144,7 @@ test(
     if (readError || responses.length !== 2) {
       throw new Error(
         `expected 2 JSON-RPC responses on stdout, got ${responses.length}` +
-          `${readError ? ` (${readError.message})` : ""}.\n` +
+          `${readError ? ` (${readError.message})` : ""}. pid=${proc.pid} exitCode=${exitCode} signalCode=${proc.signalCode}.\n` +
           `child stderr:\n${stderrText || "(empty)"}`,
       );
     }
