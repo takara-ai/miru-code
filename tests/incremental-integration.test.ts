@@ -651,9 +651,10 @@ describe("incremental integration", () => {
       expect(entry.pendingPaths.size).toBe(0);
       expect(embeddings.documentEmbedCount).toBe(0);
 
-      // The periodic mtime reconcile (what startWatcher's interval calls) is
-      // the real safety net now -- confirm it still finds and fixes the
-      // change, and only re-embeds the one file that actually changed.
+      // checkAndQueueStaleFiles (run on cache load, and by any caller who wants
+      // an explicit reconcile) is the remaining safety net -- confirm it still
+      // finds and fixes the change, and only re-embeds the one file that
+      // actually changed.
       await internals.checkAndQueueStaleFiles(resolvedRoot, index, cacheKey);
 
       expect(embeddings.documentEmbedCount).toBeGreaterThan(0);

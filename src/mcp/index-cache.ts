@@ -14,7 +14,6 @@ import {
 } from "../utils.ts";
 
 const CACHE_MAX_SIZE = 10;
-const BUN_WATCH_RECONCILE_INTERVAL_MS = 500;
 
 /** Directory names we skip for MCP fs.watch update triggers (aligned with file-walker). */
 const WATCH_IGNORED_DIR_NAMES = new Set([
@@ -193,8 +192,8 @@ export class IndexCache {
   private noteFileChange(source: string, filename: string | null | undefined): void {
     if (!filename) {
       // macOS recursive fs.watch could omit the filename on old Bun releases (pre-1.3.14
-      // fs.watch rewrite). Rather than re-embedding the whole index on every such event,
-      // rely on the periodic mtime reconcile in `startWatcher` to pick up the change.
+      // fs.watch rewrite); confirmed fixed on current Bun. No reconcile fallback for
+      // this case anymore -- an event with no filename is simply dropped.
       return;
     }
     if (shouldIgnoreWatchPath(filename)) {
@@ -347,40 +346,13 @@ export class IndexCache {
         this.noteFileChange(path, filename);
       });
     } catch {
-      // Recursive fs.watch is unavailable on some platforms. The reconciliation
-      // fallback below keeps local indexes current there.
+      // Recursive fs.watch is unavailable on some platforms (no fallback here
+      // anymore -- such a local index will only refresh on next cold load).
     }
-
-    // Bun 1.3 on macOS can create a recursive watcher without delivering file
-    // events. Reconcile periodically in Bun so a silent watcher cannot leave an
-    // MCP index stale. Native watchers remain the fast path everywhere else.
-    let reconcileInFlight = false;
-    const reconcile = (): void => {
-      if (reconcileInFlight) {
-        return;
-      }
-      const cacheKey = computeSourceCacheKey(path);
-      const entry = this.entries.get(cacheKey);
-      if (!entry?.index) {
-        return;
-      }
-      reconcileInFlight = true;
-      void this.checkAndQueueStaleFiles(path, entry.index, cacheKey).finally(() => {
-        reconcileInFlight = false;
-      });
-    };
-    const interval =
-      process.versions.bun || !nativeWatcher
-        ? setInterval(reconcile, BUN_WATCH_RECONCILE_INTERVAL_MS)
-        : null;
-    interval?.unref();
 
     this.watchers.set(resolved, {
       close: () => {
         nativeWatcher?.close();
-        if (interval) {
-          clearInterval(interval);
-        }
       },
     });
   }
