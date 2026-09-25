@@ -11,7 +11,7 @@ import { cloneGitRepository } from "./git.ts";
 import type { BM25Index } from "./index/bm25.ts";
 import { buildChunkSelector } from "./index/chunk-selector.ts";
 import { createIndexFromPath } from "./index/create.ts";
-import { applyIncrementalFileChanges } from "./index/incremental.ts";
+import { applyIncrementalFileChanges, normalizeRelativePath } from "./index/incremental.ts";
 import { persistencePaths, saveIndexBundle } from "./index/persistence.ts";
 import type { SemanticIndex } from "./index/semantic-index.ts";
 import { type LiteralLocateOptions, type LiteralLocateResult, locateLiteral } from "./literal.ts";
@@ -329,6 +329,25 @@ export class MiruIndex {
         file_mtimes: fileMtimes,
       },
     });
+    this.storedFileMtimes = new Map(Object.entries(fileMtimes));
+  }
+
+  private async updateStoredFileMtimes(relativePaths: readonly string[]): Promise<void> {
+    if (!this._root || relativePaths.length === 0) {
+      return;
+    }
+
+    const root = this._root;
+    await Promise.all(
+      [...new Set(relativePaths.map(normalizeRelativePath))].map(async (filePath) => {
+        try {
+          const stat = await Bun.file(resolve(root, filePath)).stat();
+          this.storedFileMtimes.set(filePath, Math.floor(stat.mtime?.getTime() ?? 0));
+        } catch {
+          this.storedFileMtimes.delete(filePath);
+        }
+      }),
+    );
   }
 
   /**
@@ -371,6 +390,7 @@ export class MiruIndex {
     this.semanticIndex = updated.semantic;
     this.loadedFromDiskFlag = false;
     this.rebuildMappings();
+    await this.updateStoredFileMtimes(relativePaths);
   }
 
   private getSelector(
