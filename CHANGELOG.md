@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.8.2](https://github.com/takara-ai/miru-code/compare/v1.8.1...v1.8.2) (2026-09-25)
+
+
+### Bug Fixes
+
+* **ci:** spawn the cold-start test's child via process.execPath, not bare "bun" ([b237256](https://github.com/takara-ai/miru-code/commit/b2372569cc2bb8e55ef56b6ec82284cf96236a3d))
+* **ci:** stop cold-start test livelocking on an already-closed stdout stream ([d7e5b86](https://github.com/takara-ai/miru-code/commit/d7e5b86b2910116c10766be29aee84a3525e22c1))
+* **ci:** stop Windows cold-start test from hanging the CI job ([d5ca8e4](https://github.com/takara-ai/miru-code/commit/d5ca8e4aff60873e39aabc55959663423285a693))
+* **mcp:** drop full-index re-embed on ambiguous watch events ([6ddd3e4](https://github.com/takara-ai/miru-code/commit/6ddd3e4f1b31e95201b86b32222cc5a6b2d9340d))
+* **mcp:** remove periodic watch reconcile now that Bun's fs.watch is reliable ([3ae3e06](https://github.com/takara-ai/miru-code/commit/3ae3e061c6d848bbeb9cd8456e8363b8ab71c99f))
+
 ## [1.8.1](https://github.com/takara-ai/miru-code/compare/v1.8.0...v1.8.1) (2026-09-25)
 
 
