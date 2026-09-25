@@ -28,6 +28,8 @@ test(
         MIRU_CREDENTIALS_DIR: credDir,
         TAKARA_API_KEY: "",
         MIRU_SAGEMAKER_ENDPOINT_ARN: "",
+        // TEMPORARY: see src/mcp/stdio.ts's matching diag block.
+        MIRU_COLD_START_DIAG: "1",
       },
       stdin: "pipe",
       stdout: "pipe",
@@ -78,6 +80,7 @@ test(
       send({ jsonrpc: "2.0", id: 2, method: "tools/list" });
       // Keep stdin open until we have both replies. Ending the pipe early signals EOF
       // to StdioTransport, which closes the server mid-flight — flaky on Windows CI.
+      await writer.flush();
 
       const reader = proc.stdout.getReader();
       const decoder = new TextDecoder();
