@@ -604,4 +604,77 @@ describe("incremental integration", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  test("ambiguous watch events (null filename) no longer trigger a full-index re-embed; reconcile still catches the change", async () => {
+    const root = await buildTempRepo();
+    const resolvedRoot = resolve(root);
+    try {
+      const embeddings = trackingEmbeddings();
+      const built = await createIndexFromPath(resolvedRoot, embeddings, ["code"], resolvedRoot);
+      const index = new MiruIndex({
+        embeddings,
+        bm25Index: built.bm25,
+        semanticIndex: built.semantic,
+        chunks: built.chunks,
+        embeddingModel: embeddings.model,
+        root: resolvedRoot,
+        content: ["code"],
+      });
+
+      const cache = new IndexCache(["code"]);
+      const cacheKey = computeSourceCacheKey(resolvedRoot);
+      const internals = cacheInternals(cache);
+      const entry = internals.ensureEntry(cacheKey, resolvedRoot);
+      entry.index = index;
+      entry.task = Promise.resolve(index);
+
+      // Seed the mtime baseline the way a real cache load would.
+      await index.saveToCache(resolvedRoot);
+
+      // Guard against coarse-grained filesystem mtime resolution.
+      await new Promise((r) => setTimeout(r, 20));
+      await writeFile(
+        join(resolvedRoot, "src/auth.ts"),
+        "export function authenticateUser() {\n  return 'miruAmbiguousWatchToken';\n}\n",
+        "utf-8",
+      );
+
+      embeddings.resetEmbedCount();
+
+      // Simulate a macOS fs.watch event that omits the filename (the pre-1.3.14
+      // Bun behavior). Before this fix, this queued every indexed path and
+      // re-embedded the whole repo on a single ambiguous event.
+      internals.noteFileChange(resolvedRoot, null);
+      await new Promise<void>((resolve) => queueMicrotask(resolve));
+      await entry.updateChain;
+
+      expect(entry.pendingPaths.size).toBe(0);
+      expect(embeddings.documentEmbedCount).toBe(0);
+
+      // The periodic mtime reconcile (what startWatcher's interval calls) is
+      // the real safety net now -- confirm it still finds and fixes the
+      // change, and only re-embeds the one file that actually changed.
+      await internals.checkAndQueueStaleFiles(resolvedRoot, index, cacheKey);
+
+      expect(embeddings.documentEmbedCount).toBeGreaterThan(0);
+      expect(
+        embeddings.lastEmbeddedTexts.every((text) => text.includes("miruAmbiguousWatchToken")),
+      ).toBe(true);
+      expect(
+        embeddings.lastEmbeddedTexts.some((text) => text.includes("miruUtilsCalendarHelper")),
+      ).toBe(false);
+
+      const hit = await index.search({
+        query: "miruAmbiguousWatchToken",
+        topK: 1,
+        alpha: 0,
+        rerank: false,
+      });
+      expect(hit[0]?.chunk.file_path).toBe("src/auth.ts");
+
+      cache.close();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

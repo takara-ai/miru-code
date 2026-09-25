@@ -190,39 +190,11 @@ export class IndexCache {
     }
   }
 
-  private queueIndexedPaths(source: string, index: MiruIndex): void {
-    const cacheKey = computeSourceCacheKey(source);
-    const entry = this.ensureEntry(cacheKey, source);
-    for (const chunk of index.chunks) {
-      entry.pendingPaths.add(normalizeRelativePath(chunk.file_path));
-    }
-    this.scheduleFlush(cacheKey, source, entry);
-  }
-
-  /** macOS recursive fs.watch often omits filename; refresh all indexed paths incrementally. */
-  private noteAmbiguousDirectoryChange(source: string): void {
-    const cacheKey = computeSourceCacheKey(source);
-    const entry = this.entries.get(cacheKey);
-    if (!entry) {
-      return;
-    }
-
-    if (entry.index) {
-      this.queueIndexedPaths(source, entry.index);
-      return;
-    }
-
-    if (entry.task) {
-      void entry.task.then((index) => {
-        entry.index = index;
-        this.queueIndexedPaths(source, index);
-      });
-    }
-  }
-
   private noteFileChange(source: string, filename: string | null | undefined): void {
     if (!filename) {
-      this.noteAmbiguousDirectoryChange(source);
+      // macOS recursive fs.watch could omit the filename on old Bun releases (pre-1.3.14
+      // fs.watch rewrite). Rather than re-embedding the whole index on every such event,
+      // rely on the periodic mtime reconcile in `startWatcher` to pick up the change.
       return;
     }
     if (shouldIgnoreWatchPath(filename)) {
