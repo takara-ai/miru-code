@@ -731,6 +731,17 @@ async function runMcpWithCredentials(argv: string[]): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  // TEMPORARY: diagnosing a Windows-only cold-start test failure where the
+  // process exits cleanly (code 0) in <150ms with zero output and
+  // StdioTransport.start() is never reached — see
+  // tests/cli-mcp-cold-start.test.ts and
+  // github.com/takara-ai/miru-code/actions/runs/36162763678. Remove once
+  // root-caused.
+  if (process.env.MIRU_COLD_START_DIAG === "1") {
+    process.stderr.write(
+      `[cli-diag] main() entered, argv=${JSON.stringify(process.argv)} @ ${Date.now()}\n`,
+    );
+  }
   const argv = process.argv.slice(2);
   const first = argv[0];
 
@@ -751,6 +762,9 @@ async function main(): Promise<void> {
   }
 
   await updateNotice;
+  if (process.env.MIRU_COLD_START_DIAG === "1") {
+    process.stderr.write(`[cli-diag] about to call runMcpWithCredentials @ ${Date.now()}\n`);
+  }
   await runMcpWithCredentials(argv);
 }
 
