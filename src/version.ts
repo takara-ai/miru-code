@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import packageJson from "../package.json";
 import { resolveCacheFolder } from "./cache.ts";
@@ -79,7 +80,12 @@ function updateCheckPath(): string {
 
 async function readUpdateCheckCache(): Promise<UpdateCheckCache | null> {
   try {
-    const raw = await Bun.file(updateCheckPath()).text();
+    // node:fs/promises, not Bun.file().text(): a rejecting Bun.file() read
+    // (the common case here — no cache on a fresh install) doesn't keep
+    // Bun's Windows event loop alive, so the process can exit silently
+    // before this ever settles. Confirmed regression in Bun 1.4.0-1.4.2:
+    // github.com/oven-sh/bun/issues/39787 (fix open, not yet released).
+    const raw = await readFile(updateCheckPath(), "utf8");
     const parsed = JSON.parse(raw) as UpdateCheckCache;
     if (typeof parsed.checkedAt !== "number" || typeof parsed.latest !== "string") {
       return null;
