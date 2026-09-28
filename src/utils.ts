@@ -100,8 +100,7 @@ export type ExpandResults = {
   chunks: Record<string, unknown>[];
 };
 
-export const MCP_RESULT_COUNT = 5;
-export const MAX_TOP_K = 5;
+export const SEARCH_RESULT_COUNT = 5;
 
 /** Extra chunks before/after the expand anchor — MCP `expand` tool defaults. */
 export const DEFAULT_EXPAND_BEFORE = 1;

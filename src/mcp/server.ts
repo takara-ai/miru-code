@@ -26,7 +26,7 @@ import type { Chunk, ContentType, SearchResult } from "../types.ts";
 import {
   DEFAULT_EXPAND_AFTER,
   DEFAULT_EXPAND_BEFORE,
-  MCP_RESULT_COUNT,
+  SEARCH_RESULT_COUNT,
   dedupeResultsByFile,
   expandChunksAtLine,
   formatExpandResults,
@@ -176,7 +176,7 @@ export function createMcpServer(
       try {
         const index = await getIndexForRepo(repo, cache);
         const repoRoot = localRepoRoot(repo);
-        const k = MCP_RESULT_COUNT;
+        const k = SEARCH_RESULT_COUNT;
         let skip: BenchmarkSkipReason | undefined;
         if (benchmark && (include || exclude)) {
           skip = "filtered_search";
@@ -422,7 +422,7 @@ export function createMcpServer(
             `No chunk found at ${filePath}:${anchorLine}. Make sure the file is indexed and the line number is within a known chunk.`,
           );
         }
-        const results = await index.findRelated(chunk, MCP_RESULT_COUNT);
+        const results = await index.findRelated(chunk, SEARCH_RESULT_COUNT);
         if (results.length === 0) {
           return toolText(`No related chunks found for ${filePath}:${anchorLine}.`);
         }

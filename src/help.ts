@@ -108,11 +108,10 @@ export function printCommandHelp(command: string): void {
       section("Usage");
       writeStdout("  miru search <query> [path] [options]");
       section("Options");
-      writeStdout("  -k, --top-k N       Number of results (default: 5, max: 5)");
       writeStdout("  --content TYPE      code | docs | config | all (default: code config)");
       writeStdout("  --json              JSON output (default when piped)");
       section("Example");
-      writeStdout('  miru search "where is auth" ./src -k 5 --content code docs');
+      writeStdout('  miru search "where is auth" ./src --content code docs');
       writeStdout("");
       return;
     case "locate":
@@ -149,7 +148,7 @@ export function printCommandHelp(command: string): void {
       section("Usage");
       writeStdout("  miru find-related <file> <line> [path] [options]");
       section("Example");
-      writeStdout("  miru find-related src/auth.ts 42 . -k 8");
+      writeStdout("  miru find-related src/auth.ts 42 .");
       writeStdout("");
       return;
     case "setup":

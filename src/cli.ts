@@ -49,7 +49,6 @@ import type { ContentType, SearchResult } from "./types.ts";
 import {
   DEFAULT_EXPAND_AFTER,
   DEFAULT_EXPAND_BEFORE,
-  MAX_TOP_K,
   expandChunksAtLine,
   formatExpandResults,
   formatResults,
@@ -57,6 +56,7 @@ import {
   resolveChunk,
   resolveContent,
   resolveSearchPath,
+  SEARCH_RESULT_COUNT,
 } from "./utils.ts";
 import { maybeNotifyUpdate, miruVersion } from "./version.ts";
 
@@ -133,28 +133,6 @@ function parseContentArgv(argv: string[]): { content: ContentType[]; rest: strin
   return { content: resolveContent(content), rest };
 }
 
-function parseTopK(argv: string[]): { topK: number; rest: string[] } {
-  const rest: string[] = [];
-  let topK = 5;
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === "-k" || arg === "--top-k") {
-      const raw = argv[++i];
-      if (raw) {
-        topK = Number(raw);
-      }
-      continue;
-    }
-    if (arg !== undefined) {
-      rest.push(arg);
-    }
-  }
-  return {
-    topK: Number.isFinite(topK) && topK >= 1 ? Math.min(Math.floor(topK), MAX_TOP_K) : 5,
-    rest,
-  };
-}
-
 function emitSearchOutput(
   query: string,
   results: SearchResult[],
@@ -181,7 +159,6 @@ function emitSearchOutput(
 async function runSearch(
   path: string,
   query: string,
-  topK: number,
   content: ContentType[],
   jsonFlag: boolean,
 ): Promise<void> {
@@ -190,7 +167,7 @@ async function runSearch(
   const index = await withSpinner("Indexing and searching", async () => {
     const built = await MiruIndex.fromSource(path, content);
     await built.saveToCache(path);
-    const results = await built.search({ query, topK });
+    const results = await built.search({ query, topK: SEARCH_RESULT_COUNT });
     return { index: built, results };
   });
 
@@ -249,7 +226,6 @@ async function runFindRelated(
   path: string,
   filePath: string,
   line: number,
-  topK: number,
   content: ContentType[],
   jsonFlag: boolean,
 ): Promise<void> {
@@ -261,7 +237,7 @@ async function runFindRelated(
     if (!chunk) {
       throw new RelatedChunkNotFoundError(filePath, line);
     }
-    const hits = await built.findRelated(chunk, topK);
+    const hits = await built.findRelated(chunk, SEARCH_RESULT_COUNT);
     await built.saveToCache(path);
     return {
       results: hits,
@@ -556,21 +532,28 @@ async function runCli(argv: string[]): Promise<void> {
 
   const { present: jsonFlag, rest: jsonRest } = parseFlagArgv(rest, "--json");
   const { content, rest: contentRest } = parseContentArgv(jsonRest);
-  const { topK, rest: sizedRest } = parseTopK(contentRest);
+
+  if (
+    (command === "search" || command === "find-related") &&
+    contentRest.some((arg) => arg === "-k" || arg === "--top-k")
+  ) {
+    fail("The -k/--top-k option has been removed; Miru returns a fixed number of results.");
+    process.exit(1);
+  }
 
   if (command === "search") {
-    const query = sizedRest[0];
+    const query = contentRest[0];
     if (!query) {
       printCommandHelp("search");
       process.exit(1);
     }
-    const path = resolveSearchPath(sizedRest[1] ?? process.cwd());
-    await runSearch(path, query, topK, content, jsonFlag);
+    const path = resolveSearchPath(contentRest[1] ?? process.cwd());
+    await runSearch(path, query, content, jsonFlag);
     return;
   }
 
   if (command === "locate") {
-    const literal = sizedRest[0];
+    const literal = contentRest[0];
     if (!literal) {
       printCommandHelp("locate");
       process.exit(1);
@@ -589,10 +572,10 @@ async function runCli(argv: string[]): Promise<void> {
       }
       return Math.floor(n);
     };
-    for (let i = 1; i < sizedRest.length; i++) {
-      const arg = sizedRest[i];
-      if (arg === "--mode" && sizedRest[i + 1]) {
-        const value = sizedRest[++i];
+    for (let i = 1; i < contentRest.length; i++) {
+      const arg = contentRest[i];
+      if (arg === "--mode" && contentRest[i + 1]) {
+        const value = contentRest[++i];
         if (value !== "count" && value !== "locations" && value !== "lines") {
           fail(`Unknown locate mode "${value}". Use count, locations, or lines.`);
           process.exit(1);
@@ -600,8 +583,8 @@ async function runCli(argv: string[]): Promise<void> {
         options.mode = value as LiteralMode;
         continue;
       }
-      if (arg === "--limit" && sizedRest[i + 1]) {
-        options.limit = positiveInt("--limit", sizedRest[++i], 1);
+      if (arg === "--limit" && contentRest[i + 1]) {
+        options.limit = positiveInt("--limit", contentRest[++i], 1);
         continue;
       }
       if (arg === "--ignore-case") {
@@ -612,16 +595,16 @@ async function runCli(argv: string[]): Promise<void> {
         options.match_variants = true;
         continue;
       }
-      if (arg === "--include" && sizedRest[i + 1]) {
-        include.push(sizedRest[++i] as string);
+      if (arg === "--include" && contentRest[i + 1]) {
+        include.push(contentRest[++i] as string);
         continue;
       }
-      if (arg === "--exclude" && sizedRest[i + 1]) {
-        exclude.push(sizedRest[++i] as string);
+      if (arg === "--exclude" && contentRest[i + 1]) {
+        exclude.push(contentRest[++i] as string);
         continue;
       }
-      if (arg === "--context" && sizedRest[i + 1]) {
-        options.context_lines = positiveInt("--context", sizedRest[++i], 0);
+      if (arg === "--context" && contentRest[i + 1]) {
+        options.context_lines = positiveInt("--context", contentRest[++i], 0);
         continue;
       }
       if (arg !== undefined) {
@@ -640,22 +623,22 @@ async function runCli(argv: string[]): Promise<void> {
   }
 
   if (command === "expand") {
-    const filePath = sizedRest[0];
-    const lineRaw = sizedRest[1];
+    const filePath = contentRest[0];
+    const lineRaw = contentRest[1];
     if (!filePath || !lineRaw) {
       printCommandHelp("expand");
       process.exit(1);
     }
     const line = Number(lineRaw);
-    const path = resolveSearchPath(sizedRest[2] ?? process.cwd());
+    const path = resolveSearchPath(contentRest[2] ?? process.cwd());
     let before = DEFAULT_EXPAND_BEFORE;
     let after = DEFAULT_EXPAND_AFTER;
-    for (let i = 3; i < sizedRest.length; i++) {
-      const arg = sizedRest[i];
-      if (arg === "--before" && sizedRest[i + 1]) {
-        before = Number(sizedRest[++i]);
-      } else if (arg === "--after" && sizedRest[i + 1]) {
-        after = Number(sizedRest[++i]);
+    for (let i = 3; i < contentRest.length; i++) {
+      const arg = contentRest[i];
+      if (arg === "--before" && contentRest[i + 1]) {
+        before = Number(contentRest[++i]);
+      } else if (arg === "--after" && contentRest[i + 1]) {
+        after = Number(contentRest[++i]);
       }
     }
     await runExpand(path, filePath, line, before, after, content, jsonFlag);
@@ -663,15 +646,15 @@ async function runCli(argv: string[]): Promise<void> {
   }
 
   if (command === "find-related") {
-    const filePath = sizedRest[0];
-    const lineRaw = sizedRest[1];
+    const filePath = contentRest[0];
+    const lineRaw = contentRest[1];
     if (!filePath || !lineRaw) {
       printCommandHelp("find-related");
       process.exit(1);
     }
     const line = Number(lineRaw);
-    const path = resolveSearchPath(sizedRest[2] ?? process.cwd());
-    await runFindRelated(path, filePath, line, topK, content, jsonFlag);
+    const path = resolveSearchPath(contentRest[2] ?? process.cwd());
+    await runFindRelated(path, filePath, line, content, jsonFlag);
     return;
   }
 

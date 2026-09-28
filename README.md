@@ -300,7 +300,7 @@ bun add @takara-ai/miru-code
 import { MiruIndex } from "@takara-ai/miru-code";
 
 const index = await MiruIndex.fromPath("./src");
-const results = await index.search({ query: "BM25 tokenize", topK: 10 });
+const results = await index.search({ query: "BM25 tokenize" });
 ```
 
 ## Environment
