@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "miru",
-  "version": "1.8.2",
+  "version": "1.9.0",
   "description": "Semantic code search for coding agents. Find code by meaning, not grep.",
   "author": {
     "name": "Takara",
@@ -10,7 +10,9 @@
   "skills": [
     "./skills/"
   ],
-  "agents": ["./agents/miru-code.md"],
+  "agents": [
+    "./agents/miru-code.md"
+  ],
   "mcpServers": "./.claude-plugin/mcp.json",
   "userConfig": {
     "benchmark": {
