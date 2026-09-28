@@ -687,6 +687,10 @@ async function runMcp(argv: string[]): Promise<void> {
       benchmark = true;
       continue;
     }
+    if (arg === "--benchmark=true" || arg === "--benchmark=false") {
+      benchmark = arg === "--benchmark=true";
+      continue;
+    }
     if (arg === "--ref" && argv[i + 1]) {
       ref = argv[++i] ?? null;
       continue;

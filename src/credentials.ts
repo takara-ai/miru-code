@@ -20,9 +20,14 @@ export function setStoredCredentialsEnvToken(token: string): void {
   process.env.TAKARA_API_KEY = token;
 }
 
+/** True for an unresolved `${...}` placeholder — a plugin host that didn't substitute it. */
+function isUnsubstitutedPlaceholder(value: string): boolean {
+  return value.startsWith("${") && value.endsWith("}");
+}
+
 export function resolveCredentialsDir(): string {
   const override = process.env.MIRU_CREDENTIALS_DIR;
-  if (override) {
+  if (override && !isUnsubstitutedPlaceholder(override)) {
     return override;
   }
   const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
