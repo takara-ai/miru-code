@@ -14,7 +14,12 @@ import { createIndexFromPath } from "./index/create.ts";
 import { applyIncrementalFileChanges, normalizeRelativePath } from "./index/incremental.ts";
 import { persistencePaths, saveIndexBundle } from "./index/persistence.ts";
 import type { SemanticIndex } from "./index/semantic-index.ts";
-import { type LiteralLocateOptions, type LiteralLocateResult, locateLiteral } from "./literal.ts";
+import {
+  filterChunksByGlob,
+  type LiteralLocateOptions,
+  type LiteralLocateResult,
+  locateLiteral,
+} from "./literal.ts";
 import { hybridSearch, searchSemanticOnly } from "./search.ts";
 import type { Chunk, ContentType, SearchResult } from "./types.ts";
 import { chunkKey, chunkToDict, defaultContentTypes } from "./types.ts";
@@ -407,11 +412,22 @@ export class MiruIndex {
     );
   }
 
+  private getPathSelector(
+    include?: string[],
+    exclude?: string[],
+  ): readonly number[] | undefined {
+    if (!include?.length && !exclude?.length) {
+      return undefined;
+    }
+    const included = new Set(filterChunksByGlob(this.chunks, include, exclude).map(chunkKey));
+    return this.chunks.flatMap((chunk, index) => (included.has(chunkKey(chunk)) ? [index] : []));
+  }
+
   /**
    * Hybrid BM25 + semantic search over indexed chunks.
    *
    * `alpha` blends keyword vs vector scores (default depends on content type).
-   * `filterLanguages` / `filterPaths` restrict candidates before ranking.
+   * `include` / `exclude` glob patterns restrict candidate files before ranking.
    * `rerank` defaults to on for code indexes (cross-encoder style reranking).
    */
   async search(options: {
@@ -422,15 +438,34 @@ export class MiruIndex {
     alpha?: number | null;
     filterLanguages?: string[];
     filterPaths?: string[];
+    include?: string[];
+    exclude?: string[];
     rerank?: boolean;
   }): Promise<SearchResult[]> {
-    const { query, queryVector, topK = 10, alpha, filterLanguages, filterPaths, rerank } = options;
+    const {
+      query,
+      queryVector,
+      topK = 10,
+      alpha,
+      filterLanguages,
+      filterPaths,
+      include,
+      exclude,
+      rerank,
+    } = options;
 
     if (!this.chunks.length || !query.trim()) {
       return [];
     }
 
     const resolvedRerank = rerank ?? this.content.includes("code");
+    const selector = this.getSelector(filterLanguages, filterPaths);
+    const pathSelector = this.getPathSelector(include, exclude);
+    let effectiveSelector = pathSelector ?? selector;
+    if (selector && pathSelector) {
+      const allowedIndices = new Set(selector);
+      effectiveSelector = pathSelector.filter((index) => allowedIndices.has(index));
+    }
 
     return hybridSearch({
       query,
@@ -441,7 +476,7 @@ export class MiruIndex {
       chunks: this.chunks,
       topK,
       alpha,
-      selector: this.getSelector(filterLanguages, filterPaths),
+      selector: effectiveSelector,
       rerank: resolvedRerank,
     });
   }

@@ -101,7 +101,7 @@ export type ExpandResults = {
 };
 
 export const DEFAULT_MCP_TOP_K = 3;
-export const MAX_MCP_TOP_K = 10;
+export const MAX_MCP_TOP_K = 5;
 
 /** Extra chunks before/after the expand anchor — MCP `expand` tool defaults. */
 export const DEFAULT_EXPAND_BEFORE = 1;

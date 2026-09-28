@@ -96,6 +96,10 @@ export async function hybridSearch(options: {
     rerank = true,
   } = options;
 
+  if (selector?.length === 0) {
+    return [];
+  }
+
   const alphaWeight = resolveAlpha(query, alpha);
   const tuning = rankingConfig();
   const candidateCount =

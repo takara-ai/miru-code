@@ -108,11 +108,11 @@ export function printCommandHelp(command: string): void {
       section("Usage");
       writeStdout("  miru search <query> [path] [options]");
       section("Options");
-      writeStdout("  -k, --top-k N       Number of results (default: 5)");
+      writeStdout("  -k, --top-k N       Number of results (default: 5, max: 5)");
       writeStdout("  --content TYPE      code | docs | config | all (default: code config)");
       writeStdout("  --json              JSON output (default when piped)");
       section("Example");
-      writeStdout('  miru search "where is auth" ./src -k 10 --content code docs');
+      writeStdout('  miru search "where is auth" ./src -k 5 --content code docs');
       writeStdout("");
       return;
     case "locate":

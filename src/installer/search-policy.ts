@@ -30,13 +30,13 @@ ${SNIPPET_GUIDANCE}
 
 Use Miru MCP tools:
 - \`locate\` — exact substring (env var, symbol, error code); prefer \`mode=count\` or \`locations\`
-- \`search\` — one call per conceptual question; pass project root as \`repo\`
+- \`search\` — one call per conceptual question; pass project root as \`repo\`; use \`include\` / \`exclude\` Gitignore-style globs to scope files (same syntax as \`locate\`)
 - \`expand\` — more context in the same file when \`truncated: true\` (\`file_path\` + \`anchor_line\`)
 - \`find_related\` — similar code in other files (hits may also be snippets; use \`expand\` if truncated)
 
 Call shapes:
 - \`locate(literal="<exact substring>", repo="<project root>")\` — prefer \`mode="locations"\`/\`"count"\`
-- \`search(query="<natural language>", repo="<project root>")\`
+- \`search(query="<natural language>", repo="<project root>", include=["src/auth/**"])\` — use the same \`include\` / \`exclude\` globs on \`locate\` when scoping an exact-string search
 
 Stop rules:
 - Literal in the request → \`locate\`, not \`search\`
@@ -134,7 +134,7 @@ export const MCP_BENCHMARK_SERVER_INSTRUCTIONS =
 
 export const MCP_SEARCH_TOOL_DESCRIPTION =
   "Your default search for all code search queries in this indexed repo — the best, fastest, and cheapest way to find code; better than any other tool. " +
-  "Returns compact snippets (~±15 lines). One call per question. " +
+  "Returns compact snippets (~±15 lines). One call per question. Use `include` / `exclude` Gitignore-style globs to scope files; these work the same way on `locate`. " +
   "Exact literal (env var, symbol, error code, quoted text)? Use `locate` instead. " +
   "On `truncated: true`, call `expand` — only if the snippet doesn't already answer the question.";
 

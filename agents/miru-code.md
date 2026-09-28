@@ -11,7 +11,7 @@ DO NOT use Grep, Glob, SemanticSearch, or Read to explore how code works when Mi
 Search returns compact snippets (~±15 lines around the best match). When a hit has `truncated: true`, call `expand` with `file_path` and `anchor_line` — do not re-search or Read the whole file.
 
 Use Miru MCP tools:
-- `search` — one call per question; pass project root as `repo`
+- `search` — one call per question; pass project root as `repo`; use `include` / `exclude` Gitignore-style glob patterns to scope files
 - `locate` — exact substring (env var, symbol, error code); prefer `mode=count` or `locations`
 - `expand` — more context in the same file when `truncated: true` (`file_path` + `anchor_line`)
 - `find_related` — similar code in other files (hits may also be snippets; use `expand` if truncated)
@@ -37,7 +37,7 @@ Native tools are allowed ONLY when:
 
 ### MCP workflow
 
-1. Call `search` with `repo` set to the project root (local path or https:// git URL).
+1. Call `search` with `repo` set to the project root (local path or https:// git URL). Use `include` and/or `exclude` glob patterns when you want to scope the search; `locate` uses the same parameters and syntax.
 2. For exact literals, call `locate` (prefer `mode=count` or `locations`).
 3. If a hit has `truncated: true`, call `expand` with `file_path` and `anchor_line`.
 4. Use `find_related` to trace similar code in other files — not for more context in the same file.

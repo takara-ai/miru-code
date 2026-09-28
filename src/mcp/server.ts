@@ -52,6 +52,7 @@ const REPO_DESCRIPTION =
 
 const BENCHMARK_SKIP_NOTES = {
   local_repo_only: "Benchmark comparisons require a local repo path; git URL repos are skipped.",
+  filtered_search: "Benchmark comparisons are skipped when search is restricted by include/exclude patterns.",
   limited_locate:
     "Benchmark comparison skipped: locate.limit is global, while rg/grep limits are per file. Omit limit for a valid token and recall comparison.",
   incompatible_literal_baseline:
@@ -147,6 +148,20 @@ export function createMcpServer(
             "Natural language or code query — your default for all code search in this repo.",
           ),
         repo: z.string().describe(REPO_DESCRIPTION),
+        include: z
+          .array(z.string().min(1))
+          .min(1)
+          .optional()
+          .describe(
+            'Gitignore-style glob patterns; only matching files are searched (e.g. ["src/auth/**", "docs/**/*.md"]). Same semantics as `locate.include`.',
+          ),
+        exclude: z
+          .array(z.string().min(1))
+          .min(1)
+          .optional()
+          .describe(
+            "Gitignore-style glob patterns; matching files are skipped. Same semantics as `locate.exclude`.",
+          ),
         top_k: z
           .number()
           .int()
@@ -160,14 +175,22 @@ export function createMcpServer(
           .describe("Keep only the best hit per file (default true)."),
       },
     },
-    async ({ query, repo, top_k: topK, dedupe_by_file: dedupeByFile }) => {
+    async ({
+      query,
+      repo,
+      include,
+      exclude,
+      top_k: topK,
+      dedupe_by_file: dedupeByFile,
+    }) => {
       try {
         const index = await getIndexForRepo(repo, cache);
         const repoRoot = localRepoRoot(repo);
         const k = clampMcpTopK(topK);
-
         let skip: BenchmarkSkipReason | undefined;
-        if (benchmark && repoRoot) {
+        if (benchmark && (include || exclude)) {
+          skip = "filtered_search";
+        } else if (benchmark && repoRoot) {
           const comparison = await withGrepTimeoutFallback(() =>
             benchmarkSearchComparison({
               query,
@@ -199,7 +222,7 @@ export function createMcpServer(
           skip = "local_repo_only";
         }
 
-        let results = await index.search({ query, topK: k });
+        let results = await index.search({ query, topK: k, include, exclude });
         if (dedupeByFile !== false) {
           results = dedupeResultsByFile(results);
         }

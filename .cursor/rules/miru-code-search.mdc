@@ -11,6 +11,7 @@ Search returns compact snippets (~±15 lines around the best match). When a hit 
 
 Use Miru MCP tools:
 - `search` — one call per question; pass project root as `repo`
+- Add `include` and/or `exclude` Gitignore-style glob patterns when a question targets selected files (for example `include: ["src/auth/**"]`). `search` and `locate` use the same parameters and syntax.
 - `expand` — more context in the same file when `truncated: true`
 - `find_related` — similar code in other files
 
