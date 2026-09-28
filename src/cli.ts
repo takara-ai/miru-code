@@ -49,7 +49,7 @@ import type { ContentType, SearchResult } from "./types.ts";
 import {
   DEFAULT_EXPAND_AFTER,
   DEFAULT_EXPAND_BEFORE,
-  MAX_MCP_TOP_K,
+  MAX_TOP_K,
   expandChunksAtLine,
   formatExpandResults,
   formatResults,
@@ -150,7 +150,7 @@ function parseTopK(argv: string[]): { topK: number; rest: string[] } {
     }
   }
   return {
-    topK: Number.isFinite(topK) && topK >= 1 ? Math.min(Math.floor(topK), MAX_MCP_TOP_K) : 5,
+    topK: Number.isFinite(topK) && topK >= 1 ? Math.min(Math.floor(topK), MAX_TOP_K) : 5,
     rest,
   };
 }

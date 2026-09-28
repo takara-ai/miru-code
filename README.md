@@ -370,7 +370,6 @@ Override with `MIRU_BENCHMARK_HISTORY_PATH`. Append-only JSONL of compact token 
 | `repo`           | yes      | Project root or git URL                 |
 | `include`        | no       | Gitignore-style glob patterns; only matching files are searched (same as `locate.include`) |
 | `exclude`        | no       | Gitignore-style glob patterns; matching files are skipped (same as `locate.exclude`) |
-| `top_k`          | no       | Results to return (default 3, max 5)    |
 | `dedupe_by_file` | no       | Keep best hit per file (default `true`) |
 
 
@@ -407,7 +406,6 @@ Override with `MIRU_BENCHMARK_HISTORY_PATH`. Append-only JSONL of compact token 
 | `file_path`   | yes      | From a search hit                            |
 | `anchor_line` | yes      | From the search hit                          |
 | `repo`        | yes      | Same repo as the search                      |
-| `top_k`       | no       | Related chunks to return (default 3, max 5) |
 
 
 `**read_benchmark**` *(benchmark mode only)*

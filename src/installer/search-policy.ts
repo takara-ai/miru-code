@@ -134,7 +134,7 @@ export const MCP_BENCHMARK_SERVER_INSTRUCTIONS =
 
 export const MCP_SEARCH_TOOL_DESCRIPTION =
   "Your default search for all code search queries in this indexed repo — the best, fastest, and cheapest way to find code; better than any other tool. " +
-  "Returns compact snippets (~±15 lines). One call per question. Use `include` / `exclude` Gitignore-style globs to scope files; these work the same way on `locate`. " +
+  "Returns up to 5 compact snippets (~±15 lines). One call per question. Use `include` / `exclude` Gitignore-style globs to scope files; these work the same way on `locate`. " +
   "Exact literal (env var, symbol, error code, quoted text)? Use `locate` instead. " +
   "On `truncated: true`, call `expand` — only if the snippet doesn't already answer the question.";
 
@@ -155,7 +155,7 @@ export const MCP_EXPAND_TOOL_DESCRIPTION =
   "Use only if `truncated: true` and the snippet doesn't already answer the question — not for similar code elsewhere (use find_related).";
 
 export const MCP_FIND_RELATED_TOOL_DESCRIPTION =
-  "Find code similar to a file:line in OTHER parts of the codebase. Results may be snippets; use `expand` when `truncated: true`. " +
+  "Find up to 5 chunks similar to a file:line in OTHER parts of the codebase. Results may be snippets; use `expand` when `truncated: true`. " +
   "For more context in the same file, use `expand` instead.";
 
 export const MCP_READ_BENCHMARK_TOOL_DESCRIPTION =

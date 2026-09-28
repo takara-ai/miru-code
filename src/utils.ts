@@ -100,21 +100,12 @@ export type ExpandResults = {
   chunks: Record<string, unknown>[];
 };
 
-export const DEFAULT_MCP_TOP_K = 3;
-export const MAX_MCP_TOP_K = 5;
+export const MCP_RESULT_COUNT = 5;
+export const MAX_TOP_K = 5;
 
 /** Extra chunks before/after the expand anchor — MCP `expand` tool defaults. */
 export const DEFAULT_EXPAND_BEFORE = 1;
 export const DEFAULT_EXPAND_AFTER = 1;
-
-/** Clamp MCP top_k to a sane range; omit for the default. */
-export function clampMcpTopK(topK?: number): number {
-  const value = topK ?? DEFAULT_MCP_TOP_K;
-  if (!Number.isFinite(value) || value < 1) {
-    return DEFAULT_MCP_TOP_K;
-  }
-  return Math.min(Math.floor(value), MAX_MCP_TOP_K);
-}
 
 function chunkToResponseDict(chunk: Chunk, repoRoot?: string | null): Record<string, unknown> {
   const dict = chunkToDict(chunk);

@@ -24,16 +24,14 @@ import {
 import { formatLiteralLocate } from "../literal.ts";
 import type { Chunk, ContentType, SearchResult } from "../types.ts";
 import {
-  clampMcpTopK,
   DEFAULT_EXPAND_AFTER,
   DEFAULT_EXPAND_BEFORE,
-  DEFAULT_MCP_TOP_K,
+  MCP_RESULT_COUNT,
   dedupeResultsByFile,
   expandChunksAtLine,
   formatExpandResults,
   formatResults,
   localRepoRoot,
-  MAX_MCP_TOP_K,
   resolveChunk,
 } from "../utils.ts";
 import { registerAuthTool, toolErrorText } from "./auth-tool.ts";
@@ -162,13 +160,6 @@ export function createMcpServer(
           .describe(
             "Gitignore-style glob patterns; matching files are skipped. Same semantics as `locate.exclude`.",
           ),
-        top_k: z
-          .number()
-          .int()
-          .min(1)
-          .max(MAX_MCP_TOP_K)
-          .optional()
-          .describe(`Number of results (default ${DEFAULT_MCP_TOP_K}, max ${MAX_MCP_TOP_K}).`),
         dedupe_by_file: z
           .boolean()
           .optional()
@@ -180,13 +171,12 @@ export function createMcpServer(
       repo,
       include,
       exclude,
-      top_k: topK,
       dedupe_by_file: dedupeByFile,
     }) => {
       try {
         const index = await getIndexForRepo(repo, cache);
         const repoRoot = localRepoRoot(repo);
-        const k = clampMcpTopK(topK);
+        const k = MCP_RESULT_COUNT;
         let skip: BenchmarkSkipReason | undefined;
         if (benchmark && (include || exclude)) {
           skip = "filtered_search";
@@ -420,18 +410,9 @@ export function createMcpServer(
           .int()
           .describe("Line from the search hit (`anchor_line` when truncated, else `start_line`)."),
         repo: z.string().describe(REPO_DESCRIPTION),
-        top_k: z
-          .number()
-          .int()
-          .min(1)
-          .max(MAX_MCP_TOP_K)
-          .optional()
-          .describe(
-            `Number of similar chunks to return (default ${DEFAULT_MCP_TOP_K}, max ${MAX_MCP_TOP_K}).`,
-          ),
       },
     },
-    async ({ file_path: filePath, anchor_line: anchorLine, repo, top_k: topK }) => {
+    async ({ file_path: filePath, anchor_line: anchorLine, repo }) => {
       try {
         const index = await getIndexForRepo(repo, cache);
         const repoRoot = localRepoRoot(repo);
@@ -441,7 +422,7 @@ export function createMcpServer(
             `No chunk found at ${filePath}:${anchorLine}. Make sure the file is indexed and the line number is within a known chunk.`,
           );
         }
-        const results = await index.findRelated(chunk, clampMcpTopK(topK));
+        const results = await index.findRelated(chunk, MCP_RESULT_COUNT);
         if (results.length === 0) {
           return toolText(`No related chunks found for ${filePath}:${anchorLine}.`);
         }
