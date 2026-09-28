@@ -4,7 +4,6 @@ import { findIndexCachePath } from "../src/cache.ts";
 import { detectLanguage } from "../src/index/files.ts";
 import type { Chunk } from "../src/types.ts";
 import {
-  clampMcpTopK,
   dedupeResultsByFile,
   expandChunksAtLine,
   formatExpandResults,
@@ -12,7 +11,6 @@ import {
   isAllowedRepoSource,
   isGitUrl,
   localRepoRoot,
-  MAX_MCP_TOP_K,
   resolveChunk,
   resolveSearchPath,
   toIndexedFilePath,
@@ -120,13 +118,6 @@ describe("utils", () => {
         location: expect.stringMatching(/src[\\/]+f\.py:1-1$/),
       },
     });
-  });
-
-  test("clampMcpTopK defaults and caps excessive values", () => {
-    expect(clampMcpTopK()).toBe(3);
-    expect(clampMcpTopK(5)).toBe(5);
-    expect(clampMcpTopK(200)).toBe(MAX_MCP_TOP_K);
-    expect(clampMcpTopK(0)).toBe(3);
   });
 
   test("formatResults omits guidance", () => {

@@ -412,10 +412,7 @@ export class MiruIndex {
     );
   }
 
-  private getPathSelector(
-    include?: string[],
-    exclude?: string[],
-  ): readonly number[] | undefined {
+  private getPathSelector(include?: string[], exclude?: string[]): readonly number[] | undefined {
     if (!include?.length && !exclude?.length) {
       return undefined;
     }

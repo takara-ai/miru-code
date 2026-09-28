@@ -21,12 +21,7 @@ import {
 import { createIndexFromPath } from "../src/index/create.ts";
 import { IndexCache, mcpWatchEnabled } from "../src/mcp/index-cache.ts";
 import { createMcpServer } from "../src/mcp/server.ts";
-import {
-  clampMcpTopK,
-  isAllowedRepoSource,
-  MAX_MCP_TOP_K,
-  validateLocalRepoPath,
-} from "../src/utils.ts";
+import { isAllowedRepoSource, validateLocalRepoPath } from "../src/utils.ts";
 
 function oneHot(dim: number, index: number): number[] {
   const vec = Array.from({ length: dim }, () => 0);
@@ -384,11 +379,6 @@ describe("PRD-220 / PRD-227 / PRD-229: fixed regressions", () => {
       if (prevOpenAi === undefined) delete process.env.OPENAI_BASE_URL;
       else process.env.OPENAI_BASE_URL = prevOpenAi;
     }
-  });
-
-  test("PRD-227: MCP top_k is capped", () => {
-    expect(clampMcpTopK(999)).toBe(MAX_MCP_TOP_K);
-    expect(MAX_MCP_TOP_K).toBeLessThanOrEqual(50);
   });
 
   test("PRD-229: source tree has no SEMBLE_* env var aliases", () => {

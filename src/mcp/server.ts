@@ -26,13 +26,13 @@ import type { Chunk, ContentType, SearchResult } from "../types.ts";
 import {
   DEFAULT_EXPAND_AFTER,
   DEFAULT_EXPAND_BEFORE,
-  SEARCH_RESULT_COUNT,
   dedupeResultsByFile,
   expandChunksAtLine,
   formatExpandResults,
   formatResults,
   localRepoRoot,
   resolveChunk,
+  SEARCH_RESULT_COUNT,
 } from "../utils.ts";
 import { registerAuthTool, toolErrorText } from "./auth-tool.ts";
 import {
@@ -50,7 +50,8 @@ const REPO_DESCRIPTION =
 
 const BENCHMARK_SKIP_NOTES = {
   local_repo_only: "Benchmark comparisons require a local repo path; git URL repos are skipped.",
-  filtered_search: "Benchmark comparisons are skipped when search is restricted by include/exclude patterns.",
+  filtered_search:
+    "Benchmark comparisons are skipped when search is restricted by include/exclude patterns.",
   limited_locate:
     "Benchmark comparison skipped: locate.limit is global, while rg/grep limits are per file. Omit limit for a valid token and recall comparison.",
   incompatible_literal_baseline:
@@ -166,13 +167,7 @@ export function createMcpServer(
           .describe("Keep only the best hit per file (default true)."),
       },
     },
-    async ({
-      query,
-      repo,
-      include,
-      exclude,
-      dedupe_by_file: dedupeByFile,
-    }) => {
+    async ({ query, repo, include, exclude, dedupe_by_file: dedupeByFile }) => {
       try {
         const index = await getIndexForRepo(repo, cache);
         const repoRoot = localRepoRoot(repo);
