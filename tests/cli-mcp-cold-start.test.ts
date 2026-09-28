@@ -10,17 +10,21 @@ import { join } from "node:path";
 // ever registered. This spawns the real CLI entrypoint the same way (no args) and
 // asserts the process stays alive and answers tools/list, rather than testing the
 // pieces `runMcpWithCredentials` calls in isolation.
+//
+// main() also runs an update-notification check before dispatching to
+// runMcpWithCredentials, which does a real network fetch. On windows-latest CI
+// that fetch's promise never settled and the process exited cleanly (code 0)
+// once nothing else was keeping its event loop alive — silently, before ever
+// reaching the MCP server — so this must run with MIRU_NO_UPDATE_CHECK=1 to
+// stay deterministic and test what it's actually meant to (see the trail
+// across github.com/takara-ai/miru-code/actions/runs/36158619879 onward).
 test(
   "cold start with zero stored credentials stays alive and serves tools/list",
   async () => {
     const credDir = await mkdtemp(join(tmpdir(), "miru-cli-cold-start-"));
     const proc = Bun.spawn({
-      // process.execPath (not the bare "bun" string) so this doesn't depend on
-      // resolving an extension-less command name via PATH — Windows CreateProcess
-      // doesn't do PATHEXT lookup itself the way a shell does, and a previous
-      // version of this test spawning ["bun", "src/cli.ts"] produced a child with
-      // zero bytes on both stdout and stderr and a near-instant exit on
-      // windows-latest CI, consistent with the executable never actually starting.
+      // process.execPath rather than the bare "bun" string, so this doesn't
+      // depend on resolving an extension-less command name via PATH.
       cmd: [process.execPath, "src/cli.ts"],
       cwd: join(import.meta.dir, ".."),
       env: {
@@ -28,8 +32,9 @@ test(
         MIRU_CREDENTIALS_DIR: credDir,
         TAKARA_API_KEY: "",
         MIRU_SAGEMAKER_ENDPOINT_ARN: "",
-        // TEMPORARY: see src/mcp/stdio.ts's matching diag block.
-        MIRU_COLD_START_DIAG: "1",
+        // See the file-level comment above — without this, main() makes a real
+        // network call before ever reaching the MCP server.
+        MIRU_NO_UPDATE_CHECK: "1",
       },
       stdin: "pipe",
       stdout: "pipe",
