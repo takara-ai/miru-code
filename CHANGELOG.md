@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.9.0](https://github.com/takara-ai/miru-code/compare/v1.8.2...v1.9.0) (2026-09-28)
+
+
+### Features
+
+* **cli:** remove top-k controls ([1f6d5f0](https://github.com/takara-ai/miru-code/commit/1f6d5f0d35fd01c9e1bfc230b31b9d0e1d4edf73))
+* close CLI/plugin parity gap (Caveman, STE, sub-agent, benchmark toggle, credential scoping) ([#51](https://github.com/takara-ai/miru-code/issues/51)) ([662b76c](https://github.com/takara-ai/miru-code/commit/662b76cea4dc9119913650de27b03bb857179bbf))
+* **mcp:** use fixed search result counts ([49a5615](https://github.com/takara-ai/miru-code/commit/49a5615e5a80452455def2dbfb80a1b4fc2b27a7))
+* **search:** unify path filters and cap top-k ([3bc8337](https://github.com/takara-ai/miru-code/commit/3bc8337b953dc0c1398e71bbbb1f7128f8c1169e))
+
 ## [1.8.2](https://github.com/takara-ai/miru-code/compare/v1.8.1...v1.8.2) (2026-09-28)
 
 
