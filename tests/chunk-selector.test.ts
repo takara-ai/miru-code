@@ -15,7 +15,7 @@ function buildChunkSelectorUnion(
     selector.push(...(mappings.fileMapping.get(fp) ?? []));
   }
   if (selector.length === 0) {
-    return undefined;
+    return (filterLanguages?.length ?? 0) + (filterPaths?.length ?? 0) === 0 ? undefined : [];
   }
   return [...new Set(selector)].sort((a, b) => a - b);
 }
@@ -47,10 +47,10 @@ describe("buildChunkSelector", () => {
     expect(buildChunkSelector(mappings, [], [])).toBeUndefined();
   });
 
-  test("returns undefined when filters match nothing", () => {
+  test("returns an empty selector when filters match nothing", () => {
     const mappings = makeMappings();
-    expect(buildChunkSelector(mappings, ["rust"])).toBeUndefined();
-    expect(buildChunkSelector(mappings, undefined, ["missing.ts"])).toBeUndefined();
+    expect(buildChunkSelector(mappings, ["rust"])).toEqual([]);
+    expect(buildChunkSelector(mappings, undefined, ["missing.ts"])).toEqual([]);
   });
 
   test("single language fast path matches union semantics", () => {
