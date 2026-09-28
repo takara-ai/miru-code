@@ -1,6 +1,7 @@
 import { basename } from "node:path";
 import type { Chunk } from "../types.ts";
 import { chunkKey } from "../types.ts";
+import { rankingConfig } from "./config.ts";
 
 const LOCATION_QUERY_RE =
   /\b(where(?:'s| is)?|entry\s*point|bootstrap|starts?|live[s]?|located|defined|wiring)\b/i;
@@ -16,7 +17,6 @@ const ENTRY_POINT_CONTENT_RE =
 
 const PACKAGE_ENTRY_RE = /^\[package entry\]/;
 
-const LOCATION_BOOST_MULTIPLIER = 2.5;
 const INSTALLER_LOCATION_PENALTY = 0.35;
 
 /** Too common as filenames to get exact-stem boosts from incidental query tokens. */
@@ -126,8 +126,9 @@ export function boostLocationSignals(
   }
 
   const entryPointQuery = isEntryPointQuery(query);
-  const packageBoost = maxScore * (entryPointQuery ? LOCATION_BOOST_MULTIPLIER : 0.75);
-  const codeBoost = maxScore * LOCATION_BOOST_MULTIPLIER;
+  const tuning = rankingConfig();
+  const packageBoost = maxScore * (entryPointQuery ? tuning.locationBoost : 0.75);
+  const codeBoost = maxScore * tuning.locationBoost;
 
   for (const chunk of allChunks) {
     if (!chunkLooksLikeEntryPoint(chunk)) {
@@ -205,7 +206,7 @@ export function boostExactStemMatches(
     return;
   }
 
-  const boost = maxScore * 0.75;
+  const boost = maxScore * rankingConfig().exactStemBoost;
   const preferImplementation = hasSpecificImplementationTarget(query, chunksByKey);
 
   for (const key of [...boosted.keys()]) {

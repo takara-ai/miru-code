@@ -55,7 +55,7 @@ describe("locate benchmark comparison", () => {
         literal: "DATABASE_URL",
         repoPath: root,
         index,
-        locate: { mode: "locations", limit: 10 },
+        locate: { mode: "locations" },
       });
 
       expect(comparison.result.n).toBeGreaterThan(0);
@@ -118,6 +118,27 @@ describe("locate benchmark comparison", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  test("rejects limited locate benchmarks instead of comparing them with unbounded grep", async () => {
+    const index = new MiruIndex({
+      embeddings: mockEmbeddings(),
+      bm25Index: { search: () => [] } as never,
+      semanticIndex: { search: () => [] } as never,
+      chunks: [],
+      embeddingModel: "mock-locate-bench",
+      root: null,
+      content: ["code"],
+    });
+
+    await expect(
+      benchmarkLocateComparison({
+        literal: "DATABASE_URL",
+        repoPath: "/tmp",
+        index,
+        locate: { limit: 1 },
+      }),
+    ).rejects.toThrow("locate.limit is global");
   });
 
   test("grep baseline widens to match a requested context_lines instead of a fixed default", async () => {

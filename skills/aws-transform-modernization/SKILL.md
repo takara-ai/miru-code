@@ -7,7 +7,7 @@ description: Use Miru Code Search for modernization/assessment tasks — mapping
 
 Use Miru MCP as the default code-exploration path when assessing a legacy or unfamiliar codebase for migration/modernization.
 
-This channel defaults to Miru's self-hosted SageMaker embedding backend, not Takara-hosted — see `docs/self-hosted-sagemaker.md` and run `miru setup --sagemaker` first.
+Miru supports a self-hosted SageMaker embedding backend instead of Takara-hosted — see `docs/self-hosted-sagemaker.md` and run `miru setup --sagemaker` to opt in. An endpoint and AWS identity are customer-specific, so this is not configured automatically.
 
 ## When to use it
 

@@ -1,14 +1,29 @@
+import { readFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import type { InvokeEndpointCommandOutput } from "@aws-sdk/client-sagemaker-runtime";
 import type { EmbeddingClient, EmbeddingPayload, EmbeddingResponse } from "./openai.ts";
 
 type SageMakerRuntimeModule = typeof import("@aws-sdk/client-sagemaker-runtime");
+type AwsCredentialProviderModule = typeof import("@aws-sdk/credential-provider-node");
+type StaticAwsCredentials = {
+  accessKeyId: string;
+  secretAccessKey: string;
+  sessionToken?: string;
+};
 
 /** Lazily loaded so Takara-only MCP/CLI processes never pay the AWS SDK startup cost. */
 let sageMakerRuntimePromise: Promise<SageMakerRuntimeModule> | null = null;
+let awsCredentialProviderPromise: Promise<AwsCredentialProviderModule> | null = null;
 
 function loadSageMakerRuntime(): Promise<SageMakerRuntimeModule> {
   sageMakerRuntimePromise ??= import("@aws-sdk/client-sagemaker-runtime");
   return sageMakerRuntimePromise;
+}
+
+function loadAwsCredentialProvider(): Promise<AwsCredentialProviderModule> {
+  awsCredentialProviderPromise ??= import("@aws-sdk/credential-provider-node");
+  return awsCredentialProviderPromise;
 }
 
 /** arn:aws:sagemaker:<region>:<account-id>:endpoint/<endpoint-name> (also covers aws-cn/aws-us-gov). */
@@ -17,6 +32,7 @@ const ENDPOINT_ARN_PATTERN = /^arn:aws[a-z0-9-]*:sagemaker:([a-z0-9-]+):(\d{12})
 export interface SageMakerEmbeddingConfig {
   endpointName: string;
   region: string;
+  profile?: string;
   normalize: boolean;
   truncate: boolean;
   truncationDirection: "Left" | "Right";
@@ -52,6 +68,103 @@ function envBool(name: string, fallback: boolean): boolean {
 
 function resolveTruncationDirection(): "Left" | "Right" {
   return process.env.MIRU_SAGEMAKER_TRUNCATION_DIRECTION?.trim() === "Left" ? "Left" : "Right";
+}
+
+function parseIniProfiles(contents: string): Map<string, Record<string, string>> {
+  const profiles = new Map<string, Record<string, string>>();
+  let section: Record<string, string> | undefined;
+
+  for (const line of contents.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith(";")) {
+      continue;
+    }
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      section = {};
+      profiles.set(trimmed.slice(1, -1).trim().toLowerCase(), section);
+      continue;
+    }
+    if (!section) {
+      continue;
+    }
+    const separator = trimmed.indexOf("=");
+    if (separator <= 0) {
+      continue;
+    }
+    const key = trimmed.slice(0, separator).trim().toLowerCase();
+    const value = trimmed.slice(separator + 1).trim();
+    section[key] = value;
+  }
+
+  return profiles;
+}
+
+/**
+ * AWS CLI accepts credential-key casing that the AWS SDK's INI parser does not.
+ * Keep this fallback deliberately limited to static credentials; SSO, role, and
+ * credential_process profiles remain handled by the SDK's normal provider chain.
+ */
+export function parseCaseInsensitiveStaticCredentials(
+  configContents: string,
+  credentialsContents: string,
+  profileName: string,
+): StaticAwsCredentials | null {
+  const profile = profileName.trim().toLowerCase();
+  if (!profile) {
+    return null;
+  }
+
+  const merged: Record<string, string> = {};
+  for (const [sectionName, values] of parseIniProfiles(configContents)) {
+    if (sectionName === profile || sectionName === `profile ${profile}`) {
+      Object.assign(merged, values);
+    }
+  }
+  for (const [sectionName, values] of parseIniProfiles(credentialsContents)) {
+    if (sectionName === profile) {
+      Object.assign(merged, values);
+    }
+  }
+
+  const accessKeyId = merged.aws_access_key_id;
+  const secretAccessKey = merged.aws_secret_access_key;
+  if (!accessKeyId || !secretAccessKey) {
+    return null;
+  }
+  return {
+    accessKeyId,
+    secretAccessKey,
+    sessionToken: merged.aws_session_token,
+  };
+}
+
+function resolveAwsHome(): string {
+  return process.env.HOME || process.env.USERPROFILE || homedir();
+}
+
+function resolveAwsFilePath(variable: string, fallback: string): string {
+  const configured = process.env[variable] || fallback;
+  return configured.startsWith("~/") ? join(resolveAwsHome(), configured.slice(2)) : configured;
+}
+
+async function loadCaseInsensitiveStaticCredentials(
+  profileName: string,
+): Promise<StaticAwsCredentials | null> {
+  const home = resolveAwsHome();
+  const configPath = resolveAwsFilePath("AWS_CONFIG_FILE", join(home, ".aws", "config"));
+  const credentialsPath = resolveAwsFilePath(
+    "AWS_SHARED_CREDENTIALS_FILE",
+    join(home, ".aws", "credentials"),
+  );
+
+  const [configResult, credentialsResult] = await Promise.allSettled([
+    readFile(configPath, "utf8"),
+    readFile(credentialsPath, "utf8"),
+  ]);
+  const configContents = configResult.status === "fulfilled" ? configResult.value : "";
+  const credentialsContents =
+    credentialsResult.status === "fulfilled" ? credentialsResult.value : "";
+  return parseCaseInsensitiveStaticCredentials(configContents, credentialsContents, profileName);
 }
 
 /**
@@ -91,6 +204,7 @@ export function resolveSageMakerConfig(): SageMakerEmbeddingConfig | null {
   return {
     endpointName,
     region,
+    profile: process.env.AWS_PROFILE?.trim() || undefined,
     normalize: envBool("MIRU_SAGEMAKER_NORMALIZE", true),
     truncate: envBool("MIRU_SAGEMAKER_TRUNCATE", true),
     truncationDirection: resolveTruncationDirection(),
@@ -239,8 +353,24 @@ export function createSageMakerClient(config: SageMakerEmbeddingConfig): Embeddi
       _model: string,
       dimensions?: number,
     ): Promise<EmbeddingResponse> {
-      const { InvokeEndpointCommand, SageMakerRuntimeClient } = await loadSageMakerRuntime();
-      client ??= new SageMakerRuntimeClient({ region: config.region });
+      const [{ InvokeEndpointCommand, SageMakerRuntimeClient }, { defaultProvider }] =
+        await Promise.all([loadSageMakerRuntime(), loadAwsCredentialProvider()]);
+      if (!client) {
+        const profile = config.profile?.trim() || process.env.AWS_PROFILE?.trim();
+        const sdkCredentials = defaultProvider({ profile });
+        const credentials = async (): Promise<StaticAwsCredentials> => {
+          try {
+            return await sdkCredentials();
+          } catch (error) {
+            const fallback = profile ? await loadCaseInsensitiveStaticCredentials(profile) : null;
+            if (fallback) {
+              return fallback;
+            }
+            throw error;
+          }
+        };
+        client = new SageMakerRuntimeClient({ region: config.region, credentials });
+      }
 
       const body = buildRequestBody(config, input, dimensions);
 

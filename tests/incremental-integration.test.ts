@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import type { EmbeddingBackend } from "../src/embeddings/openai.ts";
+import { EmbeddingApiError, type EmbeddingBackend } from "../src/embeddings/openai.ts";
 import { createIndexFromPath } from "../src/index/create.ts";
 import { IndexCache } from "../src/mcp/index-cache.ts";
 import { MiruIndex } from "../src/miru-index.ts";
@@ -15,6 +15,29 @@ function hashToVector(text: string, dim = 32): Float32Array {
     h = (Math.imul(31, h) + (text.charCodeAt(i) ?? 0)) >>> 0;
   }
   return unitVector(dim, h % dim);
+}
+
+function credentialsFailingEmbeddings(): EmbeddingBackend & { setFailing(v: boolean): void } {
+  let failing = false;
+  return {
+    model: "mock-cred-fail",
+    dimensions: 32,
+    setFailing(v: boolean) {
+      failing = v;
+    },
+    async embedDocuments(texts: string[]) {
+      if (failing) {
+        throw new EmbeddingApiError(401, "unauthorized");
+      }
+      return texts.map((text) => hashToVector(text));
+    },
+    async embedQuery(text: string) {
+      if (failing) {
+        throw new EmbeddingApiError(401, "unauthorized");
+      }
+      return hashToVector(text);
+    },
+  };
 }
 
 function trackingEmbeddings(): EmbeddingBackend & {
@@ -338,6 +361,10 @@ describe("incremental integration", () => {
       expect(entry.pendingPaths.size).toBe(0);
       expect(embeddings.documentEmbedCount).toBeGreaterThan(0);
 
+      embeddings.resetEmbedCount();
+      await internals.checkAndQueueStaleFiles(resolvedRoot, index, cacheKey);
+      expect(embeddings.documentEmbedCount).toBe(0);
+
       const hit = await index.search({
         query: "miruRaceFixToken",
         topK: 1,
@@ -347,6 +374,40 @@ describe("incremental integration", () => {
       expect(hit[0]?.chunk.file_path).toBe("src/auth.ts");
       expect(hit[0]?.chunk.content).toContain("miruRaceFixToken");
 
+      cache.close();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("saving a fresh index seeds the mtime snapshot for reconciliation", async () => {
+    const root = await buildTempRepo();
+    const resolvedRoot = resolve(root);
+    try {
+      const embeddings = trackingEmbeddings();
+      const built = await createIndexFromPath(resolvedRoot, embeddings, ["code"], resolvedRoot);
+      const index = new MiruIndex({
+        embeddings,
+        bm25Index: built.bm25,
+        semanticIndex: built.semantic,
+        chunks: built.chunks,
+        embeddingModel: embeddings.model,
+        root: resolvedRoot,
+        content: ["code"],
+      });
+
+      const cache = new IndexCache(["code"]);
+      const cacheKey = computeSourceCacheKey(resolvedRoot);
+      const internals = cacheInternals(cache);
+      const entry = internals.ensureEntry(cacheKey, resolvedRoot);
+      entry.index = index;
+      entry.task = Promise.resolve(index);
+
+      await index.saveToCache(resolvedRoot);
+      embeddings.resetEmbedCount();
+      await internals.checkAndQueueStaleFiles(resolvedRoot, index, cacheKey);
+
+      expect(embeddings.documentEmbedCount).toBe(0);
       cache.close();
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -487,4 +548,134 @@ describe("incremental integration", () => {
     },
     { timeout: 20_000 },
   );
+
+  test("get() fails loudly after a background re-embed hits dead credentials, then recovers", async () => {
+    const root = await buildTempRepo();
+    try {
+      const embeddings = credentialsFailingEmbeddings();
+      const built = await createIndexFromPath(root, embeddings, ["code"], root);
+      const index = new MiruIndex({
+        embeddings,
+        bm25Index: built.bm25,
+        semanticIndex: built.semantic,
+        chunks: built.chunks,
+        embeddingModel: embeddings.model,
+        root,
+        content: ["code"],
+      });
+
+      const cache = new IndexCache(["code"]);
+      const cacheKey = computeSourceCacheKey(root);
+      const internals = cacheInternals(cache);
+      const entry = internals.ensureEntry(cacheKey);
+      entry.index = index;
+      entry.task = Promise.resolve(index);
+
+      await writeFile(
+        join(root, "src/auth.ts"),
+        "export function authenticateUser() {\n  return 'miruDeadCredsToken';\n}\n",
+        "utf-8",
+      );
+
+      embeddings.setFailing(true);
+      internals.noteFileChange(root, "src/auth.ts");
+      await new Promise<void>((resolve) => queueMicrotask(resolve));
+      await entry.updateChain;
+
+      await expect(cache.get(root)).rejects.toThrow(/unauthorized|Not authorized/i);
+      await expect(cache.get(root)).rejects.toThrow(/unauthorized|Not authorized/i);
+
+      embeddings.setFailing(false);
+      internals.noteFileChange(root, "src/auth.ts");
+      await new Promise<void>((resolve) => queueMicrotask(resolve));
+      await entry.updateChain;
+      await expect(cache.get(root)).resolves.toBe(index);
+
+      const after = await index.search({
+        query: "miruDeadCredsToken",
+        topK: 1,
+        alpha: 0,
+        rerank: false,
+      });
+      expect(after[0]?.chunk.content).toContain("miruDeadCredsToken");
+
+      cache.close();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("ambiguous watch events (null filename) no longer trigger a full-index re-embed; reconcile still catches the change", async () => {
+    const root = await buildTempRepo();
+    const resolvedRoot = resolve(root);
+    try {
+      const embeddings = trackingEmbeddings();
+      const built = await createIndexFromPath(resolvedRoot, embeddings, ["code"], resolvedRoot);
+      const index = new MiruIndex({
+        embeddings,
+        bm25Index: built.bm25,
+        semanticIndex: built.semantic,
+        chunks: built.chunks,
+        embeddingModel: embeddings.model,
+        root: resolvedRoot,
+        content: ["code"],
+      });
+
+      const cache = new IndexCache(["code"]);
+      const cacheKey = computeSourceCacheKey(resolvedRoot);
+      const internals = cacheInternals(cache);
+      const entry = internals.ensureEntry(cacheKey, resolvedRoot);
+      entry.index = index;
+      entry.task = Promise.resolve(index);
+
+      // Seed the mtime baseline the way a real cache load would.
+      await index.saveToCache(resolvedRoot);
+
+      // Guard against coarse-grained filesystem mtime resolution.
+      await new Promise((r) => setTimeout(r, 20));
+      await writeFile(
+        join(resolvedRoot, "src/auth.ts"),
+        "export function authenticateUser() {\n  return 'miruAmbiguousWatchToken';\n}\n",
+        "utf-8",
+      );
+
+      embeddings.resetEmbedCount();
+
+      // Simulate a macOS fs.watch event that omits the filename (the pre-1.3.14
+      // Bun behavior). Before this fix, this queued every indexed path and
+      // re-embedded the whole repo on a single ambiguous event.
+      internals.noteFileChange(resolvedRoot, null);
+      await new Promise<void>((resolve) => queueMicrotask(resolve));
+      await entry.updateChain;
+
+      expect(entry.pendingPaths.size).toBe(0);
+      expect(embeddings.documentEmbedCount).toBe(0);
+
+      // checkAndQueueStaleFiles (run on cache load, and by any caller who wants
+      // an explicit reconcile) is the remaining safety net -- confirm it still
+      // finds and fixes the change, and only re-embeds the one file that
+      // actually changed.
+      await internals.checkAndQueueStaleFiles(resolvedRoot, index, cacheKey);
+
+      expect(embeddings.documentEmbedCount).toBeGreaterThan(0);
+      expect(
+        embeddings.lastEmbeddedTexts.every((text) => text.includes("miruAmbiguousWatchToken")),
+      ).toBe(true);
+      expect(
+        embeddings.lastEmbeddedTexts.some((text) => text.includes("miruUtilsCalendarHelper")),
+      ).toBe(false);
+
+      const hit = await index.search({
+        query: "miruAmbiguousWatchToken",
+        topK: 1,
+        alpha: 0,
+        rerank: false,
+      });
+      expect(hit[0]?.chunk.file_path).toBe("src/auth.ts");
+
+      cache.close();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

@@ -53,6 +53,15 @@ describe("search-policy", () => {
     expect(MCP_LOCATE_TOOL_DESCRIPTION).toContain("Exact substring");
   });
 
+  test("shipped miru skill file matches the literal-first / conditional-expand policy", async () => {
+    // Hand-maintained (not generated from search-policy.ts) — lock its content so it can't drift.
+    const skill = await Bun.file(`${import.meta.dir}/../skills/miru/SKILL.md`).text();
+    expect(skill).toContain("locate");
+    expect(skill).toContain("literal");
+    expect(skill).not.toContain("Do not use Miru for exact literal");
+    expect(skill).toContain("truncated: true");
+  });
+
   test("benchmark instructions and read_benchmark description stay compact", () => {
     expect(MCP_BENCHMARK_SERVER_INSTRUCTIONS).toContain("read_benchmark");
     expect(MCP_BENCHMARK_SERVER_INSTRUCTIONS).toContain("Do not narrate benchmark stats");

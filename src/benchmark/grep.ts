@@ -26,6 +26,12 @@ export const RG_EXCLUDE_ARGS = [
   "!tokenizer",
   "-g",
   "!tokenizer/**",
+  "-g",
+  "!*.map",
+  "-g",
+  "!*.min.js",
+  "-g",
+  "!*.min.css",
 ] as const;
 
 export class BenchmarkSearchTimeoutError extends Error {
@@ -236,6 +242,9 @@ async function grepRankedMatches(repoRoot: string, pattern: string, topK: number
     "--exclude-dir=node_modules",
     "--exclude-dir=.git",
     "--exclude-dir=tokenizer",
+    "--exclude=*.map",
+    "--exclude=*.min.js",
+    "--exclude=*.min.css",
     pattern,
     repoRoot,
   ]);

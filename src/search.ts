@@ -4,6 +4,7 @@ import type { SemanticIndex } from "./index/semantic-index.ts";
 import { selectorToMask } from "./index/sparse.ts";
 import { selectTopKScoreIndices } from "./index/topk.ts";
 import { applyQueryBoost, boostMultiChunkFiles } from "./ranking/boosting.ts";
+import { rankingConfig } from "./ranking/config.ts";
 import { searchImprovementsEnabled } from "./ranking/features.ts";
 import { isLocationQuery } from "./ranking/location.ts";
 import { rerankTopk } from "./ranking/penalties.ts";
@@ -12,16 +13,14 @@ import { tokenize } from "./tokens.ts";
 import type { Chunk, SearchResult } from "./types.ts";
 import { chunkKey } from "./types.ts";
 
-const RRF_K = 60;
-
-function rrfScores(scores: Map<string, number>): Map<string, number> {
+function rrfScores(scores: Map<string, number>, rrfK: number): Map<string, number> {
   if (scores.size === 0) {
     return scores;
   }
   const ranked = [...scores.entries()].sort((a, b) => b[1] - a[1]);
   const out = new Map<string, number>();
   ranked.forEach(([key], i) => {
-    out.set(key, 1.0 / (RRF_K + i + 1));
+    out.set(key, 1.0 / (rrfK + i + 1));
   });
   return out;
 }
@@ -73,6 +72,8 @@ async function searchBm25(
 
 export async function hybridSearch(options: {
   query: string;
+  /** Reuse a caller-cached query vector when evaluating or batching searches. */
+  queryVector?: Float32Array;
   embeddings: EmbeddingBackend;
   semanticIndex: SemanticIndex;
   bm25Index: BM25Index;
@@ -84,6 +85,7 @@ export async function hybridSearch(options: {
 }): Promise<SearchResult[]> {
   const {
     query,
+    queryVector,
     embeddings,
     semanticIndex,
     bm25Index,
@@ -95,11 +97,14 @@ export async function hybridSearch(options: {
   } = options;
 
   const alphaWeight = resolveAlpha(query, alpha);
+  const tuning = rankingConfig();
   const candidateCount =
-    searchImprovementsEnabled() && isLocationQuery(query) ? topK * 10 : topK * 5;
+    searchImprovementsEnabled() && isLocationQuery(query)
+      ? topK * tuning.locationCandidateMultiplier
+      : topK * tuning.candidateMultiplier;
   const chunksByKey = new Map(chunks.map((c) => [chunkKey(c), c]));
 
-  const queryVecPromise = embeddings.embedQuery(query);
+  const queryVecPromise = queryVector ? Promise.resolve(queryVector) : embeddings.embedQuery(query);
   const bm25Promise = searchBm25(query, bm25Index, chunks, candidateCount, selector);
   const queryVec = await queryVecPromise;
   const bm25Hits = await bm25Promise;
@@ -123,8 +128,8 @@ export async function hybridSearch(options: {
     }
   }
 
-  const normalizedSemantic = rrfScores(semanticScores);
-  const normalizedBm25 = rrfScores(bm25Scores);
+  const normalizedSemantic = rrfScores(semanticScores, tuning.rrfK);
+  const normalizedBm25 = rrfScores(bm25Scores, tuning.rrfK);
 
   const allKeys = new Set([...normalizedSemantic.keys(), ...normalizedBm25.keys()]);
   const sortedKeys = [...allKeys].sort((a, b) => {

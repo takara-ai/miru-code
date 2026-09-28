@@ -29,7 +29,12 @@
   },
   "overrides": [
     {
-      "includes": [".codex-plugin/plugin.json", "plugin.json"],
+      "includes": [
+        ".claude-plugin/plugin.json",
+        ".codex-plugin/plugin.json",
+        ".kiro-plugin/plugin.json",
+        "plugin.json"
+      ],
       "formatter": {
         "enabled": false
       }

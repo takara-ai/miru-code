@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import packageJson from "../package.json";
 import { resolveCacheFolder } from "./cache.ts";
@@ -8,6 +9,8 @@ const REGISTRY_URL = "https://registry.npmjs.org/@takara-ai%2Fmiru-code";
 const UPDATE_CHECK_FILENAME = "update-check.json";
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 2_000;
+
+type Fetcher = (input: string, init?: RequestInit) => Promise<Response>;
 
 interface UpdateCheckCache {
   checkedAt: number;
@@ -77,7 +80,12 @@ function updateCheckPath(): string {
 
 async function readUpdateCheckCache(): Promise<UpdateCheckCache | null> {
   try {
-    const raw = await Bun.file(updateCheckPath()).text();
+    // node:fs/promises, not Bun.file().text(): a rejecting Bun.file() read
+    // (the common case here — no cache on a fresh install) doesn't keep
+    // Bun's Windows event loop alive, so the process can exit silently
+    // before this ever settles. Confirmed regression in Bun 1.4.0-1.4.2:
+    // github.com/oven-sh/bun/issues/39787 (fix open, not yet released).
+    const raw = await readFile(updateCheckPath(), "utf8");
     const parsed = JSON.parse(raw) as UpdateCheckCache;
     if (typeof parsed.checkedAt !== "number" || typeof parsed.latest !== "string") {
       return null;
@@ -93,8 +101,8 @@ async function writeUpdateCheckCache(latest: string): Promise<void> {
   await Bun.write(updateCheckPath(), `${JSON.stringify(payload)}\n`);
 }
 
-export async function fetchLatestPublishedVersion(): Promise<string> {
-  const response = await fetch(REGISTRY_URL, {
+export async function fetchLatestPublishedVersion(fetchImpl: Fetcher = fetch): Promise<string> {
+  const response = await fetchImpl(REGISTRY_URL, {
     headers: { accept: "application/json" },
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
