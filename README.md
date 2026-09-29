@@ -48,10 +48,9 @@ Plugin installs don't carry full CLI parity — what each one gives you depends 
 | `miru` / Caveman / STE skills | ✅ | ✅ | ✅ |
 | Dedicated sub-agent (`miru:miru-code`) | ✅ | — | — |
 | Benchmark mode toggle (`/plugin configure`) | ✅ | — | — |
-| Search hooks | — | — | — |
 | Credentials | own plugin-scoped dir | own plugin-scoped dir | n/a |
 
-`—` means the IDE's plugin schema has no equivalent mechanism to port these to (not a packaging gap we can close): Codex's and Cursor's plugin manifests have no `agents` or `userConfig` fields, so the dedicated sub-agent and the benchmark toggle are Claude-Code-only. Search hooks aren't shipped to any plugin — they're slated for removal from Miru entirely (tracked internally), so not worth packaging.
+`—` means the IDE's plugin schema has no equivalent mechanism to port these to (not a packaging gap we can close): Codex's and Cursor's plugin manifests have no `agents` or `userConfig` fields, so the dedicated sub-agent and the benchmark toggle are Claude-Code-only.
 
 **Credentials are plugin-scoped, not shared with your CLI install.** Claude Code and Codex plugins each store auth in their own IDE-managed data directory (survives plugin updates, removed on uninstall). This means `miru setup` done via the CLI does **not** carry over to a plugin install, or vice versa — each authenticates independently on first use (interactive device-code login bootstraps automatically). If you use both the CLI and a plugin, you'll sign in twice.
 
@@ -92,7 +91,7 @@ Interactive TUI — **↑↓** move, **space** toggle, **a** all, **enter** conf
 | Instructions                  | Search policy in `CLAUDE.md` / `AGENTS.md` / `GEMINI.md`            |
 | Sub-agent                     | Dedicated `miru-code` agent file                                    |
 | Cursor rules                  | Always-on `.cursor/rules/miru-code.mdc` (Cursor only)               |
-| Search hooks *(experimental)* | Block built-in Grep/Glob and redirect to Miru MCP                   |
+| Old Miru hooks                | Removes stale search hooks from older releases                       |
 | Caveman *(experimental)*      | On-demand chat compression skill (`/caveman`)                       |
 | STE writing *(experimental)*  | On-demand clear technical English for docs (`/ste`)                 |
 
@@ -106,18 +105,18 @@ miru uninstall   # remove miru config
 **Supported:** Cursor · Claude Code · Gemini CLI · Kiro · OpenCode · GitHub Copilot · Codex · VS Code · Visual Studio (Windows) · Windsurf / Devin Desktop
 
 
-| IDE            | MCP                                   | Instructions / rules            | Hooks *(experimental)*                            | Caveman *(experimental)*                            | STE *(experimental)*                         |
-| -------------- | ------------------------------------- | ------------------------------- | ------------------------------------------------- | --------------------------------------------------- | -------------------------------------------- |
-| Cursor         | `~/.cursor/mcp.json`                  | `~/.cursor/rules/miru-code.mdc` | `~/.cursor/hooks.json`                            | `~/.agents/skills/caveman/SKILL.md`                 | `~/.agents/skills/ste/SKILL.md`              |
-| Claude Code    | `~/.claude.json`                      | `~/.claude/CLAUDE.md`           | `~/.claude/settings.json`                         | `~/.claude/skills/caveman/SKILL.md`                 | `~/.claude/skills/ste/SKILL.md`              |
-| Gemini CLI     | `~/.gemini/settings.json`             | `~/.gemini/GEMINI.md`           | `~/.gemini/settings.json` (`BeforeTool`)          | `~/.agents/skills/caveman/SKILL.md`                 | `~/.agents/skills/ste/SKILL.md`              |
-| Kiro           | `~/.kiro/settings/mcp.json`           | `~/.kiro/steering/miru.md`      | `~/.kiro/settings/hooks.json`                     | `~/.kiro/skills/caveman/SKILL.md`                   | `~/.kiro/skills/ste/SKILL.md`                |
-| OpenCode       | `$XDG_CONFIG_HOME/opencode/opencode.json(c)` *(else `~/.config/opencode/…`)* | `…/AGENTS.md` | `…/plugins/miru-search-guard.ts` | `~/.agents/skills/caveman/SKILL.md` | `~/.agents/skills/ste/SKILL.md` |
-| GitHub Copilot | `~/.copilot/mcp-config.json`          | —                               | `~/.copilot/hooks/miru-search.json`               | `~/.agents/skills/caveman/SKILL.md`                 | `~/.agents/skills/ste/SKILL.md`              |
-| Codex          | `~/.codex/config.toml`                | `~/.codex/AGENTS.md`            | `~/.codex/hooks.json`                             | `~/.agents/skills/caveman/SKILL.md`                 | `~/.agents/skills/ste/SKILL.md`              |
-| VS Code        | `…/Code/User/mcp.json`                | —                               | `~/.copilot/hooks/miru-search.json`               | `~/.agents/skills/caveman/SKILL.md`                 | `~/.agents/skills/ste/SKILL.md`              |
-| Visual Studio  | `%USERPROFILE%\.mcp.json`             | —                               | `~/.copilot/hooks/miru-search.json`               | `~/.agents/skills/caveman/SKILL.md`                 | `~/.agents/skills/ste/SKILL.md`              |
-| Windsurf       | —                                     | —                               | `~/.codeium/windsurf/hooks.json`                  | `~/.agents/skills/caveman/SKILL.md`                 | `~/.agents/skills/ste/SKILL.md`              |
+| IDE            | MCP                                   | Instructions / rules            | Caveman *(experimental)*            | STE *(experimental)*                    |
+| -------------- | ------------------------------------- | ------------------------------- | ----------------------------------- | --------------------------------------- |
+| Cursor         | `~/.cursor/mcp.json`                  | `~/.cursor/rules/miru-code.mdc` | `~/.agents/skills/caveman/SKILL.md` | `~/.agents/skills/ste/SKILL.md`         |
+| Claude Code    | `~/.claude.json`                      | `~/.claude/CLAUDE.md`           | `~/.claude/skills/caveman/SKILL.md` | `~/.claude/skills/ste/SKILL.md`         |
+| Gemini CLI     | `~/.gemini/settings.json`             | `~/.gemini/GEMINI.md`           | `~/.agents/skills/caveman/SKILL.md` | `~/.agents/skills/ste/SKILL.md`         |
+| Kiro           | `~/.kiro/settings/mcp.json`           | `~/.kiro/steering/miru.md`      | `~/.kiro/skills/caveman/SKILL.md`   | `~/.kiro/skills/ste/SKILL.md`           |
+| OpenCode       | `$XDG_CONFIG_HOME/opencode/opencode.json(c)` *(else `~/.config/opencode/…`)* | `…/AGENTS.md` | `~/.agents/skills/caveman/SKILL.md` | `~/.agents/skills/ste/SKILL.md` |
+| GitHub Copilot | `~/.copilot/mcp-config.json`          | —                               | `~/.agents/skills/caveman/SKILL.md` | `~/.agents/skills/ste/SKILL.md`         |
+| Codex          | `~/.codex/config.toml`                | `~/.codex/AGENTS.md`            | `~/.agents/skills/caveman/SKILL.md` | `~/.agents/skills/ste/SKILL.md`         |
+| VS Code        | `…/Code/User/mcp.json`                | —                               | `~/.agents/skills/caveman/SKILL.md` | `~/.agents/skills/ste/SKILL.md`         |
+| Visual Studio  | `%USERPROFILE%\.mcp.json`             | —                               | `~/.agents/skills/caveman/SKILL.md` | `~/.agents/skills/ste/SKILL.md`         |
+| Windsurf       | —                                     | —                               | `~/.agents/skills/caveman/SKILL.md` | `~/.agents/skills/ste/SKILL.md`         |
 
 
 ### Plugin packaging
@@ -132,7 +131,7 @@ Current limitation:
 - that means local source edits do not affect plugin behavior until a package version is published
 - and a fully self-contained “no Bun required” plugin install is still future work
 
-### Search hooks
+### On-demand skills
 
 Sub-agent files are also written where supported (see `miru install` plan). Windsurf hooks only *(experimental)* — no MCP entry yet. Caveman is an on-demand Agent Skill (default off): invoke with `/caveman` or “talk like caveman”; stop with “normal mode”. Invocation UI varies by IDE (`/caveman`, `$caveman`, `@caveman`, etc.). Most IDEs share `~/.agents/skills/caveman/SKILL.md` (including Copilot / VS Code / Visual Studio); Claude Code and Kiro keep vendor-native skill dirs. Ownership is tracked on the shared path so uninstalling one IDE keeps the skill while another still owns it; selecting all owners removes it once. STE is an on-demand Agent Skill (default off): invoke with `/ste` or “de-slop this”; keep articles and complete sentences. Most IDEs share `~/.agents/skills/ste/` the same way (ownership via `miru-owners.json`); Claude Code and Kiro keep vendor-native STE dirs.
 
@@ -155,17 +154,6 @@ Caveman compresses **live chat replies** (less filler, max meaning). Intensities
 Security / destructive warnings use clear normal prose (auto-clarity) — brevity never hides risk. Session token savings vary; the skill itself costs input tokens. No guaranteed %.
 
 Off by default at install time. Enable Caveman in the installer for any supported IDE. Restart the IDE (or reload skills) after install. For Codex, the installer also sets `[features] skills = true` in `~/.codex/config.toml` (required for Codex to load skills).
-
-</details>
-
-<details>
-<summary>Search hooks <em>(experimental)</em></summary>
-
-Search hooks are **experimental** — behavior and IDE support may change between releases.
-
-Hooks run `miru hook-guard` before built-in search tools execute. They **block** conceptual Grep/Glob/SemanticSearch and shell `rg`/`grep`/`find`, and tell the agent to use Miru MCP `search` (or `locate` for exact literals) instead. Exact literal lookups (e.g. `REDIS_HOST`, a symbol name) still pass through.
-
-Hooks are **off by default** at install time. Enable them in the installer if you want built-in Grep/Glob redirected to Miru MCP.
 
 </details>
 
@@ -284,7 +272,6 @@ Run `miru -h` for the command list, or `miru <command> -h` for details.
 | `miru benchmark on/off/status/clear`     | Toggle MCP benchmark mode / clear report                                          |
 | `miru init --agent <id>`                 | Project-local sub-agent                                                           |
 | `miru clear [path]`                      | Drop index cache (use after big CLI-only refactors)                               |
-| `miru hook-guard`                        | PreToolUse hook entrypoint *(experimental)*; used by installers, reads JSON stdin |
 | `miru`                                   | Start MCP server (`--benchmark` for comparisons)                                  |
 
 

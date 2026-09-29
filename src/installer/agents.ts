@@ -5,11 +5,7 @@ import { join } from "node:path";
 import type { AgentId } from "../agents.ts";
 import { INSTRUCTIONS_MARKDOWN } from "./search-policy.ts";
 
-function copilotHooksPath(home: string): string {
-  return join(home, ".copilot", "hooks", "miru-search.json");
-}
-
-/** Shared Copilot / VS Code / Visual Studio config root (MCP, hooks, agents). */
+/** Shared Copilot / VS Code / Visual Studio config root (MCP, agents). */
 export function copilotHomeDir(home: string): string {
   return join(home, ".copilot");
 }
@@ -55,22 +51,10 @@ export function nativeSteSkillDir(home: string, vendor: NativeSkillVendor): stri
   return skillDir(home, `.${vendor}`, "ste");
 }
 
-function kiroHooksPath(home: string): string {
-  return join(home, ".kiro", "settings", "hooks.json");
-}
-
-function windsurfHooksPath(home: string): string {
-  return join(home, ".codeium", "windsurf", "hooks.json");
-}
-
 /** OpenCode config root (`$XDG_CONFIG_HOME/opencode` or `~/.config/opencode`). */
 export function opencodeConfigDir(home: string): string {
   const xdg = process.env.XDG_CONFIG_HOME;
   return xdg ? join(xdg, "opencode") : join(home, ".config", "opencode");
-}
-
-function opencodePluginPath(home: string): string {
-  return join(opencodeConfigDir(home), "plugins", "miru-search-guard.ts");
 }
 
 export type InstallAction =
@@ -121,7 +105,7 @@ export interface McpConfig {
   format: McpConfigFormat;
 }
 
-export type HooksFormat =
+export type LegacyHooksFormat =
   | "claude"
   | "cursor"
   | "gemini"
@@ -138,8 +122,9 @@ export interface AgentTarget {
   mcp: McpConfig | null;
   instructionsPath: string | null;
   cursorRulesPath: string | null;
-  hooksPath: string | null;
-  hooksFormat: HooksFormat | null;
+  /** Search-hook paths are retained for uninstalling hooks created by older releases. */
+  legacyHooksPath: string | null;
+  legacyHooksFormat: LegacyHooksFormat | null;
   subagentPath: string | null;
   subagentId: AgentId | null;
   /**
@@ -238,8 +223,8 @@ export const AGENT_TARGETS: AgentTarget[] = [
     mcp: jsonMcp(join(HOME, ".claude.json"), "mcpServers", STDIO_SERVER_CONFIG),
     instructionsPath: join(HOME, ".claude", "CLAUDE.md"),
     cursorRulesPath: null,
-    hooksPath: join(HOME, ".claude", "settings.json"),
-    hooksFormat: "claude",
+    legacyHooksPath: join(HOME, ".claude", "settings.json"),
+    legacyHooksFormat: "claude",
     subagentPath: join(HOME, ".claude", "agents", "miru-code.md"),
     subagentId: "claude",
     cavemanSkillPath: nativeCavemanSkillPath(HOME, "claude"),
@@ -253,8 +238,8 @@ export const AGENT_TARGETS: AgentTarget[] = [
     mcp: jsonMcp(join(HOME, ".cursor", "mcp.json"), "mcpServers", STDIO_SERVER_CONFIG),
     instructionsPath: null,
     cursorRulesPath: join(HOME, ".cursor", "rules", "miru-code.mdc"),
-    hooksPath: join(HOME, ".cursor", "hooks.json"),
-    hooksFormat: "cursor",
+    legacyHooksPath: join(HOME, ".cursor", "hooks.json"),
+    legacyHooksFormat: "cursor",
     subagentPath: join(HOME, ".cursor", "agents", "miru-code.md"),
     subagentId: "cursor",
     cavemanSkillPath: SHARED_CAVEMAN_SKILL,
@@ -268,8 +253,8 @@ export const AGENT_TARGETS: AgentTarget[] = [
     mcp: jsonMcp(join(HOME, ".gemini", "settings.json"), "mcpServers", STDIO_SERVER_CONFIG),
     instructionsPath: join(HOME, ".gemini", "GEMINI.md"),
     cursorRulesPath: null,
-    hooksPath: join(HOME, ".gemini", "settings.json"),
-    hooksFormat: "gemini",
+    legacyHooksPath: join(HOME, ".gemini", "settings.json"),
+    legacyHooksFormat: "gemini",
     subagentPath: join(HOME, ".gemini", "agents", "miru-code.md"),
     subagentId: "gemini",
     cavemanSkillPath: SHARED_CAVEMAN_SKILL,
@@ -283,8 +268,8 @@ export const AGENT_TARGETS: AgentTarget[] = [
     mcp: jsonMcp(join(HOME, ".kiro", "settings", "mcp.json"), "mcpServers", STDIO_SERVER_CONFIG),
     instructionsPath: join(HOME, ".kiro", "steering", "miru.md"),
     cursorRulesPath: null,
-    hooksPath: kiroHooksPath(HOME),
-    hooksFormat: "kiro",
+    legacyHooksPath: join(HOME, ".kiro", "settings", "hooks.json"),
+    legacyHooksFormat: "kiro",
     subagentPath: join(HOME, ".kiro", "agents", "miru-code.md"),
     subagentId: "kiro",
     cavemanSkillPath: nativeCavemanSkillPath(HOME, "kiro"),
@@ -298,8 +283,8 @@ export const AGENT_TARGETS: AgentTarget[] = [
     mcp: jsonMcp(opencodeMcpPath(), "mcp", OPENCODE_SERVER_CONFIG),
     instructionsPath: join(opencodeConfigDir(HOME), "AGENTS.md"),
     cursorRulesPath: null,
-    hooksPath: opencodePluginPath(HOME),
-    hooksFormat: "opencode",
+    legacyHooksPath: join(opencodeConfigDir(HOME), "plugins", "miru-search-guard.ts"),
+    legacyHooksFormat: "opencode",
     subagentPath: join(opencodeConfigDir(HOME), "agents", "miru-code.md"),
     subagentId: "opencode",
     cavemanSkillPath: SHARED_CAVEMAN_SKILL,
@@ -317,8 +302,8 @@ export const AGENT_TARGETS: AgentTarget[] = [
     ),
     instructionsPath: null,
     cursorRulesPath: null,
-    hooksPath: copilotHooksPath(HOME),
-    hooksFormat: "vscode",
+    legacyHooksPath: join(copilotHomeDir(HOME), "hooks", "miru-search.json"),
+    legacyHooksFormat: "vscode",
     subagentPath: join(copilotHomeDir(HOME), "agents", "miru-code.agent.md"),
     subagentId: "copilot",
     cavemanSkillPath: SHARED_CAVEMAN_SKILL,
@@ -338,8 +323,8 @@ export const AGENT_TARGETS: AgentTarget[] = [
     },
     instructionsPath: join(HOME, ".codex", "AGENTS.md"),
     cursorRulesPath: null,
-    hooksPath: join(HOME, ".codex", "hooks.json"),
-    hooksFormat: "claude",
+    legacyHooksPath: join(HOME, ".codex", "hooks.json"),
+    legacyHooksFormat: "claude",
     subagentPath: null,
     subagentId: null,
     cavemanSkillPath: SHARED_CAVEMAN_SKILL,
@@ -353,8 +338,8 @@ export const AGENT_TARGETS: AgentTarget[] = [
     mcp: jsonMcp(vscodeMcpPath(), "servers", STDIO_SERVER_CONFIG),
     instructionsPath: null,
     cursorRulesPath: null,
-    hooksPath: copilotHooksPath(HOME),
-    hooksFormat: "vscode",
+    legacyHooksPath: join(copilotHomeDir(HOME), "hooks", "miru-search.json"),
+    legacyHooksFormat: "vscode",
     subagentPath: null,
     subagentId: null,
     cavemanSkillPath: SHARED_CAVEMAN_SKILL,
@@ -368,8 +353,8 @@ export const AGENT_TARGETS: AgentTarget[] = [
     mcp: null,
     instructionsPath: null,
     cursorRulesPath: null,
-    hooksPath: windsurfHooksPath(HOME),
-    hooksFormat: "windsurf",
+    legacyHooksPath: join(HOME, ".codeium", "windsurf", "hooks.json"),
+    legacyHooksFormat: "windsurf",
     subagentPath: null,
     subagentId: null,
     cavemanSkillPath: SHARED_CAVEMAN_SKILL,
@@ -383,8 +368,8 @@ export const AGENT_TARGETS: AgentTarget[] = [
     mcp: jsonMcp(visualStudioMcpPath(), "servers", STDIO_SERVER_CONFIG),
     instructionsPath: null,
     cursorRulesPath: null,
-    hooksPath: copilotHooksPath(HOME),
-    hooksFormat: "vscode",
+    legacyHooksPath: join(copilotHomeDir(HOME), "hooks", "miru-search.json"),
+    legacyHooksFormat: "vscode",
     subagentPath: null,
     subagentId: null,
     cavemanSkillPath: SHARED_CAVEMAN_SKILL,

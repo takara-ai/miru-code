@@ -36,7 +36,6 @@ import {
 } from "../src/installer/config.ts";
 import {
   applyCaveman,
-  applyHooks,
   applyInstructions,
   applyMcp,
   applySte,
@@ -72,8 +71,8 @@ function claudeTarget(root: string): AgentTarget {
     },
     instructionsPath: join(root, ".claude", "CLAUDE.md"),
     cursorRulesPath: null,
-    hooksPath: join(root, ".claude", "settings.json"),
-    hooksFormat: "claude",
+    legacyHooksPath: join(root, ".claude", "settings.json"),
+    legacyHooksFormat: "claude",
     subagentPath: join(root, ".claude", "agents", "miru-code.md"),
     subagentId: "claude",
     cavemanSkillPath: join(root, ".claude", "skills", "caveman", "SKILL.md"),
@@ -178,20 +177,11 @@ describe("installer config", () => {
     expect(AGENT_TARGETS.some((agent) => agent.id === "visualstudio")).toBe(true);
   });
 
-  test("hook-capable agents include expected formats", () => {
-    const byId = Object.fromEntries(AGENT_TARGETS.map((agent) => [agent.id, agent]));
-    expect(byId.gemini?.hooksFormat).toBe("gemini");
-    expect(byId.codex?.hooksFormat).toBe("claude");
-    expect(byId.vscode?.hooksFormat).toBe("vscode");
-    expect(byId.kiro?.hooksFormat).toBe("kiro");
-    expect(byId.opencode?.hooksFormat).toBe("opencode");
-    expect(byId.windsurf?.hooksFormat).toBe("windsurf");
-  });
-
-  test("search hooks are off by default in installer choices", () => {
-    const hooksIntegration = INTEGRATIONS.find((entry) => entry.id === "hooks");
-    expect(hooksIntegration?.defaultChecked).toBe(false);
-    expect(hooksIntegration?.experimental).toBe(true);
+  test("old search-hook cleanup is offered and checked by default", () => {
+    const cleanup = integrationsForAgents([claudeTarget("/tmp/miru-agent")]).find(
+      (entry) => entry.id === "legacy-hooks",
+    );
+    expect(cleanup?.defaultChecked).toBe(true);
   });
 
   test("T10: caveman integration is experimental and unchecked by default", () => {
@@ -503,7 +493,6 @@ describe("installer apply", () => {
   test("handles absent integration paths and malformed MCP entries", async () => {
     const base = claudeTarget(root);
     expect(await applyInstructions({ ...base, instructionsPath: null }, "install")).toBeNull();
-    expect(await applyHooks({ ...base, hooksPath: null, hooksFormat: null }, "install")).toBeNull();
     expect(
       await installerTestUtils.applyCursorRules({ ...base, cursorRulesPath: null }, "install"),
     ).toBeNull();
@@ -602,8 +591,8 @@ describe("installer apply", () => {
       },
       instructionsPath: null,
       cursorRulesPath: null,
-      hooksPath: null,
-      hooksFormat: null,
+      legacyHooksPath: null,
+      legacyHooksFormat: null,
       subagentPath: null,
       subagentId: null,
       cavemanSkillPath: null,
@@ -691,16 +680,6 @@ describe("installer apply", () => {
     expect(again?.action).toBe("unchanged");
     const after = JSON.parse(await Bun.file(mcpPath).text()) as typeof data;
     expect(after.mcpServers.miru.args).toEqual(["@takara-ai/miru-code", "--benchmark"]);
-  });
-
-  test("applyHooks installs Claude PreToolUse hook", async () => {
-    const agent = claudeTarget(root);
-    const result = await applyHooks(agent, "install");
-    expect(result?.action).toBe("created");
-    const settings = JSON.parse(await Bun.file(agent.hooksPath ?? "").text()) as {
-      hooks: { PreToolUse: unknown[] };
-    };
-    expect(settings.hooks.PreToolUse.length).toBeGreaterThan(0);
   });
 
   test("applySubagent writes template", async () => {

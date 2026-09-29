@@ -30,7 +30,7 @@ import {
   replaceOrAppendMarked,
   stripJsonComments,
 } from "./config.ts";
-import { mergeHooks, removeHooks } from "./hooks/install.ts";
+import { removeLegacySearchHooks } from "./legacy-hooks.ts";
 import { promptConfirm, promptMultiSelect, requireInteractiveTerminal } from "./prompt.ts";
 import { CURSOR_RULES_MDC } from "./search-policy.ts";
 import {
@@ -56,7 +56,7 @@ export type IntegrationId =
   | "mcp"
   | "instructions"
   | "subagent"
-  | "hooks"
+  | "legacy-hooks"
   | "rules"
   | "caveman"
   | "ste";
@@ -176,18 +176,13 @@ async function applyInstructions(
   return { path, action };
 }
 
-async function applyHooks(agent: AgentTarget, mode: InstallMode): Promise<WriteResult | null> {
-  const path = agent.hooksPath;
-  const format = agent.hooksFormat;
+async function removeLegacyHooks(agent: AgentTarget): Promise<WriteResult | null> {
+  const path = agent.legacyHooksPath;
+  const format = agent.legacyHooksFormat;
   if (!path || !format) {
     return null;
   }
-
-  const action =
-    mode === "install"
-      ? await mergeHooks(format, path, agent.id)
-      : await removeHooks(format, path, agent.id);
-
+  const action = await removeLegacySearchHooks(format, path, agent.id);
   return { path, action };
 }
 
@@ -461,13 +456,12 @@ const INTEGRATIONS: Integration[] = [
     apply: applyCursorRules,
   },
   {
-    id: "hooks",
-    label: "Search hooks",
-    description: "blocks built-in search; routes to Miru MCP",
-    experimental: true,
-    defaultChecked: false,
-    planPath: (agent) => agent.hooksPath,
-    apply: applyHooks,
+    id: "legacy-hooks",
+    label: "Remove old Miru hooks",
+    description: "clean up stale search hooks from older releases",
+    defaultChecked: true,
+    planPath: (agent) => agent.legacyHooksPath,
+    apply: removeLegacyHooks,
   },
   {
     id: "caveman",
@@ -702,7 +696,6 @@ export async function runInstaller(
 
 export {
   applyCaveman,
-  applyHooks,
   applyInstructions,
   applyMcp,
   applySte,

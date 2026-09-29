@@ -61,7 +61,7 @@ describe("isLocationQuery", () => {
 describe("location ranking boosts", () => {
   test("boostExactStemMatches favors cli.ts for cli query token", () => {
     const cliChunk = chunk("export function runCli() {}", "src/cli.ts");
-    const otherChunk = chunk("merge hooks for agents", "src/installer/hooks/install.ts");
+    const otherChunk = chunk("install integrations for agents", "src/installer/installer.ts");
     const chunksByKey = new Map([
       [chunkKey(cliChunk), cliChunk],
       [chunkKey(otherChunk), otherChunk],
@@ -226,10 +226,7 @@ describe("location ranking boosts", () => {
   });
 
   test("penalizeInstallerForLocation demotes installer on location queries", () => {
-    const installChunk = chunk(
-      "export async function mergeClaudeHooks",
-      "src/installer/hooks/install.ts",
-    );
+    const installChunk = chunk("export async function runInstaller", "src/installer/installer.ts");
     const scores = new Map([[chunkKey(installChunk), 2]]);
     const chunksByKey = new Map([[chunkKey(installChunk), installChunk]]);
 
@@ -240,7 +237,7 @@ describe("location ranking boosts", () => {
 });
 
 describe("hybridSearch with MIRU_SEARCH_V2", () => {
-  test("location query ranks cli main above installer hooks", async () => {
+  test("location query ranks cli main above installer implementation", async () => {
     process.env.MIRU_SEARCH_V2 = "1";
 
     const mainChunk = chunk(
@@ -256,8 +253,8 @@ describe("hybridSearch with MIRU_SEARCH_V2", () => {
       415,
     );
     const installChunk = chunk(
-      "export async function mergeClaudeHooks(path: string) {}",
-      "src/installer/hooks/install.ts",
+      "export async function runInstaller(mode: InstallMode) {}",
+      "src/installer/installer.ts",
     );
     const pkgChunk = chunk("[package entry]\nbin miru: ./src/cli.ts\n", "package.json");
 
@@ -280,7 +277,7 @@ describe("hybridSearch with MIRU_SEARCH_V2", () => {
 
     const files = results.map((r) => r.chunk.file_path);
     expect(files).toContain("src/cli.ts");
-    expect(files).not.toContain("src/installer/hooks/install.ts");
+    expect(files).not.toContain("src/installer/installer.ts");
     const firstCli = results.find((r) => r.chunk.file_path === "src/cli.ts");
     expect(firstCli?.chunk.content).toMatch(/main\s*\(/);
   });

@@ -42,14 +42,21 @@ function runScoreWorker(job: Bm25ScoreJob): Promise<Bm25ScoreResult> {
 }
 
 export class BM25Index {
-  private docFreq = new Map<string, number>();
-  private docLengths: number[] = [];
-  private postings = new Map<string, PostingsList>();
-  private avgDocLength = 0;
-  private numDocs = 0;
-  private totalLen = 0;
+  private docFreq: Map<string, number>;
+  private docLengths: number[];
+  private postings: Map<string, PostingsList>;
+  private avgDocLength: number;
+  private numDocs: number;
+  private totalLen: number;
 
-  constructor() {}
+  constructor() {
+    this.docFreq = new Map();
+    this.docLengths = [];
+    this.postings = new Map();
+    this.avgDocLength = 0;
+    this.numDocs = 0;
+    this.totalLen = 0;
+  }
 
   /** Append one tokenized document. Safe to call incrementally while indexing. */
   addDocument(doc: string[]): number {

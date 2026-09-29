@@ -26,7 +26,6 @@ import {
   printSageMakerHelp,
 } from "./help.ts";
 import { getBenchmarkModeStatus, setBenchmarkMode } from "./installer/benchmark-mode.ts";
-import { runSearchGuardFromStdin } from "./installer/hooks/search-guard.ts";
 import { runInstaller } from "./installer/installer.ts";
 import { promptConfirm } from "./installer/prompt.ts";
 import {
@@ -85,7 +84,6 @@ const CLI_COMMANDS = new Set([
   "benchmark",
   "env",
   "environment",
-  "hook-guard",
   "help",
   "-h",
   "--help",
@@ -436,10 +434,6 @@ async function runCli(argv: string[]): Promise<void> {
     return;
   }
 
-  if (command === "hook-guard") {
-    process.exit(await runSearchGuardFromStdin());
-  }
-
   if (command === "install" || command === "uninstall") {
     await runInstaller(command);
     return;
@@ -725,13 +719,13 @@ async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const first = argv[0];
 
+  // Old hook configs may survive until the next install/uninstall; let their
+  // search commands proceed normally while the installer removes the hooks.
+  if (first === "hook-guard") return;
+
   if (first === "-v" || first === "--version") {
     console.log(miruVersion());
     return;
-  }
-
-  if (first === "hook-guard") {
-    process.exit(await runSearchGuardFromStdin());
   }
 
   const updateNotice = maybeNotifyUpdate();

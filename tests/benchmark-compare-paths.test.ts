@@ -104,8 +104,10 @@ describe("benchmarkSearchComparison path identity", () => {
       expect(missing.benchmark.grep_read.read_window_tokens).toBe(0);
       expect(missing.benchmark.accuracy.grep_only).toEqual(["missing.ts"]);
 
+      const firstChunk = index.chunks[0];
+      if (!firstChunk) throw new Error("fixture index needs one chunk");
       index.search = async () => [
-        { chunk: { ...index.chunks[0]!, file_path: "unindexed.ts" }, score: 1 },
+        { chunk: { ...firstChunk, file_path: "unindexed.ts" }, score: 1 },
       ];
       const unmatchedLine = await benchmarkSearchComparison({
         query: "authentication",

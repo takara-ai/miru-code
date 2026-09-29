@@ -177,7 +177,7 @@ export function printCommandHelp(command: string): void {
     case "install":
       commandHeader("install", "Interactive global agent setup.");
       writeStdout("Configures MCP server, instructions, sub-agent files, and optional");
-      writeStdout("experimental integrations (search hooks, Caveman, STE writing) under");
+      writeStdout("experimental integrations (Caveman, STE writing) under");
       writeStdout("your user config (~/.claude, ~/.cursor, etc.).");
       writeStdout("");
       writeStdout(

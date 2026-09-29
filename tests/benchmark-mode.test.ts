@@ -28,8 +28,8 @@ function target(id: AgentTarget["id"], path: string, format: "json" | "toml"): A
     mcp: { path, key: "mcpServers", memberKey: "miru", entry: {}, format },
     instructionsPath: null,
     cursorRulesPath: null,
-    hooksPath: null,
-    hooksFormat: null,
+    legacyHooksPath: null,
+    legacyHooksFormat: null,
     subagentPath: null,
     subagentId: null,
     cavemanSkillPath: null,
@@ -176,10 +176,12 @@ describe("benchmark mode helpers", () => {
     dir = await mkdtemp(join(tmpdir(), "miru-bench-mode-invalid-"));
     const path = join(dir, "mcp.json");
     const jsonTarget = target("claude", path, "json");
+    const jsonMcp = jsonTarget.mcp;
+    if (!jsonMcp) throw new Error("fixture target needs MCP config");
     const unknownFormat = {
       ...jsonTarget,
       id: "cursor",
-      mcp: { ...jsonTarget.mcp!, format: "unsupported" as never },
+      mcp: { ...jsonMcp, format: "unsupported" as never },
     } as AgentTarget;
 
     await Bun.write(path, "[]");

@@ -25,8 +25,8 @@ function target(root: string): AgentTarget {
     },
     instructionsPath: null,
     cursorRulesPath: null,
-    hooksPath: null,
-    hooksFormat: null,
+    legacyHooksPath: null,
+    legacyHooksFormat: null,
     subagentPath: null,
     subagentId: null,
     cavemanSkillPath: null,
@@ -82,8 +82,8 @@ describe("installer workflow", () => {
         ...target(root),
         instructionsPath: join(root, "CLAUDE.md"),
         cursorRulesPath: join(root, "rules.mdc"),
-        hooksPath: join(root, "hooks.json"),
-        hooksFormat: "claude",
+        legacyHooksPath: join(root, "hooks.json"),
+        legacyHooksFormat: "claude",
         subagentPath: join(root, "subagent.md"),
         subagentId: "claude",
         cavemanSkillPath: join(root, "skills", "caveman", "SKILL.md"),
@@ -98,12 +98,17 @@ describe("installer workflow", () => {
       await runInstaller("install", allSelected);
       expect(await Bun.file(agent.instructionsPath as string).exists()).toBe(true);
       expect(await Bun.file(agent.cursorRulesPath as string).exists()).toBe(true);
-      expect(await Bun.file(agent.hooksPath as string).exists()).toBe(true);
+      expect(await Bun.file(agent.legacyHooksPath as string).exists()).toBe(false);
       expect(await Bun.file(agent.subagentPath as string).exists()).toBe(true);
       expect(await Bun.file(agent.cavemanSkillPath as string).exists()).toBe(true);
       expect(await Bun.file(join(agent.steSkillDir as string, "SKILL.md")).exists()).toBe(true);
 
       await runInstaller("install", allSelected); // existing configs and complete skill packs
+
+      await Bun.write(
+        agent.legacyHooksPath as string,
+        JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ command: "miru hook-guard" }] }] } }),
+      );
 
       await runInstaller("uninstall", {
         ...allSelected,
@@ -114,6 +119,7 @@ describe("installer workflow", () => {
       });
       expect(await Bun.file(agent.instructionsPath as string).exists()).toBe(false);
       expect(await Bun.file(agent.cursorRulesPath as string).exists()).toBe(false);
+      expect(await Bun.file(agent.legacyHooksPath as string).exists()).toBe(false);
       expect(await Bun.file(agent.subagentPath as string).exists()).toBe(false);
       expect(await Bun.file(agent.cavemanSkillPath as string).exists()).toBe(false);
       expect(await Bun.file(join(agent.steSkillDir as string, "SKILL.md")).exists()).toBe(false);

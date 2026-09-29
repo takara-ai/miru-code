@@ -1,5 +1,9 @@
 import { expect, test } from "bun:test";
 
+function pluginPlaceholder(name: string): string {
+  return ["$", "{", name, "}"].join("");
+}
+
 test("Codex, Claude, and Cursor plugin manifests point at the Miru MCP runtime", async () => {
   const codexPlugin = JSON.parse(
     await Bun.file(new URL("../.codex-plugin/plugin.json", import.meta.url)).text(),
@@ -78,8 +82,11 @@ test("Codex, Claude, and Cursor plugin manifests point at the Miru MCP runtime",
   expect(claudeMcp.mcpServers.miru).toEqual({
     type: "stdio",
     command: "bunx",
-    args: ["@takara-ai/miru-code@latest", "--benchmark=${user_config.benchmark}"],
-    env: { MIRU_CREDENTIALS_DIR: "${CLAUDE_PLUGIN_DATA}" },
+    args: [
+      "@takara-ai/miru-code@latest",
+      `--benchmark=${pluginPlaceholder("user_config.benchmark")}`,
+    ],
+    env: { MIRU_CREDENTIALS_DIR: pluginPlaceholder("CLAUDE_PLUGIN_DATA") },
   });
 
   expect(cursorPlugin.name).toBe("miru");
@@ -90,7 +97,7 @@ test("Codex, Claude, and Cursor plugin manifests point at the Miru MCP runtime",
     type: "stdio",
     command: "bunx",
     args: ["@takara-ai/miru-code@latest"],
-    env: { MIRU_CREDENTIALS_DIR: "${PLUGIN_DATA}" },
+    env: { MIRU_CREDENTIALS_DIR: pluginPlaceholder("PLUGIN_DATA") },
   });
 
   expect(kiroPlugin.$schema).toBe("https://agent-plugins.org/schemas/1.0.0/plugin.schema.json");

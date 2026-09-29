@@ -95,7 +95,7 @@ describe("MCP tools against a local index", () => {
         call(1, "search", { query: "none", repo: root }),
         call(2, "expand", { file_path: "missing.ts", anchor_line: 1, repo: root }),
         call(3, "find_related", { file_path: "missing.ts", anchor_line: 1, repo: root }),
-        call(4, "search", { query: "none", repo: root + "-index-error" }),
+        call(4, "search", { query: "none", repo: `${root}-index-error` }),
       ]);
       await createMcpServer(empty).connect(transport);
       expect(payload(transport, 1)).toContain("No results found");

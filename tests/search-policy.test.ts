@@ -7,7 +7,6 @@ import {
   MCP_READ_BENCHMARK_TOOL_DESCRIPTION,
   MCP_SEARCH_TOOL_DESCRIPTION,
   MCP_SERVER_INSTRUCTIONS,
-  SEARCH_GUARD_EXPAND_HINT,
   SNIPPET_GUIDANCE,
 } from "../src/installer/search-policy.ts";
 
@@ -16,7 +15,6 @@ describe("search-policy", () => {
     expect(SNIPPET_GUIDANCE).toContain("truncated: true");
     expect(SNIPPET_GUIDANCE).toContain("anchor_line");
     expect(MCP_SERVER_INSTRUCTIONS).toContain(SNIPPET_GUIDANCE);
-    expect(SEARCH_GUARD_EXPAND_HINT).toContain("truncated: true");
   });
 
   test("all agent templates include unified snippet workflow", async () => {

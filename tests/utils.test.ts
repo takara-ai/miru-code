@@ -4,17 +4,17 @@ import { findIndexCachePath } from "../src/cache.ts";
 import { detectLanguage } from "../src/index/files.ts";
 import type { Chunk } from "../src/types.ts";
 import {
+  computeSourceCacheKey,
   dedupeResultsByFile,
   expandChunksAtLine,
-  formatRelevanceScore,
   formatExpandResults,
+  formatRelevanceScore,
   formatResults,
   isAllowedRepoSource,
   isGitUrl,
   localRepoRoot,
   resolveChunk,
   resolveContent,
-  computeSourceCacheKey,
   resolveSearchPath,
   toIndexedFilePath,
 } from "../src/utils.ts";
@@ -78,7 +78,9 @@ describe("utils", () => {
   });
 
   test("computeSourceCacheKey includes remote refs and resolves local sources", () => {
-    expect(computeSourceCacheKey("https://example.com/repo.git")).toBe("https://example.com/repo.git");
+    expect(computeSourceCacheKey("https://example.com/repo.git")).toBe(
+      "https://example.com/repo.git",
+    );
     expect(computeSourceCacheKey("https://example.com/repo.git", "main")).toBe(
       "https://example.com/repo.git@main",
     );

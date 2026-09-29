@@ -122,38 +122,34 @@ describe("MiruIndex factories", () => {
   test("builds remote indexes, saves them, and always removes temporary clones", async () => {
     const cloneDir = await mkdtemp(join(tmpdir(), "miru-index-clone-"));
     const trace: string[] = [];
-    try {
-      const index = await MiruIndex.fromGit(
-        "https://example.test/org/repo",
-        ["code"],
-        "offline",
-        "main",
-        {
-          getValidatedCache: async () => null,
-          cloneGitRepository: async (url, ref) => {
-            trace.push(`${url}:${ref}`);
-            return cloneDir;
-          },
-          getEmbeddingBackend: () => embeddings,
-          createIndexFromPath: (async () => build) as never,
-          findIndexCachePath: (key) => {
-            trace.push(key);
-            return "/tmp/index-cache";
-          },
-          saveBuiltIndex: async (saved, path) => {
-            expect(saved.root).toBeNull();
-            trace.push(path);
-          },
+    const index = await MiruIndex.fromGit(
+      "https://example.test/org/repo",
+      ["code"],
+      "offline",
+      "main",
+      {
+        getValidatedCache: async () => null,
+        cloneGitRepository: async (url, ref) => {
+          trace.push(`${url}:${ref}`);
+          return cloneDir;
         },
-      );
-      expect(index.root).toBeNull();
-      expect(index.chunks).toEqual([chunk]);
-      expect(trace[0]).toContain(":main");
-      expect(trace.at(-1)).toBe("/tmp/index-cache");
-      expect(await Bun.file(cloneDir).exists()).toBe(false);
-    } catch (error) {
-      throw error;
-    }
+        getEmbeddingBackend: () => embeddings,
+        createIndexFromPath: (async () => build) as never,
+        findIndexCachePath: (key) => {
+          trace.push(key);
+          return "/tmp/index-cache";
+        },
+        saveBuiltIndex: async (saved, path) => {
+          expect(saved.root).toBeNull();
+          trace.push(path);
+        },
+      },
+    );
+    expect(index.root).toBeNull();
+    expect(index.chunks).toEqual([chunk]);
+    expect(trace[0]).toContain(":main");
+    expect(trace.at(-1)).toBe("/tmp/index-cache");
+    expect(await Bun.file(cloneDir).exists()).toBe(false);
   });
 
   test("uses the default built-index saver for a remote index", async () => {

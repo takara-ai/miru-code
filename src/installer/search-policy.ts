@@ -161,5 +161,3 @@ export const MCP_FIND_RELATED_TOOL_DESCRIPTION =
 export const MCP_READ_BENCHMARK_TOOL_DESCRIPTION =
   "Cumulative Miru vs Grep token savings from saved `search` and `locate` calls. Returns compact totals {n,saved,save_pct,miru,grep}. " +
   "Do not call unless the user asks about savings.";
-
-export const SEARCH_GUARD_EXPAND_HINT = SNIPPET_GUIDANCE;
