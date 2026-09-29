@@ -26,6 +26,11 @@ function loadAwsCredentialProvider(): Promise<AwsCredentialProviderModule> {
   return awsCredentialProviderPromise;
 }
 
+/** Warm the lazily loaded AWS SDK modules before the first SageMaker request. */
+export async function preloadSageMakerSdk(): Promise<void> {
+  await Promise.all([loadSageMakerRuntime(), loadAwsCredentialProvider()]);
+}
+
 /** arn:aws:sagemaker:<region>:<account-id>:endpoint/<endpoint-name> (also covers aws-cn/aws-us-gov). */
 const ENDPOINT_ARN_PATTERN = /^arn:aws[a-z0-9-]*:sagemaker:([a-z0-9-]+):(\d{12}):endpoint\/(.+)$/;
 
@@ -344,7 +349,13 @@ function buildRequestBody(
   return body;
 }
 
-export function createSageMakerClient(config: SageMakerEmbeddingConfig): EmbeddingClient {
+export function createSageMakerClient(
+  config: SageMakerEmbeddingConfig,
+  loaders: {
+    loadRuntime?: () => Promise<SageMakerRuntimeModule>;
+    loadCredentials?: () => Promise<AwsCredentialProviderModule>;
+  } = {},
+): EmbeddingClient {
   let client: InstanceType<SageMakerRuntimeModule["SageMakerRuntimeClient"]> | null = null;
 
   return {
@@ -354,7 +365,10 @@ export function createSageMakerClient(config: SageMakerEmbeddingConfig): Embeddi
       dimensions?: number,
     ): Promise<EmbeddingResponse> {
       const [{ InvokeEndpointCommand, SageMakerRuntimeClient }, { defaultProvider }] =
-        await Promise.all([loadSageMakerRuntime(), loadAwsCredentialProvider()]);
+        await Promise.all([
+          (loaders.loadRuntime ?? loadSageMakerRuntime)(),
+          (loaders.loadCredentials ?? loadAwsCredentialProvider)(),
+        ]);
       if (!client) {
         const profile = config.profile?.trim() || process.env.AWS_PROFILE?.trim();
         const sdkCredentials = defaultProvider({ profile });
@@ -414,9 +428,10 @@ export interface ValidateSageMakerResult {
 /** Real InvokeEndpoint round trip, used by `miru setup --sagemaker` to confirm auth + shape. */
 export async function validateSageMakerConnection(
   config: SageMakerEmbeddingConfig,
+  createClient: typeof createSageMakerClient = createSageMakerClient,
 ): Promise<ValidateSageMakerResult> {
   try {
-    const client = createSageMakerClient(config);
+    const client = createClient(config);
     const response = await client.createEmbeddings("miru setup validation", "sagemaker-setup");
     const embedding = response.data[0]?.embedding;
     if (!embedding) {

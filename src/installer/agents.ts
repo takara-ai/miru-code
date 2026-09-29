@@ -166,11 +166,11 @@ export function opencodeMcpPath(): string {
   return jsonc;
 }
 
-export function vscodeMcpPath(): string {
-  if (process.platform === "darwin") {
+export function vscodeMcpPath(platform: NodeJS.Platform = process.platform): string {
+  if (platform === "darwin") {
     return join(HOME, "Library", "Application Support", "Code", "User", "mcp.json");
   }
-  if (process.platform === "win32") {
+  if (platform === "win32") {
     const appData = process.env.APPDATA ?? HOME;
     return join(appData, "Code", "User", "mcp.json");
   }
@@ -184,23 +184,27 @@ export function visualStudioMcpPath(): string {
   return join(profile, ".mcp.json");
 }
 
-export function visualStudioInstallDir(): string | null {
-  if (process.platform !== "win32") {
+export function visualStudioInstallDir(
+  platform: NodeJS.Platform = process.platform,
+): string | null {
+  if (platform !== "win32") {
     return null;
   }
   const programFiles = process.env.ProgramFiles ?? join("C:", "Program Files");
   return join(programFiles, "Microsoft Visual Studio");
 }
 
-async function detectVisualStudio(): Promise<boolean> {
-  if (process.platform !== "win32") {
+async function detectVisualStudio(dependencies: AgentDetectionDependencies = {}): Promise<boolean> {
+  const platform = dependencies.platform ?? process.platform;
+  if (platform !== "win32") {
     return false;
   }
 
-  const installDir = visualStudioInstallDir();
-  if (installDir && existsSync(installDir)) {
+  const installDir = visualStudioInstallDir(platform);
+  const pathExists = dependencies.existsSync ?? existsSync;
+  if (installDir && pathExists(installDir)) {
     try {
-      const entries = await readdir(installDir);
+      const entries = await (dependencies.readdir ?? ((path: string) => readdir(path)))(installDir);
       if (entries.length > 0) {
         return true;
       }
@@ -210,8 +214,9 @@ async function detectVisualStudio(): Promise<boolean> {
   }
 
   try {
-    const proc = Bun.spawn(["where", "devenv"], { stdout: "pipe", stderr: "ignore" });
-    return (await proc.exited) === 0;
+    return await (dependencies.commandOnPath
+      ? dependencies.commandOnPath("devenv")
+      : commandOnPath("devenv", platform, dependencies.spawn));
   } catch {
     return false;
   }
@@ -387,34 +392,56 @@ export const AGENT_TARGETS: AgentTarget[] = [
   },
 ];
 
-async function commandOnPath(command: string): Promise<boolean> {
-  const lookup = process.platform === "win32" ? ["where", command] : ["which", command];
+async function commandOnPath(
+  command: string,
+  platform: NodeJS.Platform = process.platform,
+  spawn: typeof Bun.spawn = Bun.spawn,
+): Promise<boolean> {
+  const lookup = platform === "win32" ? ["where", command] : ["which", command];
   try {
-    const proc = Bun.spawn(lookup, { stdout: "pipe", stderr: "ignore" });
+    const proc = spawn(lookup, { stdout: "pipe", stderr: "ignore" });
     return (await proc.exited) === 0;
   } catch {
     return false;
   }
 }
 
-export async function isAgentDetected(agent: AgentTarget): Promise<boolean> {
+export interface AgentDetectionDependencies {
+  platform?: NodeJS.Platform;
+  existsSync?: typeof existsSync;
+  readdir?: (path: string) => Promise<string[]>;
+  commandOnPath?: (command: string) => Promise<boolean>;
+  spawn?: typeof Bun.spawn;
+  home?: string;
+}
+
+export async function isAgentDetected(
+  agent: AgentTarget,
+  dependencies: AgentDetectionDependencies = {},
+): Promise<boolean> {
   if (agent.id === "visualstudio") {
-    return detectVisualStudio();
+    return detectVisualStudio(dependencies);
   }
   if (agent.id === "windsurf") {
-    if (agent.configDir && existsSync(agent.configDir)) {
+    if (agent.configDir && (dependencies.existsSync ?? existsSync)(agent.configDir)) {
       return true;
     }
-    if (agent.binary && (await commandOnPath(agent.binary))) {
+    const commandExists = dependencies.commandOnPath
+      ? dependencies.commandOnPath
+      : (command: string) => commandOnPath(command, dependencies.platform, dependencies.spawn);
+    if (agent.binary && (await commandExists(agent.binary))) {
       return true;
     }
     return false;
   }
   // Copilot-specific artifacts only — ~/.copilot alone is shared with VS Code / VS.
   if (agent.id === "copilot") {
-    return isCopilotInstalled(HOME);
+    return isCopilotInstalled(dependencies.home ?? HOME);
   }
-  if (agent.binary && (await commandOnPath(agent.binary))) {
+  const commandExists = dependencies.commandOnPath
+    ? dependencies.commandOnPath
+    : (command: string) => commandOnPath(command, dependencies.platform, dependencies.spawn);
+  if (agent.binary && (await commandExists(agent.binary))) {
     return true;
   }
   if (agent.configDir) {

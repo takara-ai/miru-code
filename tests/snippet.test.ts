@@ -1,8 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { anchorLineOffset, applySnippetsToResults, trimChunkToSnippet } from "../src/snippet.ts";
+import {
+  anchorLineOffset,
+  applySnippetsToResults,
+  searchSnippetsEnabled,
+  trimChunkToSnippet,
+} from "../src/snippet.ts";
 import type { Chunk } from "../src/types.ts";
 
-function chunk(content: string, start = 1, language = "typescript"): Chunk {
+function chunk(content: string, start = 1, language: string | null = "typescript"): Chunk {
   const lines = content.split("\n");
   return {
     content,
@@ -220,6 +225,93 @@ describe("trimChunkToSnippet", () => {
     expect(css.trimEnd().endsWith("}")).toBe(true);
     expect(haskell).toContain("installHooks agents");
     expect(haskell).not.toContain("unrelated");
+  });
+
+  test("completes OCaml indentation and preserves unterminated blocks", () => {
+    const ocaml = [
+      "let configure = {",
+      "  install_hooks",
+      "  return_agents",
+      "",
+      "let unrelated = None",
+    ].join("\n");
+    const result = trimChunkToSnippet(chunk(ocaml, 1, "ocaml"), "install hooks", 0).chunk.content;
+    expect(result).toContain("let configure =");
+    expect(result).toContain("return_agents");
+    expect(result).not.toContain("let unrelated");
+
+    const unterminated = trimChunkToSnippet(
+      chunk("def configure\n  install_hooks", 1, null),
+      "install hooks",
+      0,
+    ).chunk.content;
+    expect(unterminated).toContain("install_hooks");
+  });
+
+  test("extends open HTML containers and includes nearby documentation and comments", () => {
+    const unclosed = ["<section>", "  target"].join("\n");
+    expect(trimChunkToSnippet(chunk(unclosed, 1, "html"), "target", 0).chunk.content).toBe(
+      unclosed,
+    );
+
+    const documented = ["/**", " * configure worker", " */", "worker();", "// unrelated"].join(
+      "\n",
+    );
+    expect(trimChunkToSnippet(chunk(documented), "worker", 0).chunk.content).toContain("/**");
+
+    const commented = [
+      "function configure() {",
+      "  /* keep this",
+      "     target comment */",
+      "  return true;",
+      "}",
+      "const other = true;",
+    ].join("\n");
+    const result = trimChunkToSnippet(chunk(commented), "target comment", 0).chunk.content;
+    expect(result).toContain("keep this");
+    expect(result).toContain("return true;");
+
+    const mismatched = ["<section>", "  <article>", "    target", "</section>"].join("\n");
+    expect(trimChunkToSnippet(chunk(mismatched, 1, "html"), "target", 0).chunk.content).toContain(
+      "<article>",
+    );
+    expect(trimChunkToSnippet(chunk("target only", 1, "html"), "target", 0).chunk.content).toBe(
+      "target only",
+    );
+  });
+
+  test("uses generic Ruby block matching without a language hint", () => {
+    const complete = ["def configure", "  target", "end", "outside"].join("\n");
+    expect(trimChunkToSnippet(chunk(complete, 1, null), "target", 0).chunk.content).toContain(
+      "end",
+    );
+    const incomplete = ["def configure", "  target", "still inside"].join("\n");
+    expect(trimChunkToSnippet(chunk(incomplete, 1, null), "target", 0).chunk.content).toBe(
+      incomplete,
+    );
+    const rubyIncomplete = ["def configure", "  target", "still inside"].join("\n");
+    expect(trimChunkToSnippet(chunk(rubyIncomplete, 1, "ruby"), "target", 0).chunk.content).toBe(
+      rubyIncomplete,
+    );
+  });
+
+  test("search snippets can be explicitly enabled or disabled by environment", () => {
+    const previous = process.env.MIRU_SEARCH_SNIPPETS;
+    try {
+      process.env.MIRU_SEARCH_SNIPPETS = "0";
+      expect(searchSnippetsEnabled()).toBe(false);
+      process.env.MIRU_SEARCH_SNIPPETS = "false";
+      expect(searchSnippetsEnabled()).toBe(false);
+      process.env.MIRU_SEARCH_SNIPPETS = "1";
+      expect(searchSnippetsEnabled()).toBe(true);
+      process.env.MIRU_SEARCH_SNIPPETS = "true";
+      expect(searchSnippetsEnabled()).toBe(true);
+      process.env.MIRU_SEARCH_SNIPPETS = "unset value";
+      expect(searchSnippetsEnabled()).toBe(true);
+    } finally {
+      if (previous === undefined) delete process.env.MIRU_SEARCH_SNIPPETS;
+      else process.env.MIRU_SEARCH_SNIPPETS = previous;
+    }
   });
 
   test("compacts long supporting hits into a complete outline", () => {

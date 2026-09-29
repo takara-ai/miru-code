@@ -38,9 +38,9 @@ const AGENT_NATIVE_TOOLS: Record<AgentId, NativeToolNames> = {
   },
 };
 
-export function agentDestination(agent: AgentId): string {
+export function agentDestination(agent: AgentId, cwd = "."): string {
   const baseDir = agent === "copilot" ? ".github" : `.${agent}`;
-  return join(baseDir, "agents", "miru-code.md");
+  return join(cwd, baseDir, "agents", "miru-code.md");
 }
 
 export async function loadAgentTemplate(agent: AgentId): Promise<string> {
@@ -51,9 +51,9 @@ export async function loadAgentTemplate(agent: AgentId): Promise<string> {
 
 export async function writeAgentFile(
   agent: AgentId,
-  options: { force?: boolean } = {},
+  options: { force?: boolean; cwd?: string } = {},
 ): Promise<string> {
-  const dest = agentDestination(agent);
+  const dest = agentDestination(agent, options.cwd);
   const existing = await Bun.file(dest).exists();
   if (existing && !options.force) {
     throw new Error(`${dest} already exists. Run with --force to overwrite.`);

@@ -26,6 +26,31 @@ import { chunkKey, chunkToDict, defaultContentTypes } from "./types.ts";
 import { computeSourceCacheKey, isGitUrl } from "./utils.ts";
 import { indexCacheEpoch } from "./version.ts";
 
+interface FactoryDependencies {
+  getValidatedCache: typeof getValidatedCache;
+  resolveEmbeddingModel: typeof resolveEmbeddingModel;
+  getEmbeddingBackend: (model: string) => EmbeddingBackend;
+  createIndexFromPath: typeof createIndexFromPath;
+  cloneGitRepository: typeof cloneGitRepository;
+  findIndexCachePath: typeof findIndexCachePath;
+  loadCachedIndex: typeof loadCachedIndex;
+  saveBuiltIndex: (index: MiruIndex, path: string) => Promise<void>;
+}
+
+function factoryDependencies(overrides: Partial<FactoryDependencies> = {}): FactoryDependencies {
+  return {
+    getValidatedCache,
+    resolveEmbeddingModel,
+    getEmbeddingBackend,
+    createIndexFromPath,
+    cloneGitRepository,
+    findIndexCachePath,
+    loadCachedIndex,
+    saveBuiltIndex: (index, path) => index.save(path),
+    ...overrides,
+  };
+}
+
 /**
  * In-memory search index over a codebase: BM25 keyword scores plus semantic
  * embeddings, with optional disk cache for reuse across runs.
@@ -171,18 +196,20 @@ export class MiruIndex {
     content: ContentType[] = defaultContentTypes(),
     embeddingModel?: string,
     ref?: string | null,
+    dependencies?: Partial<FactoryDependencies>,
   ): Promise<MiruIndex> {
+    const deps = factoryDependencies(dependencies);
     const cacheKey = computeSourceCacheKey(url, ref);
-    const model = embeddingModel ?? resolveEmbeddingModel();
-    const cached = await getValidatedCache(cacheKey, model, content);
+    const model = embeddingModel ?? deps.resolveEmbeddingModel();
+    const cached = await deps.getValidatedCache(cacheKey, model, content);
     if (cached) {
-      return MiruIndex.loadFromDisk(cached, model);
+      return MiruIndex.loadFromDisk(cached, model, deps);
     }
 
-    const cloneDir = await cloneGitRepository(url, ref);
+    const cloneDir = await deps.cloneGitRepository(url, ref);
     try {
-      const embeddings = getEmbeddingBackend(model);
-      const { bm25, semantic, chunks } = await createIndexFromPath(
+      const embeddings = deps.getEmbeddingBackend(model);
+      const { bm25, semantic, chunks } = await deps.createIndexFromPath(
         cloneDir,
         embeddings,
         content,
@@ -198,7 +225,7 @@ export class MiruIndex {
         root: null,
         content,
       });
-      await index.save(findIndexCachePath(cacheKey));
+      await deps.saveBuiltIndex(index, deps.findIndexCachePath(cacheKey));
       return index;
     } finally {
       await rm(cloneDir, { recursive: true, force: true });
@@ -211,11 +238,12 @@ export class MiruIndex {
     content: ContentType[] = defaultContentTypes(),
     embeddingModel?: string,
     ref?: string | null,
+    dependencies?: Partial<FactoryDependencies>,
   ): Promise<MiruIndex> {
     if (isGitUrl(source)) {
-      return MiruIndex.fromGit(source, content, embeddingModel, ref);
+      return MiruIndex.fromGit(source, content, embeddingModel, ref, dependencies);
     }
-    return MiruIndex.fromPath(source, content, embeddingModel);
+    return MiruIndex.fromPath(source, content, embeddingModel, dependencies);
   }
 
   /**
@@ -229,7 +257,9 @@ export class MiruIndex {
     path: string,
     content: ContentType[] = defaultContentTypes(),
     embeddingModel?: string,
+    dependencies?: Partial<FactoryDependencies>,
   ): Promise<MiruIndex> {
+    const deps = factoryDependencies(dependencies);
     const resolved = resolve(path);
     try {
       const st = await Bun.file(resolved).stat();
@@ -243,14 +273,14 @@ export class MiruIndex {
       throw new Error(`Path does not exist: ${path}`);
     }
 
-    const model = embeddingModel ?? resolveEmbeddingModel();
-    const cached = await getValidatedCache(resolved, model, content);
+    const model = embeddingModel ?? deps.resolveEmbeddingModel();
+    const cached = await deps.getValidatedCache(resolved, model, content);
     if (cached) {
-      return MiruIndex.loadFromDisk(cached, model);
+      return MiruIndex.loadFromDisk(cached, model, deps);
     }
 
-    const embeddings = getEmbeddingBackend(model);
-    const { bm25, semantic, chunks } = await createIndexFromPath(
+    const embeddings = deps.getEmbeddingBackend(model);
+    const { bm25, semantic, chunks } = await deps.createIndexFromPath(
       resolved,
       embeddings,
       content,
@@ -274,15 +304,20 @@ export class MiruIndex {
    * Validates embedding model compatibility via cache metadata. Sets
    * `loadedFromDisk` so callers can avoid redundant cache writes.
    */
-  static async loadFromDisk(path: string, embeddingModel?: string): Promise<MiruIndex> {
-    const model = embeddingModel ?? resolveEmbeddingModel();
-    const { bm25, semantic, chunks, metadata } = await loadCachedIndex(path);
+  static async loadFromDisk(
+    path: string,
+    embeddingModel?: string,
+    dependencies?: Partial<FactoryDependencies>,
+  ): Promise<MiruIndex> {
+    const deps = factoryDependencies(dependencies);
+    const model = embeddingModel ?? deps.resolveEmbeddingModel();
+    const { bm25, semantic, chunks, metadata } = await deps.loadCachedIndex(path);
     const content = (metadata.content_type as ContentType[]) ?? defaultContentTypes();
     const root = metadata.root_path ? String(metadata.root_path) : null;
     const storedFileMtimes = (metadata.file_mtimes as Record<string, number>) ?? {};
 
     return new MiruIndex({
-      embeddings: getEmbeddingBackend(model),
+      embeddings: deps.getEmbeddingBackend(model),
       bm25Index: bm25,
       semanticIndex: semantic,
       chunks,

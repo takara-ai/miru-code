@@ -48,6 +48,38 @@ function mockEmbeddings(vectors: Float32Array[]): EmbeddingBackend {
 }
 
 describe("hybridSearch", () => {
+  test("returns no results for empty selectors and ignores invalid semantic chunk indices", async () => {
+    const emptyBm25 = new BM25Index();
+    const semantic = {
+      query: () => ({ indices: [3], distances: [0] }),
+    } as never;
+    const embeddings = mockEmbeddings([]);
+    expect(
+      await hybridSearch({
+        query: "anything",
+        queryVector: new Float32Array(4),
+        embeddings,
+        semanticIndex: semantic,
+        bm25Index: emptyBm25,
+        chunks: [],
+        topK: 5,
+        selector: [],
+      }),
+    ).toEqual([]);
+    const result = await hybridSearch({
+      query: "anything",
+      queryVector: new Float32Array(4),
+      embeddings,
+      semanticIndex: semantic,
+      bm25Index: emptyBm25,
+      chunks: [],
+      topK: 5,
+      alpha: 1,
+      rerank: false,
+    });
+    expect(result).toEqual([]);
+  });
+
   test("semantic-only retrieval returns nearest chunk", async () => {
     const chunks = [chunk("0", "src/auth.ts"), chunk("1", "src/db.ts"), chunk("2", "src/util.ts")];
     const vectors = [unitVector(4, 0, 1), unitVector(4, 1, 1), unitVector(4, 2, 1)];

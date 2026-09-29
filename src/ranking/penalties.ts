@@ -72,7 +72,7 @@ export function rerankTopk(
   const ranked = [...penalised.entries()].sort((a, b) => b[1] - a[1]);
 
   const fileSelected = new Map<string, number>();
-  const selected: { score: number; key: string }[] = [];
+  const selected: { score: number; key: string; chunk: Chunk }[] = [];
   let minSelected = Infinity;
 
   for (const [key, penScore] of ranked) {
@@ -81,31 +81,23 @@ export function rerankTopk(
       continue;
     }
 
-    if (selected.length >= topK && penScore <= minSelected) {
-      break;
-    }
+    if (selected.length < topK || penScore > minSelected) {
+      const already = fileSelected.get(chunk.file_path) ?? 0;
+      let effScore = penScore;
+      if (already >= FILE_SATURATION_THRESHOLD) {
+        const excess = already - FILE_SATURATION_THRESHOLD + 1;
+        effScore *= tuning.fileSaturationDecay ** excess;
+      }
 
-    const already = fileSelected.get(chunk.file_path) ?? 0;
-    let effScore = penScore;
-    if (already >= FILE_SATURATION_THRESHOLD) {
-      const excess = already - FILE_SATURATION_THRESHOLD + 1;
-      effScore *= tuning.fileSaturationDecay ** excess;
-    }
+      selected.push({ score: effScore, key, chunk });
+      fileSelected.set(chunk.file_path, already + 1);
 
-    selected.push({ score: effScore, key });
-    fileSelected.set(chunk.file_path, already + 1);
-
-    if (selected.length >= topK) {
-      minSelected = Math.min(...selected.map((s) => s.score));
+      if (selected.length >= topK) {
+        minSelected = Math.min(...selected.map((s) => s.score));
+      }
     }
   }
 
   selected.sort((a, b) => b.score - a.score);
-  return selected.slice(0, topK).flatMap(({ key, score }) => {
-    const chunk = chunksByKey.get(key);
-    if (!chunk) {
-      return [];
-    }
-    return [[chunk, score] as [Chunk, number]];
-  });
+  return selected.slice(0, topK).map(({ chunk, score }) => [chunk, score]);
 }

@@ -28,6 +28,18 @@ const chunks: Chunk[] = [
 ];
 
 describe("locateLiteral", () => {
+  test("returns no hits for empty literal input", () => {
+    expect(locateLiteral(chunks, "", { mode: "lines", match_variants: true })).toMatchObject({
+      literal: "",
+      mode: "lines",
+      n: 0,
+      files: 0,
+      truncated: false,
+      hits: [],
+    });
+    expect(locateLiteral(chunks, ["", ""], { mode: "lines" }).n).toBe(0);
+  });
+
   test("finds exact matches with line text and dedupes overlapping chunks", () => {
     const result = locateLiteral(chunks, "FOO", { mode: "lines" });
     expect(result.n).toBe(3);
@@ -146,6 +158,11 @@ describe("locateLiteral", () => {
       match_variants: true,
     });
     expect(result.n).toBe(1);
+  });
+
+  test("match_variants ignores punctuation with no identifier words", () => {
+    const result = locateLiteral(chunks, "   ", { mode: "count", match_variants: true });
+    expect(result.n).toBe(0);
   });
 
   test("include restricts matches to files under the glob", () => {

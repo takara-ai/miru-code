@@ -36,13 +36,17 @@ export function wasmPathForLanguage(language: string | null): string | null {
 }
 
 /** Pick grammar wasm for a file (e.g. tsx vs typescript). */
-export function wasmPathForFile(filePath: string, language: string | null): string | null {
+export function wasmPathForFile(
+  filePath: string,
+  language: string | null,
+  pathExists: (path: string) => boolean = existsSync,
+): string | null {
   if (!language) {
     return null;
   }
   if (language === "typescript" && filePath.toLowerCase().endsWith(".tsx")) {
     const tsxPath = join(grammarsDir(), "tree-sitter-tsx.wasm");
-    if (existsSync(tsxPath)) {
+    if (pathExists(tsxPath)) {
       return tsxPath;
     }
   }
@@ -86,13 +90,14 @@ async function loadLanguage(wasmPath: string): Promise<Language> {
 export async function getLanguageForFile(
   filePath: string,
   language: string | null,
+  load: typeof loadLanguage = loadLanguage,
 ): Promise<Language | null> {
   const wasmPath = wasmPathForFile(filePath, language);
   if (!wasmPath || !existsSync(wasmPath)) {
     return null;
   }
   try {
-    return await loadLanguage(wasmPath);
+    return await load(wasmPath);
   } catch {
     return null;
   }

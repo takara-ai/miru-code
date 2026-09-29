@@ -72,6 +72,21 @@ export interface ApplyCtx {
   isDetected?: (agent: AgentTarget) => Promise<boolean>;
 }
 
+type InstallerMultiSelect = <T>(
+  title: string,
+  items: Array<{ label: string; value: T; checked: boolean }>,
+) => Promise<T[] | null>;
+
+export interface RunInstallerDependencies {
+  requireInteractiveTerminal?: (command: string) => void;
+  ensureCredentials?: typeof ensureCredentials;
+  agents?: AgentTarget[];
+  isAgentDetected?: (agent: AgentTarget) => Promise<boolean>;
+  promptMultiSelect?: InstallerMultiSelect;
+  promptConfirm?: typeof promptConfirm;
+  removeUninstallLocalData?: typeof removeUninstallLocalData;
+}
+
 interface Integration {
   id: IntegrationId;
   label: string;
@@ -311,9 +326,6 @@ async function applyCaveman(
 
 async function stePackMatches(skillDir: string): Promise<boolean> {
   const skillPath = join(skillDir, "SKILL.md");
-  if (!(await Bun.file(skillPath).exists())) {
-    return false;
-  }
   if ((await Bun.file(skillPath).text()) !== STE_SKILL_MD) {
     return false;
   }
@@ -593,12 +605,25 @@ export async function removeUninstallLocalData(): Promise<{
   };
 }
 
-export async function runInstaller(mode: InstallMode): Promise<void> {
+export async function runInstaller(
+  mode: InstallMode,
+  dependencies: RunInstallerDependencies = {},
+): Promise<void> {
+  const deps = {
+    requireInteractiveTerminal,
+    ensureCredentials,
+    agents: AGENT_TARGETS,
+    isAgentDetected,
+    promptMultiSelect,
+    promptConfirm,
+    removeUninstallLocalData,
+    ...dependencies,
+  };
   const install = mode === "install";
-  requireInteractiveTerminal(`miru ${mode}`);
+  deps.requireInteractiveTerminal(`miru ${mode}`);
 
   if (install) {
-    await ensureCredentials({ interactive: true });
+    await deps.ensureCredentials({ interactive: true });
   }
 
   writeStdout("");
@@ -607,9 +632,9 @@ export async function runInstaller(mode: InstallMode): Promise<void> {
   hint("↑↓ move  space select  enter confirm");
 
   const detected = await Promise.all(
-    AGENT_TARGETS.map(async (agent) => ({
+    deps.agents.map(async (agent) => ({
       agent,
-      detected: await isAgentDetected(agent),
+      detected: await deps.isAgentDetected(agent),
     })),
   );
 
@@ -619,7 +644,7 @@ export async function runInstaller(mode: InstallMode): Promise<void> {
     checked: isDetected && install,
   }));
 
-  const chosenAgents = await promptMultiSelect(
+  const chosenAgents = await deps.promptMultiSelect(
     `Agents to ${install ? "configure" : "clean up"}`,
     agentItems,
   );
@@ -641,7 +666,7 @@ export async function runInstaller(mode: InstallMode): Promise<void> {
     checked: install ? (integration.defaultChecked ?? true) : true,
   }));
 
-  const chosenIntegrations = await promptMultiSelect(
+  const chosenIntegrations = await deps.promptMultiSelect(
     `Integrations to ${install ? "enable" : "remove"}`,
     integrationItems,
   );
@@ -653,7 +678,10 @@ export async function runInstaller(mode: InstallMode): Promise<void> {
 
   await printPlan(mode, chosenAgents, chosenIntegrations);
 
-  const proceed = await promptConfirm(install ? "Proceed?" : "Remove miru configuration?", install);
+  const proceed = await deps.promptConfirm(
+    install ? "Proceed?" : "Remove miru configuration?",
+    install,
+  );
   if (!proceed) {
     hint("Cancelled.");
     return;
@@ -662,7 +690,7 @@ export async function runInstaller(mode: InstallMode): Promise<void> {
   await apply(mode, chosenAgents, chosenIntegrations);
 
   if (!install) {
-    const local = await removeUninstallLocalData();
+    const local = await deps.removeUninstallLocalData();
     if (local.benchmarkHistoryCleared) {
       info(`Removed benchmark report ${local.benchmarkHistoryPath}`);
     }
@@ -684,3 +712,5 @@ export {
   mergeJsonMember as mergeMcpJson,
   removeJsonMember as removeMcpJson,
 };
+
+export const installerTestUtils = { applyCursorRules, printPlan };

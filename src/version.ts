@@ -26,8 +26,8 @@ export function miruVersion(): string {
  * - 0.x releases: `0.{minor}` (chunking may break on minor bumps pre-1.0).
  * - 1.x+: major version only.
  */
-export function indexCacheEpoch(): string {
-  const parts = packageJson.version.split(".");
+export function indexCacheEpoch(version: string = packageJson.version): string {
+  const parts = version.split(".");
   const major = parts[0] ?? "0";
   const minor = parts[1] ?? "0";
   if (major === "0") {
@@ -118,7 +118,7 @@ export async function fetchLatestPublishedVersion(fetchImpl: Fetcher = fetch): P
 }
 
 /** Print update hint to stderr when a newer package is on npm (at most once per day). */
-export async function maybeNotifyUpdate(): Promise<void> {
+export async function maybeNotifyUpdate(fetchImpl: Fetcher = fetch): Promise<void> {
   if (process.env.MIRU_NO_UPDATE_CHECK === "1") {
     return;
   }
@@ -133,7 +133,7 @@ export async function maybeNotifyUpdate(): Promise<void> {
   }
 
   try {
-    const latest = await fetchLatestPublishedVersion();
+    const latest = await fetchLatestPublishedVersion(fetchImpl);
     await writeUpdateCheckCache(latest);
     if (isVersionNewer(latest, current)) {
       writeUpdateNotice(latest, current);

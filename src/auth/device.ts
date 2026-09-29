@@ -205,30 +205,31 @@ export async function checkDeviceAuthorizationOnce(
 
 export async function pollDeviceAuthorization(
   start: DeviceAuthorizationStart,
-  options?: { config?: DeviceAuthConfig; fetchImpl?: typeof fetch },
+  options?: {
+    config?: DeviceAuthConfig;
+    fetchImpl?: typeof fetch;
+    sleepImpl?: (ms: number) => Promise<void>;
+  },
 ): Promise<DeviceAuthorizationTokens> {
   const deadline = Date.now() + start.expiresIn * 1000;
   let intervalMs = start.interval * 1000;
 
   while (Date.now() < deadline) {
-    await sleep(intervalMs);
+    await (options?.sleepImpl ?? sleep)(intervalMs);
 
     const check = await checkDeviceAuthorizationOnce(start, options);
-    if (check.status === "success") {
-      return check.tokens;
-    }
-    if (check.status === "pending") {
-      continue;
-    }
-    if (check.status === "slow_down") {
-      intervalMs += 5_000;
-      continue;
-    }
-    if (check.status === "denied") {
-      throw new Error("Device login was denied.");
-    }
-    if (check.status === "expired") {
-      throw new Error("Device login expired before it was completed.");
+    switch (check.status) {
+      case "success":
+        return check.tokens;
+      case "pending":
+        continue;
+      case "slow_down":
+        intervalMs += 5_000;
+        continue;
+      case "denied":
+        throw new Error("Device login was denied.");
+      case "expired":
+        throw new Error("Device login expired before it was completed.");
     }
   }
 
@@ -284,15 +285,19 @@ export function deviceCredentialsNeedRefresh(credentials: StoredDeviceCodeCreden
   return expiresAt <= Date.now() + EXPIRY_SKEW_MS;
 }
 
-export function openBrowserForDeviceLogin(url: string): boolean {
+export function openBrowserForDeviceLogin(
+  url: string,
+  platform: NodeJS.Platform = process.platform,
+  spawn: typeof Bun.spawn = Bun.spawn,
+): boolean {
   const command =
-    process.platform === "darwin"
+    platform === "darwin"
       ? ["open", url]
-      : process.platform === "win32"
+      : platform === "win32"
         ? ["cmd", "/c", "start", "", url]
         : ["xdg-open", url];
   try {
-    const proc = Bun.spawn(command, {
+    const proc = spawn(command, {
       stdin: "ignore",
       stdout: "ignore",
       stderr: "ignore",

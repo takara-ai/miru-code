@@ -222,16 +222,12 @@ export function boostExactStemMatches(
       if (GENERIC_STEM_DENY.has(keyword)) {
         continue;
       }
-      if (preferImplementation && stem === keyword && !IMPLEMENTATION_HINTS.has(stem)) {
-        continue;
-      }
-      const keywordNorm = keyword.replace(/[-_]/g, "");
-      if (stem === keyword || stemNorm === keywordNorm) {
-        boosted.set(key, (boosted.get(key) ?? 0) + boost);
-        break;
-      }
-      const parts = keyword.split("-").filter((p) => p.length > 2);
-      if (parts.length > 1 && parts.some((p) => p === stem)) {
+      if (!(preferImplementation && stem === keyword && !IMPLEMENTATION_HINTS.has(stem))) {
+        const keywordNorm = keyword.replace(/[-_]/g, "");
+        if (stem === keyword || stemNorm === keywordNorm) {
+          boosted.set(key, (boosted.get(key) ?? 0) + boost);
+          break;
+        }
       }
     }
   }

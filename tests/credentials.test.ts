@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CREDENTIALS_VERSION } from "../src/auth/types.ts";
 import {
+  beginModeSwitch,
   clearStoredCredentials,
   loadStoredCredentials,
   readStoredCredentials,
@@ -390,5 +391,119 @@ describe("credentials", () => {
     expect(await loadStoredCredentials()).toBe(true);
     expect(process.env.MIRU_SAGEMAKER_ENDPOINT_ARN).toBeUndefined();
     expect(process.env.TAKARA_API_KEY).toBe("takara-token");
+  });
+
+  test("resolves platform-specific config directories and ignores unresolved plugin placeholders", () => {
+    const keys = [
+      "MIRU_CREDENTIALS_DIR",
+      "HOME",
+      "USERPROFILE",
+      "APPDATA",
+      "XDG_CONFIG_HOME",
+    ] as const;
+    const saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+    try {
+      process.env.MIRU_CREDENTIALS_DIR = "$" + "{MIRU_CREDENTIALS_DIR}";
+      process.env.HOME = "/home/miru";
+      process.env.USERPROFILE = "/users/miru";
+      delete process.env.APPDATA;
+      delete process.env.XDG_CONFIG_HOME;
+      expect(resolveCredentialsDir("win32")).toBe(join("/home/miru", "AppData", "Roaming", "miru"));
+      expect(resolveCredentialsDir("darwin")).toBe(
+        join("/home/miru", "Library", "Application Support", "miru"),
+      );
+      expect(resolveCredentialsDir("linux")).toBe(join("/home/miru", ".config", "miru"));
+      process.env.APPDATA = "/roaming/miru-user";
+      process.env.XDG_CONFIG_HOME = "/xdg/miru-user";
+      expect(resolveCredentialsDir("win32")).toBe(join("/roaming/miru-user", "miru"));
+      expect(resolveCredentialsDir("linux")).toBe(join("/xdg/miru-user", "miru"));
+      process.env.MIRU_CREDENTIALS_DIR = "/custom/miru";
+      expect(resolveCredentialsDir("linux")).toBe("/custom/miru");
+    } finally {
+      for (const key of keys) {
+        const value = saved[key];
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
+  test("readStoredCredentials rejects malformed, empty legacy, and unsupported credential files", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-cred-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    const path = join(credDir, "credentials.json");
+    for (const raw of [
+      "{",
+      '{"version":1}',
+      JSON.stringify({ version: CREDENTIALS_VERSION, kind: "unknown" }),
+    ]) {
+      await Bun.write(path, raw);
+      expect(await readStoredCredentials()).toBeNull();
+    }
+  });
+
+  test("hydrates saved SageMaker profile and ARN when mode switch clears Takara", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-cred-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    clearTakaraApiKey();
+    clearSageMakerEnv();
+    const arn = "arn:aws:sagemaker:us-east-1:123456789012:endpoint/miru-test";
+    await saveStoredCredentials({ kind: "sagemaker", endpointArn: arn, profile: "saved-profile" });
+    delete process.env.MIRU_SAGEMAKER_ENDPOINT_ARN;
+    delete process.env.AWS_PROFILE;
+    expect(await loadStoredCredentials()).toBe(true);
+    expect(String(process.env.MIRU_SAGEMAKER_ENDPOINT_ARN)).toBe(arn);
+    expect(process.env.AWS_PROFILE as string | undefined).toBe("saved-profile");
+
+    process.env.TAKARA_API_KEY = "stale-token";
+    await beginModeSwitch("sagemaker");
+    expect(process.env.TAKARA_API_KEY).toBeUndefined();
+    await beginModeSwitch("takara");
+    expect(process.env.AWS_PROFILE).toBeUndefined();
+    expect(process.env.MIRU_SAGEMAKER_ENDPOINT_ARN).toBeUndefined();
+    process.env.AWS_PROFILE = "other-profile";
+    await beginModeSwitch("takara");
+    expect(process.env.AWS_PROFILE).toBe("other-profile");
+  });
+
+  test("clearing SageMaker credentials only removes matching env values", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-cred-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    clearTakaraApiKey();
+    const arn = "arn:aws:sagemaker:us-east-1:123456789012:endpoint/miru-test";
+    await saveStoredCredentials({ kind: "sagemaker", endpointArn: arn, profile: "saved-profile" });
+    process.env.MIRU_SAGEMAKER_ENDPOINT_ARN = "different-arn";
+    process.env.AWS_PROFILE = "other-profile";
+    const result = await clearStoredCredentials();
+    expect(result.cleared).toBe(true);
+    expect(process.env.MIRU_SAGEMAKER_ENDPOINT_ARN).toBe("different-arn");
+    expect(process.env.AWS_PROFILE).toBe("other-profile");
+  });
+
+  test("clears stale SageMaker env while preserving an externally supplied Takara key", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-cred-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    clearTakaraApiKey();
+    await saveStoredCredentials("stored-token");
+    process.env.TAKARA_API_KEY = "external-token";
+    process.env.MIRU_SAGEMAKER_ENDPOINT_ARN = "stale-endpoint";
+    expect(await loadStoredCredentials()).toBe(true);
+    expect(process.env.TAKARA_API_KEY).toBe("external-token");
+    expect(process.env.MIRU_SAGEMAKER_ENDPOINT_ARN).toBeUndefined();
+  });
+
+  test("clears matching stored SageMaker endpoint and profile from env", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-cred-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    clearTakaraApiKey();
+    clearSageMakerEnv();
+    const arn = "arn:aws:sagemaker:us-east-1:123456789012:endpoint/miru-test";
+    await saveStoredCredentials({ kind: "sagemaker", endpointArn: arn, profile: "saved-profile" });
+    expect(process.env.MIRU_SAGEMAKER_ENDPOINT_ARN).toBe(arn);
+    expect(process.env.AWS_PROFILE).toBe("saved-profile");
+    const result = await clearStoredCredentials();
+    expect(result.cleared).toBe(true);
+    expect(process.env.MIRU_SAGEMAKER_ENDPOINT_ARN).toBeUndefined();
+    expect(process.env.AWS_PROFILE).toBeUndefined();
   });
 });

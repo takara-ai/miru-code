@@ -2,7 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadSemantic, saveSemantic } from "../src/index/persistence.ts";
+import { VectorIndex } from "../src/index/dense.ts";
+import {
+  loadSemantic,
+  saveSemantic,
+  semanticIndexMatchesStorage,
+} from "../src/index/persistence.ts";
 import { QuantizedVectorIndex } from "../src/index/quantize.ts";
 import { unitVector } from "./test-helpers.ts";
 
@@ -38,6 +43,35 @@ describe("QuantizedVectorIndex persistence", () => {
       expect(loaded).toBeInstanceOf(QuantizedVectorIndex);
       expect(loaded.dimensions).toBe(8);
     } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("round-trips float32 storage and reports unsupported index implementations", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "miru-float-"));
+    const previous = process.env.MIRU_FLOAT_VECTORS;
+    try {
+      process.env.MIRU_FLOAT_VECTORS = "1";
+      const index = new VectorIndex([unitVector(4, 0, 1)]);
+      await saveSemantic(index, dir);
+      expect(await loadSemantic(dir)).toBeInstanceOf(VectorIndex);
+      expect(await semanticIndexMatchesStorage(dir)).toBe(true);
+      delete process.env.MIRU_FLOAT_VECTORS;
+      expect(await semanticIndexMatchesStorage(dir)).toBe(false);
+      await expect(
+        saveSemantic(
+          {
+            size: 0,
+            dimensions: 0,
+            memoryBytes: () => 0,
+            query: () => ({ indices: [], distances: [] }),
+          },
+          dir,
+        ),
+      ).rejects.toThrow("Unsupported semantic index type");
+    } finally {
+      if (previous === undefined) delete process.env.MIRU_FLOAT_VECTORS;
+      else process.env.MIRU_FLOAT_VECTORS = previous;
       await rm(dir, { recursive: true, force: true });
     }
   });

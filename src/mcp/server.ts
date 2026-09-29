@@ -121,9 +121,25 @@ async function persistBenchmarkQuery(
 
 export function createMcpServer(
   cache: IndexCache,
-  options?: { benchmark?: boolean },
+  options?: {
+    benchmark?: boolean;
+    dependencies?: {
+      withGrepTimeoutFallback?: typeof withGrepTimeoutFallback;
+      benchmarkSearchComparison?: typeof benchmarkSearchComparison;
+      benchmarkLocateComparison?: typeof benchmarkLocateComparison;
+      selectComparableLiteralSearchTool?: typeof selectComparableLiteralSearchTool;
+      readBenchmarkRollup?: typeof readBenchmarkRollup;
+    };
+  },
 ): MiruMcpServer {
   const benchmark = options?.benchmark ?? false;
+  const dependencies = options?.dependencies;
+  const runWithGrepFallback = dependencies?.withGrepTimeoutFallback ?? withGrepTimeoutFallback;
+  const compareSearch = dependencies?.benchmarkSearchComparison ?? benchmarkSearchComparison;
+  const compareLocate = dependencies?.benchmarkLocateComparison ?? benchmarkLocateComparison;
+  const selectLiteralBaseline =
+    dependencies?.selectComparableLiteralSearchTool ?? selectComparableLiteralSearchTool;
+  const readRollup = dependencies?.readBenchmarkRollup ?? readBenchmarkRollup;
   const server = new MiruMcpServer(
     {
       name: "miru",
@@ -176,8 +192,8 @@ export function createMcpServer(
         if (benchmark && (include || exclude)) {
           skip = "filtered_search";
         } else if (benchmark && repoRoot) {
-          const comparison = await withGrepTimeoutFallback(() =>
-            benchmarkSearchComparison({
+          const comparison = await runWithGrepFallback(() =>
+            compareSearch({
               query,
               repoPath: repoRoot,
               index,
@@ -298,12 +314,12 @@ export function createMcpServer(
         if (benchmark && repoRoot && typeof lit === "string") {
           if (locateOpts.limit != null) {
             skip = "limited_locate";
-          } else if (!selectComparableLiteralSearchTool()) {
+          } else if (!selectLiteralBaseline()) {
             skip = "incompatible_literal_baseline";
           }
           if (!skip) {
-            const comparison = await withGrepTimeoutFallback(() =>
-              benchmarkLocateComparison({
+            const comparison = await runWithGrepFallback(() =>
+              compareLocate({
                 literal: lit,
                 repoPath: repoRoot,
                 index,
@@ -452,7 +468,7 @@ export function createMcpServer(
       },
       async ({ repo }) => {
         try {
-          const rollup = await readBenchmarkRollup({ repo });
+          const rollup = await readRollup({ repo });
           return toolText(JSON.stringify(rollup));
         } catch (err) {
           return toolText(err instanceof Error ? err.message : String(err));

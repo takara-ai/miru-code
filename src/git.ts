@@ -5,7 +5,11 @@ import { envOptionalInt } from "./env.ts";
 
 const DEFAULT_CLONE_TIMEOUT_SEC = 60;
 
-export async function cloneGitRepository(url: string, ref?: string | null): Promise<string> {
+export async function cloneGitRepository(
+  url: string,
+  ref?: string | null,
+  spawn: typeof Bun.spawn = Bun.spawn,
+): Promise<string> {
   const timeoutSec = envOptionalInt(["MIRU_CLONE_TIMEOUT"], 1) ?? DEFAULT_CLONE_TIMEOUT_SEC;
   const dir = await mkdtemp(join(tmpdir(), "miru-git-"));
   const args = ["clone", "--depth", "1"];
@@ -16,7 +20,7 @@ export async function cloneGitRepository(url: string, ref?: string | null): Prom
 
   let proc: ReturnType<typeof Bun.spawn>;
   try {
-    proc = Bun.spawn(["git", ...args], {
+    proc = spawn(["git", ...args], {
       stdout: "pipe",
       stderr: "pipe",
       stdin: "ignore",

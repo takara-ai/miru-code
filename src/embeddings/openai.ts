@@ -353,7 +353,9 @@ export class EmbeddingApiError extends Error {
   }
 }
 
-function createClient(): EmbeddingClient {
+type EmbeddingFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
+
+function createClient(fetchImpl: EmbeddingFetch = fetch): EmbeddingClient {
   const baseUrl = resolveEmbeddingBaseUrl();
   const endpoint = `${baseUrl}/embeddings`;
 
@@ -369,7 +371,7 @@ function createClient(): EmbeddingClient {
       if (dimensions != null) {
         body.dimensions = dimensions;
       }
-      const response = await fetch(endpoint, {
+      const response = await fetchImpl(endpoint, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${apiKey}`,
@@ -407,9 +409,10 @@ export class OpenAIEmbeddingBackend implements EmbeddingBackend {
     maxEmbedChars?: number;
     dimensions?: number;
     client?: EmbeddingClient;
+    fetchImpl?: EmbeddingFetch;
   }) {
     this.model = options?.model ?? resolveEmbeddingModel();
-    this.client = options?.client ?? createClient();
+    this.client = options?.client ?? createClient(options?.fetchImpl);
     this.batchSize = options?.batchSize ?? resolveEmbeddingBatchSize();
     this.maxEmbedChars = options?.maxEmbedChars ?? resolveMaxEmbedChars();
     this.requestedDimensions = options?.dimensions ?? resolveEmbeddingDimensions(this.model);

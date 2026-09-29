@@ -113,18 +113,9 @@ function parseArrowKey(chunk: Buffer, text: string): string | null {
     const introducer = text.charAt(1);
     if (introducer === "[" || introducer === "O") {
       const arrow = text.charAt(text.length - 1);
-      if (arrow === "A") {
-        return "up";
-      }
-      if (arrow === "B") {
-        return "down";
-      }
-      if (arrow === "C") {
-        return "right";
-      }
-      if (arrow === "D") {
-        return "left";
-      }
+      return (
+        ({ A: "up", B: "down", C: "right", D: "left" } as Record<string, string>)[arrow] ?? null
+      );
     }
   }
 
@@ -308,9 +299,13 @@ function updateConfirmPromptLine(question: string, yesSelected: boolean): void {
   );
 }
 
-export async function promptConfirm(question: string, defaultYes = true): Promise<boolean> {
+export async function promptConfirm(
+  question: string,
+  defaultYes = true,
+  io: { input?: typeof input; output?: typeof output } = {},
+): Promise<boolean> {
   if (!input.isTTY) {
-    const rl = readline.createInterface({ input, output });
+    const rl = readline.createInterface({ input: io.input ?? input, output: io.output ?? output });
     try {
       const hintText = defaultYes ? dim("[Y/n]") : dim("[y/N]");
       const answer = (await rl.question(`${question} ${hintText} `)).trim().toLowerCase();
@@ -354,10 +349,13 @@ export async function promptConfirm(question: string, defaultYes = true): Promis
 export async function promptMultiSelectLegacy<T>(
   title: string,
   items: Array<{ label: string; value: T; checked: boolean }>,
+  io: { input?: typeof input; output?: typeof output } = {},
 ): Promise<T[] | null> {
-  output.write("\n");
-  output.write(`${bold(title)}\n`);
-  divider("─", 48, output);
+  const promptInput = io.input ?? input;
+  const promptOutput = io.output ?? output;
+  promptOutput.write("\n");
+  promptOutput.write(`${bold(title)}\n`);
+  divider("─", 48, promptOutput);
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
@@ -365,13 +363,13 @@ export async function promptMultiSelectLegacy<T>(
       continue;
     }
     const mark = item.checked ? cyan("[x]") : dim("[ ]");
-    output.write(`  ${dim(String(i + 1).padStart(2))}. ${mark} ${item.label}\n`);
+    promptOutput.write(`  ${dim(String(i + 1).padStart(2))}. ${mark} ${item.label}\n`);
   }
 
-  output.write("\n");
-  hint("Enter numbers (1,3), 'all', or press Enter for defaults", output);
+  promptOutput.write("\n");
+  hint("Enter numbers (1,3), 'all', or press Enter for defaults", promptOutput);
 
-  const rl = readline.createInterface({ input, output });
+  const rl = readline.createInterface({ input: promptInput, output: promptOutput });
   try {
     const answer = (await rl.question(`${dim("> ")}`)).toLowerCase();
     if (!answer) {
@@ -390,7 +388,7 @@ export async function promptMultiSelectLegacy<T>(
     }
 
     if (indices.size === 0) {
-      warn("No valid selection.", output);
+      warn("No valid selection.", promptOutput);
       return null;
     }
 

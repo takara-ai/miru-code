@@ -18,19 +18,25 @@ export type McpSchemaDocument = {
   $defs: Record<string, Record<string, unknown>>;
 };
 
-export async function loadOfficialMcpSchema(): Promise<McpSchemaDocument> {
-  const cached = Bun.file(MCP_SCHEMA_PATH);
+export async function loadOfficialMcpSchema(
+  options: {
+    schemaPath?: string;
+    fetchImpl?: (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
+  } = {},
+): Promise<McpSchemaDocument> {
+  const schemaPath = options.schemaPath ?? MCP_SCHEMA_PATH;
+  const cached = Bun.file(schemaPath);
   if (await cached.exists()) {
     return (await cached.json()) as McpSchemaDocument;
   }
 
-  const response = await fetch(MCP_SCHEMA_URL);
+  const response = await (options.fetchImpl ?? fetch)(MCP_SCHEMA_URL);
   if (!response.ok) {
     throw new Error(`Failed to download MCP schema (${response.status}): ${MCP_SCHEMA_URL}`);
   }
 
   const schema = await response.text();
-  await mkdir(dirname(MCP_SCHEMA_PATH), { recursive: true });
-  await Bun.write(MCP_SCHEMA_PATH, schema);
+  await mkdir(dirname(schemaPath), { recursive: true });
+  await Bun.write(schemaPath, schema);
   return JSON.parse(schema) as McpSchemaDocument;
 }

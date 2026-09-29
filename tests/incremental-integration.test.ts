@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { watch } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -120,6 +121,27 @@ async function buildTempRepo(): Promise<string> {
     "utf-8",
   );
   return root;
+}
+
+async function recursiveWatchAvailable(root: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    let watcher: ReturnType<typeof watch>;
+    try {
+      watcher = watch(root, { recursive: true }, () => {
+        clearTimeout(timeout);
+        watcher.close();
+        resolve(true);
+      });
+    } catch {
+      resolve(false);
+      return;
+    }
+    const timeout = setTimeout(() => {
+      watcher.close();
+      resolve(false);
+    }, 300);
+    void writeFile(join(root, ".watch-probe"), "probe\n", "utf-8");
+  });
 }
 
 describe("incremental integration", () => {
@@ -489,6 +511,12 @@ describe("incremental integration", () => {
       const root = await buildTempRepo();
       const resolvedRoot = resolve(root);
       try {
+        if (!(await recursiveWatchAvailable(resolvedRoot))) {
+          console.warn(
+            "Skipping recursive fs.watch integration: this environment emits no watch events.",
+          );
+          return;
+        }
         const embeddings = trackingEmbeddings();
         const built = await createIndexFromPath(resolvedRoot, embeddings, ["code"], resolvedRoot);
         const index = new MiruIndex({

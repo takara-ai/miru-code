@@ -14,8 +14,6 @@ const SUPPORTED_STRUCTURAL_LANGUAGES = new Set([
   "c",
 ]);
 
-const BRACE_FAMILY_LANGUAGES = new Set(["cpp", "c"]);
-
 export function chunkStructural(
   source: string,
   language: string | null,
@@ -53,18 +51,6 @@ function lineIndent(text: string): number {
 
 function stripLine(text: string): string {
   return text.replace(/[\r\n]+$/, "");
-}
-
-function _isBlank(text: string): boolean {
-  return stripLine(text).trim().length === 0;
-}
-
-function _isCommentLine(text: string, language: string): boolean {
-  const trimmed = stripLine(text).trim();
-  if (language === "python") {
-    return trimmed.startsWith("#");
-  }
-  return trimmed.startsWith("//");
 }
 
 function pythonUnits(lines: LineGroup[]): ChunkBoundary[] {
@@ -182,16 +168,21 @@ function declPattern(language: string): RegExp {
   return /^\s*(export\s+)?(async\s+function\b|function\b|class\b|interface\b|type\b|(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)(?:\s*:\s*[^=]+)?\s*=>)/;
 }
 
-function isBraceFamilyTypeDecl(text: string, language: string): boolean {
+function isBraceFamilyTypeDecl(text: string, language: "cpp" | "c"): boolean {
   if (language === "cpp") {
     return /^\s*(?:(?:template\s*<[^>]*>\s*)?(?:class|struct|namespace|enum(?:\s+class)?)\b)/.test(
       text,
     );
   }
-  if (language === "c") {
-    return /^\s*(?:struct|enum|union)\b/.test(text);
-  }
-  return false;
+  return /^\s*(?:struct|enum|union)\b/.test(text);
+}
+
+function shouldSkipNestedBraceDecl(text: string, language: string): boolean {
+  return (
+    (language === "cpp" || language === "c") &&
+    lineIndent(text) > 0 &&
+    !isBraceFamilyTypeDecl(text, language)
+  );
 }
 
 function braceUnits(lines: LineGroup[], language: string): ChunkBoundary[] {
@@ -205,11 +196,7 @@ function braceUnits(lines: LineGroup[], language: string): ChunkBoundary[] {
     if (!re.test(text)) {
       continue;
     }
-    if (
-      BRACE_FAMILY_LANGUAGES.has(language) &&
-      lineIndent(text) > 0 &&
-      !isBraceFamilyTypeDecl(text, language)
-    ) {
+    if (shouldSkipNestedBraceDecl(text, language)) {
       continue;
     }
     if (firstDeclStart === null) {
@@ -262,6 +249,8 @@ function braceUnits(lines: LineGroup[], language: string): ChunkBoundary[] {
 
   return dedupeAndSort(units);
 }
+
+export const structuralTestUtils = { shouldSkipNestedBraceDecl };
 
 function dedupeAndSort(units: ChunkBoundary[]): ChunkBoundary[] {
   const out: ChunkBoundary[] = [];

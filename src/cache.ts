@@ -23,7 +23,7 @@ import { computeSourceCacheKey } from "./utils.ts";
 import { indexCacheEpoch } from "./version.ts";
 
 /** Platform cache root; override with `MIRU_CACHE_HOME`. */
-export function resolveCacheFolder(): string {
+export function resolveCacheFolder(platform: NodeJS.Platform = process.platform): string {
   const override = process.env.MIRU_CACHE_HOME?.trim();
   if (override) {
     return override;
@@ -31,10 +31,10 @@ export function resolveCacheFolder(): string {
   const name = "miru";
   const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
   let base: string;
-  if (process.platform === "win32") {
+  if (platform === "win32") {
     base = process.env.LOCALAPPDATA ?? process.env.APPDATA ?? join(home, "AppData", "Local");
     base = join(base, name, "Cache");
-  } else if (process.platform === "darwin") {
+  } else if (platform === "darwin") {
     base = join(home, "Library", "Caches", name);
   } else {
     base = process.env.XDG_CACHE_HOME

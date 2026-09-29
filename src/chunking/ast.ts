@@ -87,17 +87,21 @@ export async function chunkAst(
   filePath: string,
   language: string | null,
   desiredLength: number,
+  dependencies: {
+    getLanguage?: typeof getLanguageForFile;
+    createParser?: () => Pick<Parser, "setLanguage" | "parse">;
+  } = {},
 ): Promise<ChunkBoundary[] | null> {
   if (!source.trim() || !astChunkingEnabled()) {
     return null;
   }
 
-  const languageObj = await getLanguageForFile(filePath, language);
+  const languageObj = await (dependencies.getLanguage ?? getLanguageForFile)(filePath, language);
   if (!languageObj) {
     return null;
   }
 
-  const parser = new Parser();
+  const parser = dependencies.createParser?.() ?? new Parser();
   parser.setLanguage(languageObj);
 
   let tree: ReturnType<Parser["parse"]>;

@@ -141,6 +141,26 @@ describe("locate benchmark comparison", () => {
     ).rejects.toThrow("locate.limit is global");
   });
 
+  test("rejects comparison when no compatible literal search tool is available", async () => {
+    const index = new MiruIndex({
+      embeddings: mockEmbeddings(),
+      bm25Index: { search: () => [] } as never,
+      semanticIndex: { search: () => [] } as never,
+      chunks: [],
+      embeddingModel: "mock-locate-bench",
+      root: null,
+      content: ["code"],
+    });
+    await expect(
+      benchmarkLocateComparison({
+        literal: "literal",
+        repoPath: "/tmp",
+        index,
+        dependencies: { selectComparableLiteralSearchTool: () => null },
+      }),
+    ).rejects.toThrow("requires rg or compatible grep");
+  });
+
   test("grep baseline widens to match a requested context_lines instead of a fixed default", async () => {
     const root = await mkdtemp(join(tmpdir(), "miru-locate-bench-ctx-"));
     try {

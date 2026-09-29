@@ -62,22 +62,49 @@ export function applyHiddenPromptChar(
 }
 
 /** Visible-input prompt (not for secrets — use promptHidden for those). */
-export async function promptText(message: string, defaultValue = ""): Promise<string> {
-  const rl = readline.createInterface({ input, output });
+export async function promptText(
+  message: string,
+  defaultValue = "",
+  createInterface: typeof createPromptInterface = createPromptInterface,
+): Promise<string> {
+  const rl = createInterface({ input, output });
+  return promptTextWith(
+    message,
+    defaultValue,
+    (question) => rl.question(question),
+    () => rl.close(),
+  );
+}
+
+export function createPromptInterface(
+  options: { input: typeof input; output: typeof output },
+  factory: typeof readline.createInterface = readline.createInterface,
+): Pick<readline.Interface, "question" | "close"> {
+  return factory(options);
+}
+
+export async function promptTextWith(
+  message: string,
+  defaultValue: string,
+  ask: (question: string) => Promise<string>,
+  close: () => void = () => {},
+): Promise<string> {
   try {
     const suffix = defaultValue ? ` (${defaultValue})` : "";
-    const answer = (await rl.question(`${message}${suffix}: `)).trim();
+    const answer = (await ask(`${message}${suffix}: `)).trim();
     return answer || defaultValue;
   } finally {
-    rl.close();
+    close();
   }
 }
 
 export async function promptHidden(
   message: string,
-  stream: NodeJS.WriteStream = output,
+  stream: { write(text: string): unknown } = output,
+  io: { input?: HiddenPromptInput; exit?: (code: number) => void } = {},
 ): Promise<string> {
-  if (!input.isTTY) {
+  const inputStream = io.input ?? input;
+  if (!inputStream.isTTY) {
     throw new Error(
       "Cannot prompt for API key: stdin is not a TTY. Run `miru setup --key YOUR_KEY` or set TAKARA_API_KEY.",
     );
@@ -85,9 +112,9 @@ export async function promptHidden(
 
   return new Promise((resolve, reject) => {
     stream.write(message);
-    input.setRawMode?.(true);
-    input.resume();
-    input.setEncoding("utf8");
+    inputStream.setRawMode?.(true);
+    inputStream.resume();
+    inputStream.setEncoding("utf8");
 
     let state = createHiddenPromptState();
 
@@ -100,7 +127,7 @@ export async function promptHidden(
           cleanup();
           stream.write("\n");
           reject(new Error("Setup cancelled."));
-          process.exit(130);
+          (io.exit ?? process.exit)(130);
         }
 
         if (result.submit) {
@@ -117,11 +144,21 @@ export async function promptHidden(
     };
 
     const cleanup = () => {
-      input.setRawMode?.(false);
-      input.pause();
-      input.removeListener("data", onData);
+      inputStream.setRawMode?.(false);
+      inputStream.pause();
+      inputStream.removeListener("data", onData);
     };
 
-    input.on("data", onData);
+    inputStream.on("data", onData);
   });
+}
+
+interface HiddenPromptInput {
+  isTTY?: boolean;
+  setRawMode?: (mode: boolean) => void;
+  resume(): void;
+  pause(): void;
+  setEncoding(encoding: "utf8"): unknown;
+  on(event: "data", listener: (chunk: string) => void): unknown;
+  removeListener(event: "data", listener: (chunk: string) => void): unknown;
 }

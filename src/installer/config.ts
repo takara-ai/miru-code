@@ -143,11 +143,12 @@ export async function removeJsonMember(
   }
   const nextText = removeJsonMemberText(text, sectionKey, memberKey);
   const nextObject = withRemovedMember(parsed, sectionKey, memberKey);
-  const next = nextText ?? JSON.stringify(nextObject, null, 2);
-  if (ensureTrailingNewline(next) === ensureTrailingNewline(text)) {
-    return "not-found";
+  let next = nextText ?? JSON.stringify(nextObject, null, 2);
+  let nextParsed = parseJsonObject(next);
+  if (nextParsed === "error") {
+    next = JSON.stringify(nextObject, null, 2);
+    nextParsed = parseJsonObject(next);
   }
-  const nextParsed = parseJsonObject(next);
   if (!nextParsed || typeof nextParsed !== "object" || Object.keys(nextParsed).length === 0) {
     await unlink(path);
     return "removed";
@@ -500,6 +501,21 @@ function escapeRegExp(value: string): string {
 function ensureTrailingNewline(text: string): string {
   return text.endsWith("\n") ? text : `${text}\n`;
 }
+
+/** Internal parser helpers exposed for focused edge-case tests. */
+export const jsoncTestUtils = {
+  hasJsoncSyntax,
+  findSectionRange,
+  findMatchingBrace,
+  parseJsonValueEnd,
+  findMatchingBracket,
+  findStringEnd,
+  skipWhitespace,
+  findLeadingComma,
+  withRemovedMember,
+  upsertJsonMemberText,
+  removeJsonMemberText,
+};
 
 export async function replaceOrAppendMarked(path: string, content: string): Promise<InstallAction> {
   const existed = await Bun.file(path).exists();

@@ -99,9 +99,6 @@ function whitespaceTokenize(text: string): string[] {
 
 function splitOnPunctuation(text: string): string[] {
   const chars = [...text];
-  if (chars.length === 0) {
-    return [];
-  }
 
   const output: string[][] = [];
   let startNewWord = true;
@@ -138,9 +135,6 @@ function wordpieceTokenize(
   prefix: string,
   maxInputCharsPerWord: number,
 ): string[] {
-  if (token.length === 0) {
-    return [];
-  }
   if (token.length > maxInputCharsPerWord) {
     return [unkToken];
   }

@@ -123,25 +123,27 @@ export function parseSetupCliArgs(rest: string[]): {
   return { args };
 }
 
-async function promptSageMakerArn(): Promise<string> {
-  while (true) {
-    const arn = await promptText("SageMaker endpoint ARN");
-    if (!arn) {
+async function promptSageMakerArn(promptTextImpl: typeof promptText = promptText): Promise<string> {
+  let arn = "";
+  while (!arn) {
+    const candidate = await promptTextImpl("SageMaker endpoint ARN");
+    if (!candidate) {
       fail("Endpoint ARN cannot be empty.");
       continue;
     }
     try {
-      parseSageMakerEndpointArn(arn);
-      return arn;
+      parseSageMakerEndpointArn(candidate);
+      arn = candidate;
     } catch (err) {
       fail(err instanceof Error ? err.message : String(err));
     }
   }
+  return arn;
 }
 
-async function promptAwsProfile(): Promise<string> {
+async function promptAwsProfile(promptTextImpl: typeof promptText = promptText): Promise<string> {
   while (true) {
-    const profile = await promptText(
+    const profile = await promptTextImpl(
       "AWS profile name (must already exist in ~/.aws)",
       process.env.AWS_PROFILE || "miru",
     );
@@ -152,11 +154,20 @@ async function promptAwsProfile(): Promise<string> {
   }
 }
 
+export interface SageMakerSetupDependencies {
+  promptText?: typeof promptText;
+  canPromptForCredentials?: typeof canPromptForCredentials;
+  validateConnection?: typeof validateSageMakerConnection;
+}
+
 /**
  * Miru only ever inherits AWS credentials — it never creates, writes, or rotates an
  * AWS profile. Set one up yourself first (e.g. `aws configure --profile miru`).
  */
-export async function runSageMakerSetup(options: RunSetupOptions = {}): Promise<RunSetupResult> {
+export async function runSageMakerSetup(
+  options: RunSetupOptions = {},
+  dependencies: SageMakerSetupDependencies = {},
+): Promise<RunSetupResult> {
   writeStdout("");
   printBrandBanner(process.stderr);
   divider("─", 48, process.stderr);
@@ -168,18 +179,19 @@ export async function runSageMakerSetup(options: RunSetupOptions = {}): Promise<
   );
   writeStdout("");
 
-  const arnInput = options.sagemakerArn ?? (await promptSageMakerArn());
+  const promptTextImpl = dependencies.promptText ?? promptText;
+  const arnInput = options.sagemakerArn ?? (await promptSageMakerArn(promptTextImpl));
   const parsed = parseSageMakerEndpointArn(arnInput);
 
   let profile = options.profile;
   if (!profile) {
-    if (!canPromptForCredentials()) {
+    if (!(dependencies.canPromptForCredentials ?? canPromptForCredentials)()) {
       throw new Error(
         "An AWS profile name is required. Pass --profile <name>, or run " +
           "`miru setup --sagemaker` interactively.",
       );
     }
-    profile = await promptAwsProfile();
+    profile = await promptAwsProfile(promptTextImpl);
   }
 
   await beginModeSwitch("sagemaker");
@@ -197,7 +209,7 @@ export async function runSageMakerSetup(options: RunSetupOptions = {}): Promise<
       truncate: true,
       truncationDirection: "Right",
     };
-    const result = await validateSageMakerConnection(config);
+    const result = await (dependencies.validateConnection ?? validateSageMakerConnection)(config);
     if (!result.valid) {
       spinner.stop();
       throw new Error(result.message);

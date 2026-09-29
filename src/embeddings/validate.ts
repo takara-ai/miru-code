@@ -12,12 +12,15 @@ export interface ValidateApiKeyResult {
   message: string;
 }
 
-export async function validateEmbeddingApiKey(options: {
-  apiKey: string;
-  baseUrl?: string;
-  model?: string;
-  dimensions?: number;
-}): Promise<ValidateApiKeyResult> {
+export async function validateEmbeddingApiKey(
+  options: {
+    apiKey: string;
+    baseUrl?: string;
+    model?: string;
+    dimensions?: number;
+  },
+  fetchImpl: (input: string | URL | Request, init?: RequestInit) => Promise<Response> = fetch,
+): Promise<ValidateApiKeyResult> {
   const baseUrl = (options.baseUrl ?? resolveEmbeddingBaseUrl()).replace(/\/$/, "");
   const model = options.model ?? resolveTakaraEmbeddingModel();
   const dimensions = options.dimensions ?? resolveEmbeddingDimensions(model);
@@ -33,7 +36,7 @@ export async function validateEmbeddingApiKey(options: {
 
   let response: Response;
   try {
-    response = await fetch(endpoint, {
+    response = await fetchImpl(endpoint, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${options.apiKey}`,

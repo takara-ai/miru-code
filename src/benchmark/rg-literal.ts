@@ -135,11 +135,16 @@ export async function rgLiteralOutput(
   repoRoot: string,
   literal: string | readonly string[],
   options: RgLiteralOptions = {},
+  dependencies: {
+    tool?: "rg" | "grep" | null;
+    spawn?: (args: string[]) => Promise<string>;
+  } = {},
 ): Promise<RgLiteralOutput> {
   const literals = Array.isArray(literal) ? literal : [literal as string];
   const context = options.context ?? 0;
   const maxCount = options.maxCount ?? 20;
-  const tool = selectComparableLiteralSearchTool();
+  const tool =
+    dependencies.tool === undefined ? selectComparableLiteralSearchTool() : dependencies.tool;
   if (!tool) {
     throw new Error(
       "A comparable literal benchmark requires rg or compatible grep; findstr cannot preserve locate scope, context, and count semantics.",
@@ -150,7 +155,7 @@ export async function rgLiteralOutput(
   const output: string[] = [];
   for (const paths of pathBatches) {
     output.push(
-      await spawnBenchmarkSearch(
+      await (dependencies.spawn ?? spawnBenchmarkSearch)(
         buildLiteralArgs(
           tool,
           repoRoot,
@@ -178,8 +183,8 @@ export async function rgLiteralOutput(
  * OR-matches every literal, mirroring what an agent without `locate` would have to run
  * to get the same recall as `literals`/`match_variants` (one pattern isn't equivalent).
  */
-function buildLiteralArgs(
-  tool: "rg" | "grep",
+export function buildLiteralArgs(
+  tool: string,
   repoRoot: string,
   literals: readonly string[],
   context: number,

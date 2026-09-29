@@ -13,6 +13,7 @@ import {
   ensureCredentials,
   hasCredentials,
   parseSetupCliArgs,
+  runClearCredentials,
   runSageMakerSetup,
   runSetup,
 } from "../src/setup.ts";
@@ -112,6 +113,17 @@ describe("setup credentials", () => {
     expect(process.env.TAKARA_API_KEY).toBe("stored-token");
   });
 
+  test("ensureCredentials returns after loading an unset stored key", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-setup-load-return-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    await saveStoredCredentials("loaded-token");
+    delete process.env.TAKARA_API_KEY;
+
+    await ensureCredentials({ interactive: false });
+
+    expect(process.env.TAKARA_API_KEY as string | undefined).toBe("loaded-token");
+  });
+
   test("ensureCredentials throws when non-interactive and key missing", async () => {
     credDir = await mkdtemp(join(tmpdir(), "miru-setup-empty-"));
     process.env.MIRU_CREDENTIALS_DIR = credDir;
@@ -119,6 +131,27 @@ describe("setup credentials", () => {
 
     await expect(ensureCredentials({ interactive: false })).rejects.toThrow(
       /call the `auth` tool to sign in/,
+    );
+  });
+
+  test("ensureCredentials propagates a failed stored-token refresh when non-interactive", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-setup-refresh-error-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    process.env.MIRU_AUTH_BASE_URL = "https://auth.example.test";
+    process.env.MIRU_AUTH_CLIENT_ID = "miru-test";
+    await saveStoredCredentials({
+      kind: "device_code",
+      accessToken: "expired-token",
+      refreshToken: "revoked-token",
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ error: "invalid_grant" }), {
+        status: 400,
+      })) as unknown as typeof fetch;
+
+    await expect(ensureCredentials({ interactive: false })).rejects.toThrow(
+      "Device token refresh failed",
     );
   });
 
@@ -134,6 +167,139 @@ describe("setup credentials", () => {
     const result = await runSetup({ skipValidation: true });
     expect(result.newlySaved).toBe(false);
     expect(result.path).toContain("credentials.json");
+  });
+
+  test("runSetup keeps stored credentials when an environment key is already configured", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-setup-env-existing-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    process.env.TAKARA_API_KEY = "env-token";
+
+    const result = await runSetup();
+
+    expect(result.newlySaved).toBe(false);
+    expect(result.path).toContain("credentials.json");
+  });
+
+  test("runSetup restores an existing stored key without replacing it", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-setup-stored-restore-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    await saveStoredCredentials("stored-token");
+    delete process.env.TAKARA_API_KEY;
+
+    const result = await runSetup();
+
+    expect(result.newlySaved).toBe(false);
+    expect(process.env.TAKARA_API_KEY as string | undefined).toBe("stored-token");
+  });
+
+  test("runSetup dispatches SageMaker setup from mode options", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-setup-dispatch-sm-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    const result = await runSetup({
+      sagemaker: true,
+      sagemakerArn: "arn:aws:sagemaker:us-east-1:123456789012:endpoint/miru-test",
+      profile: "miru",
+      skipValidation: true,
+    });
+    expect(result.newlySaved).toBe(true);
+    expect((await readStoredCredentials())?.kind).toBe("sagemaker");
+  });
+
+  test("runSetup reports env-only credentials without creating the credential file", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-setup-env-only-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    process.env.TAKARA_API_KEY = "env-token";
+
+    const result = await runSetup();
+
+    expect(result.newlySaved).toBe(false);
+    expect(await readStoredCredentials()).toBeNull();
+  });
+
+  test("runClearCredentials handles both existing and absent credentials", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-setup-clear-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    await saveStoredCredentials("stored-token");
+
+    await runClearCredentials();
+    expect(await readStoredCredentials()).toBeNull();
+    await runClearCredentials();
+  });
+
+  test("SageMaker setup requires a profile in non-interactive mode", async () => {
+    const input = process.stdin as NodeJS.ReadStream & { isTTY?: boolean };
+    const oldTTY = input.isTTY;
+    input.isTTY = false;
+    try {
+      await expect(
+        runSageMakerSetup({
+          sagemakerArn: "arn:aws:sagemaker:us-east-1:123456789012:endpoint/miru-test",
+          skipValidation: true,
+        }),
+      ).rejects.toThrow("An AWS profile name is required");
+    } finally {
+      input.isTTY = oldTTY;
+    }
+  });
+
+  test("SageMaker setup retries invalid ARN and empty profile, then validates and saves", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-setup-sm-prompt-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    const answers = [
+      "",
+      "not-an-arn",
+      "arn:aws:sagemaker:eu-west-2:123456789012:endpoint/test-endpoint",
+      "",
+      "test-profile",
+    ];
+    const prompts: string[] = [];
+    let validated = false;
+    const result = await runSageMakerSetup(
+      {},
+      {
+        promptText: async (prompt, defaultValue) => {
+          prompts.push(`${prompt}:${defaultValue ?? ""}`);
+          return answers.shift() ?? "";
+        },
+        canPromptForCredentials: () => true,
+        validateConnection: async (config) => {
+          validated = true;
+          expect(config).toMatchObject({
+            endpointName: "test-endpoint",
+            region: "eu-west-2",
+            profile: "test-profile",
+            truncationDirection: "Right",
+          });
+          return { valid: true, message: "ok" };
+        },
+      },
+    );
+
+    expect(validated).toBe(true);
+    expect(prompts).toHaveLength(5);
+    expect(result.newlySaved).toBe(true);
+    expect((await readStoredCredentials())?.kind).toBe("sagemaker");
+  });
+
+  test("SageMaker setup stops validation spinner and surfaces endpoint errors", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-setup-sm-invalid-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    await expect(
+      runSageMakerSetup(
+        {
+          sagemakerArn: "arn:aws:sagemaker:eu-west-2:123456789012:endpoint/test-endpoint",
+          profile: "test-profile",
+        },
+        {
+          validateConnection: async () => ({
+            valid: false,
+            status: 404,
+            message: "endpoint missing",
+          }),
+        },
+      ),
+    ).rejects.toThrow("endpoint missing");
+    expect(await readStoredCredentials()).toBeNull();
   });
 
   test("runSetup accepts explicit key entry with validation disabled", async () => {
@@ -188,6 +354,22 @@ describe("setup credentials", () => {
     expect(stored).toMatchObject({ kind: "api_key", api_key: "new-takara-token" });
     expect(process.env.MIRU_SAGEMAKER_ENDPOINT_ARN).toBeUndefined();
     expect(process.env.AWS_PROFILE).toBeUndefined();
+  });
+
+  test("runSetup can switch a stored SageMaker profile to an explicit Takara key", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-setup-switch-mode-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    await saveStoredCredentials({
+      kind: "sagemaker",
+      endpointArn: "arn:aws:sagemaker:us-east-1:123456789012:endpoint/miru-test",
+      profile: "miru",
+    });
+    delete process.env.TAKARA_API_KEY;
+
+    const result = await runSetup({ apiKey: "next-token", skipValidation: true });
+
+    expect(result.newlySaved).toBe(true);
+    expect((await readStoredCredentials())?.kind).toBe("api_key");
   });
 
   test("runSetup migrates to Takara when env key is set and SageMaker is still stored", async () => {

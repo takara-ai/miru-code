@@ -8,11 +8,14 @@ export class Spinner {
   private frame = 0;
   private belowLines = 0;
 
-  constructor(private readonly message: string) {}
+  constructor(
+    private readonly message: string,
+    private readonly stderr: SpinnerOutput = process.stderr,
+  ) {}
 
   start(): void {
-    if (!process.stderr.isTTY) {
-      process.stderr.write(`${this.message}...\n`);
+    if (!this.stderr.isTTY) {
+      this.stderr.write(`${this.message}...\n`);
       return;
     }
     this.draw();
@@ -20,17 +23,17 @@ export class Spinner {
   }
 
   follow(line: string): void {
-    if (!process.stderr.isTTY) {
-      process.stderr.write(`${line}\n`);
+    if (!this.stderr.isTTY) {
+      this.stderr.write(`${line}\n`);
       return;
     }
-    const cols = process.stderr.columns || 80;
+    const cols = this.stderr.columns || 80;
     const rows = line.split("\n").reduce((count, part) => {
       return count + Math.max(1, Math.ceil(displayWidth(part) / cols));
     }, 0);
-    process.stderr.write(`\n${line}`);
+    this.stderr.write(`\n${line}`);
     this.belowLines += rows;
-    process.stderr.write(`\x1b[${this.belowLines}A`);
+    this.stderr.write(`\x1b[${this.belowLines}A`);
   }
 
   stop(finalMessage?: string): void {
@@ -38,19 +41,19 @@ export class Spinner {
       clearInterval(this.timer);
       this.timer = null;
     }
-    if (process.stderr.isTTY) {
-      process.stderr.write("\r\x1b[K");
+    if (this.stderr.isTTY) {
+      this.stderr.write("\r\x1b[K");
       if (finalMessage) {
-        process.stderr.write(finalMessage);
+        this.stderr.write(finalMessage);
       }
       if (this.belowLines > 0) {
-        process.stderr.write(`\x1b[${this.belowLines}B`);
+        this.stderr.write(`\x1b[${this.belowLines}B`);
       }
       if (finalMessage || this.belowLines > 0) {
-        process.stderr.write("\n");
+        this.stderr.write("\n");
       }
     } else if (finalMessage) {
-      process.stderr.write(`${finalMessage}\n`);
+      this.stderr.write(`${finalMessage}\n`);
     }
   }
 
@@ -68,16 +71,23 @@ export class Spinner {
 
   private draw(): void {
     const glyph = FRAMES[this.frame++ % FRAMES.length];
-    process.stderr.write(`\r${dim(glyph)} ${this.message}`);
+    this.stderr.write(`\r${dim(glyph)} ${this.message}`);
   }
+}
+
+interface SpinnerOutput {
+  isTTY?: boolean;
+  columns?: number;
+  write(text: string): unknown;
 }
 
 export async function withSpinner<T>(
   message: string,
   fn: () => Promise<T>,
   options?: { successMessage?: string; failMessage?: string },
+  output: SpinnerOutput = process.stderr,
 ): Promise<T> {
-  const spinner = new Spinner(message);
+  const spinner = new Spinner(message, output);
   spinner.start();
   try {
     const result = await fn();

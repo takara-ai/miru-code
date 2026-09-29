@@ -53,6 +53,8 @@ export function resolveHookCommand(): string {
   return "miru hook-guard";
 }
 
+export const hookInstallTestUtils = { isEmptyHookConfig };
+
 function hookCommandMatches(command: unknown): boolean {
   return typeof command === "string" && command.includes(HOOK_GUARD_MARKER);
 }
@@ -65,9 +67,10 @@ function isEmptyHookConfig(parsed: Record<string, unknown>): boolean {
   if (hooks === undefined) {
     return Object.keys(parsed).every((key) => key === "version");
   }
-  if (!hooks || typeof hooks !== "object" || Array.isArray(hooks)) {
+  if (!hooks || typeof hooks !== "object") {
     return false;
   }
+  if (Array.isArray(hooks)) return false;
   return Object.keys(hooks as Record<string, unknown>).length === 0;
 }
 
@@ -514,10 +517,6 @@ export async function mergeHooks(
       return mergeWindsurfHooks(path);
     case "opencode":
       return mergeOpenCodePlugin(path);
-    default: {
-      const _exhaustive: never = format;
-      return _exhaustive;
-    }
   }
 }
 
@@ -541,9 +540,5 @@ export async function removeHooks(
       return removeWindsurfHooks(path);
     case "opencode":
       return removeOpenCodePlugin(path);
-    default: {
-      const _exhaustive: never = format;
-      return _exhaustive;
-    }
   }
 }

@@ -6,12 +6,15 @@ import type { Chunk } from "../src/types.ts";
 import {
   dedupeResultsByFile,
   expandChunksAtLine,
+  formatRelevanceScore,
   formatExpandResults,
   formatResults,
   isAllowedRepoSource,
   isGitUrl,
   localRepoRoot,
   resolveChunk,
+  resolveContent,
+  computeSourceCacheKey,
   resolveSearchPath,
   toIndexedFilePath,
 } from "../src/utils.ts";
@@ -50,6 +53,8 @@ describe("utils", () => {
     const repoRoot = "/tmp/miru-repo";
     expect(toIndexedFilePath("src/a.py", repoRoot)).toBe("src/a.py");
     expect(toIndexedFilePath(`${repoRoot}/src/a.py`, repoRoot)).toBe("src/a.py");
+    expect(toIndexedFilePath(repoRoot, repoRoot)).toBe("");
+    expect(toIndexedFilePath("../outside/a.py", repoRoot)).toBe("../outside/a.py");
     expect(toIndexedFilePath("src/a.py")).toBe("src/a.py");
   });
 
@@ -70,6 +75,14 @@ describe("utils", () => {
     const url = "https://github.com/fmtlib/fmt";
     expect(resolveSearchPath(url)).toBe(url);
     expect(resolveSearchPath("/tmp/repo")).toBe(resolve("/tmp/repo"));
+  });
+
+  test("computeSourceCacheKey includes remote refs and resolves local sources", () => {
+    expect(computeSourceCacheKey("https://example.com/repo.git")).toBe("https://example.com/repo.git");
+    expect(computeSourceCacheKey("https://example.com/repo.git", "main")).toBe(
+      "https://example.com/repo.git@main",
+    );
+    expect(computeSourceCacheKey("./repo")).toBe(resolve("./repo"));
   });
 
   test("findIndexCachePath hashes git URLs without filesystem resolve", () => {
@@ -155,6 +168,30 @@ describe("utils", () => {
     );
     expect(anchor).toBe(c2);
     expect(expanded.map((c) => c.content)).toEqual(["one", "two", "three"]);
+  });
+
+  test("expandChunksAtLine returns no chunks when the requested line misses", () => {
+    const c1 = chunk("one", "src/a.py", 1, 5);
+    expect(expandChunksAtLine([c1], "src/a.py", 20, null, 1, 1)).toEqual({
+      anchor: null,
+      chunks: [],
+    });
+    expect(expandChunksAtLine([], "src/missing.py", 20, null, 1, 1)).toEqual({
+      anchor: null,
+      chunks: [],
+    });
+  });
+
+  test("formatRelevanceScore handles empty and nonempty result sets", () => {
+    expect(formatRelevanceScore(1, 0)).toBe("0%");
+    expect(formatRelevanceScore(1, 4)).toBe("25%");
+  });
+
+  test("resolveContent handles defaults, all, valid, and unknown values", () => {
+    expect(resolveContent([])).toEqual(["code", "config", "docs"]);
+    expect(resolveContent(["all", "unknown"])).toEqual(["code", "docs", "config"]);
+    expect(resolveContent(["docs", "unknown", "code"])).toEqual(["docs", "code"]);
+    expect(resolveContent(["unknown"])).toEqual([]);
   });
 
   test("formatExpandResults returns chunk payloads", () => {

@@ -37,11 +37,13 @@ import {
 import {
   applyCaveman,
   applyHooks,
+  applyInstructions,
   applyMcp,
   applySte,
   applySubagent,
   codexCavemanPlanNote,
   INTEGRATIONS,
+  installerTestUtils,
   integrationsForAgents,
   removeUninstallLocalData,
 } from "../src/installer/installer.ts";
@@ -496,6 +498,75 @@ describe("installer apply", () => {
     if (root) {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  test("handles absent integration paths and malformed MCP entries", async () => {
+    const base = claudeTarget(root);
+    expect(await applyInstructions({ ...base, instructionsPath: null }, "install")).toBeNull();
+    expect(await applyHooks({ ...base, hooksPath: null, hooksFormat: null }, "install")).toBeNull();
+    expect(
+      await installerTestUtils.applyCursorRules({ ...base, cursorRulesPath: null }, "install"),
+    ).toBeNull();
+    expect(
+      await installerTestUtils.applyCursorRules(
+        { ...base, cursorRulesPath: join(root, "missing-rules.mdc") },
+        "uninstall",
+      ),
+    ).toEqual({ path: join(root, "missing-rules.mdc"), action: "not-found" });
+    expect(await applySubagent({ ...base, subagentPath: null, subagentId: null }, "install")).toBe(
+      null,
+    );
+
+    const path = join(root, "bad-mcp.json");
+    const jsonAgent = {
+      ...base,
+      mcp: {
+        path,
+        key: "mcpServers",
+        memberKey: "miru",
+        entry: { command: "bunx" },
+        format: "json" as const,
+      },
+    };
+    for (const text of ["not-json", "[]", '{"mcpServers":[]}']) {
+      await Bun.write(path, text);
+      expect((await applyMcp(jsonAgent, "install"))?.action).toBe("error");
+    }
+    await Bun.write(path, '{"mcpServers":{"miru":false}}');
+    expect((await applyMcp(jsonAgent, "install"))?.action).toBe("updated");
+
+    const tomlAgent: AgentTarget = {
+      ...base,
+      mcp: {
+        path: join(root, "config.toml"),
+        key: "mcp_servers",
+        memberKey: "miru",
+        entry: {},
+        format: "toml",
+      },
+    };
+    expect((await applyMcp(tomlAgent, "install"))?.action).toBe("created");
+    expect((await applyMcp(tomlAgent, "uninstall"))?.action).toBe("removed");
+  });
+
+  test("prints the Codex skills note during an uninstall plan", async () => {
+    const codex = AGENT_TARGETS.find((agent) => agent.id === "codex");
+    if (!codex?.mcp) throw new Error("Codex MCP target is missing");
+    const configPath = join(root, "codex-config.toml");
+    await Bun.write(configPath, "[features]\nskills = true\n");
+    const plannedAgent = {
+      ...codex,
+      mcp: { ...codex.mcp, path: configPath },
+      cavemanSkillPath: join(root, "skills", "caveman", "SKILL.md"),
+      steSkillDir: join(root, "skills", "ste"),
+    };
+    await installerTestUtils.printPlan(
+      "uninstall",
+      [plannedAgent],
+      INTEGRATIONS.filter(
+        (integration) => integration.id === "caveman" || integration.id === "ste",
+      ),
+    );
   });
 
   test("visualStudioMcpPath uses user profile .mcp.json", () => {
@@ -1028,6 +1099,19 @@ describe("installer apply", () => {
     for (const file of STE_REFERENCE_FILES) {
       expect(await Bun.file(join(agent.steSkillDir ?? "", file.relativePath)).exists()).toBe(true);
     }
+  });
+
+  test("applySte repairs a matching skill with a missing reference file", async () => {
+    const agent = claudeTarget(root);
+    const skillPath = join(agent.steSkillDir ?? "", "SKILL.md");
+    await mkdir(dirname(skillPath), { recursive: true });
+    await Bun.write(skillPath, STE_SKILL_MD);
+    expect((await applySte(agent, "install"))?.action).toBe("updated");
+    const firstReference = STE_REFERENCE_FILES[0];
+    if (!firstReference) throw new Error("STE reference fixture is missing");
+    expect(
+      await Bun.file(join(agent.steSkillDir ?? "", firstReference.relativePath)).exists(),
+    ).toBe(true);
   });
 
   test("T13: applySte uninstall removes Miru files; leaves MCP, Caveman, and user files", async () => {

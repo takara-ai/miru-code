@@ -45,6 +45,21 @@ export class StdioTransport {
   private buffer = "";
   private started = false;
   private abortController: AbortController | null = null;
+  private readonly inputStream: () => ReadableStream<Uint8Array<ArrayBufferLike>>;
+  private readonly writeText: (text: string) => Promise<unknown>;
+
+  constructor(
+    options: {
+      inputStream?: () => ReadableStream<Uint8Array<ArrayBufferLike>>;
+      writeText?: (text: string) => Promise<unknown>;
+      stdin?: { stream: () => ReadableStream<Uint8Array<ArrayBufferLike>> };
+      bunWrite?: (destination: typeof Bun.stdout, text: string) => Promise<unknown>;
+    } = {},
+  ) {
+    this.inputStream = options.inputStream ?? (() => (options.stdin ?? Bun.stdin).stream());
+    this.writeText =
+      options.writeText ?? ((text) => (options.bunWrite ?? Bun.write)(Bun.stdout, text));
+  }
 
   onmessage?: (message: JsonRpcMessage) => void | Promise<void>;
   onerror?: (error: Error) => void;
@@ -56,7 +71,7 @@ export class StdioTransport {
     }
     this.started = true;
     this.abortController = new AbortController();
-    const reader = Bun.stdin.stream().getReader();
+    const reader = this.inputStream().getReader();
     const decoder = new TextDecoder();
 
     try {
@@ -85,7 +100,7 @@ export class StdioTransport {
 
   async send(message: JsonRpcMessage): Promise<void> {
     const line = `${JSON.stringify(message)}\n`;
-    await Bun.write(Bun.stdout, line);
+    await this.writeText(line);
   }
 
   private async append(chunk: string): Promise<void> {

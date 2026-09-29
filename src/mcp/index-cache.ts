@@ -49,6 +49,11 @@ type CacheEntry = {
   lastError: Error | null;
 };
 
+export interface IndexCacheDependencies {
+  fromSource?: typeof MiruIndex.fromSource;
+  watch?: typeof watch;
+}
+
 export function mcpWatchEnabled(): boolean {
   const raw = process.env.MIRU_MCP_WATCH;
   return raw !== "0" && raw !== "false";
@@ -76,12 +81,20 @@ export function shouldIgnoreWatchPath(relativePath: string | null | undefined): 
 export class IndexCache {
   private readonly content: ContentType[];
   private readonly defaultRef: string | null;
+  private readonly fromSource: typeof MiruIndex.fromSource;
+  private readonly watchSource: typeof watch;
   private readonly entries = new Map<string, CacheEntry>();
   readonly watchers = new Map<string, WatcherHandle>();
 
-  constructor(content: ContentType[] = defaultContentTypes(), defaultRef: string | null = null) {
+  constructor(
+    content: ContentType[] = defaultContentTypes(),
+    defaultRef: string | null = null,
+    dependencies: IndexCacheDependencies = {},
+  ) {
     this.content = content;
     this.defaultRef = defaultRef;
+    this.fromSource = dependencies.fromSource ?? MiruIndex.fromSource;
+    this.watchSource = dependencies.watch ?? watch;
   }
 
   private ensureEntry(cacheKey: string, source: string): CacheEntry {
@@ -128,7 +141,7 @@ export class IndexCache {
   ): Promise<MiruIndex> {
     const entry = this.ensureEntry(cacheKey, source);
     const task = (async () => {
-      const index = await MiruIndex.fromSource(source, this.content, undefined, ref);
+      const index = await this.fromSource(source, this.content, undefined, ref);
       if (!isGitUrl(source)) {
         await index.saveToCache(resolve(source));
       }
@@ -342,7 +355,7 @@ export class IndexCache {
 
     let nativeWatcher: ReturnType<typeof watch> | null = null;
     try {
-      nativeWatcher = watch(resolved, { recursive: true }, (_event, filename) => {
+      nativeWatcher = this.watchSource(resolved, { recursive: true }, (_event, filename) => {
         this.noteFileChange(path, filename);
       });
     } catch {

@@ -50,4 +50,81 @@ describe("BM25Index", () => {
     const query = ["alpha", "doc42", "epsilon"];
     expect(await index.getScoresAsync(query)).toEqual(index.getScores(query));
   });
+
+  test("terminates workers and rejects when a worker fails", async () => {
+    const previousWorker = globalThis.Worker;
+    const previousConcurrency = process.env.MIRU_CONCURRENCY;
+    class FailingWorker {
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: ErrorEvent) => void) | null = null;
+      terminated = false;
+      postMessage() {
+        queueMicrotask(() => this.onerror?.(new Error("worker failed") as unknown as ErrorEvent));
+      }
+      terminate() {
+        this.terminated = true;
+      }
+    }
+    const workers: FailingWorker[] = [];
+    globalThis.Worker = class extends FailingWorker {
+      constructor(..._args: ConstructorParameters<typeof Worker>) {
+        super();
+        workers.push(this);
+      }
+    } as unknown as typeof Worker;
+    process.env.MIRU_CONCURRENCY = "2";
+    try {
+      const index = new BM25Index();
+      index.index(Array.from({ length: 300 }, () => ["alpha"]));
+      await expect(index.getScoresAsync(["alpha"])).rejects.toThrow("worker failed");
+      expect(workers.length).toBe(2);
+      expect(workers.every((worker) => worker.terminated)).toBe(true);
+    } finally {
+      globalThis.Worker = previousWorker;
+      if (previousConcurrency === undefined) delete process.env.MIRU_CONCURRENCY;
+      else process.env.MIRU_CONCURRENCY = previousConcurrency;
+    }
+  });
+
+  test("terminates successful workers after their result arrives", async () => {
+    const previousWorker = globalThis.Worker;
+    const previousConcurrency = process.env.MIRU_CONCURRENCY;
+    class SuccessfulWorker {
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: ErrorEvent) => void) | null = null;
+      terminated = false;
+      postMessage(job: { startDoc: number; endDoc: number }) {
+        queueMicrotask(() =>
+          this.onmessage?.({
+            data: {
+              startDoc: job.startDoc,
+              scores: new Array(job.endDoc - job.startDoc).fill(1),
+            },
+          } as MessageEvent),
+        );
+      }
+      terminate() {
+        this.terminated = true;
+      }
+    }
+    const workers: SuccessfulWorker[] = [];
+    globalThis.Worker = class extends SuccessfulWorker {
+      constructor(..._args: ConstructorParameters<typeof Worker>) {
+        super();
+        workers.push(this);
+      }
+    } as unknown as typeof Worker;
+    process.env.MIRU_CONCURRENCY = "2";
+    try {
+      const index = new BM25Index();
+      index.index(Array.from({ length: 300 }, () => ["alpha"]));
+      expect(await index.getScoresAsync(["alpha"])).toEqual(new Array(300).fill(1));
+      expect(workers).toHaveLength(2);
+      expect(workers.every((worker) => worker.terminated)).toBe(true);
+    } finally {
+      globalThis.Worker = previousWorker;
+      if (previousConcurrency === undefined) delete process.env.MIRU_CONCURRENCY;
+      else process.env.MIRU_CONCURRENCY = previousConcurrency;
+    }
+  });
 });

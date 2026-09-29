@@ -165,10 +165,6 @@ export function expandChunksAtLine(
   const anchorIndex = fileChunks.findIndex(
     (chunk) => chunk.start_line === anchor.start_line && chunk.end_line === anchor.end_line,
   );
-  if (anchorIndex < 0) {
-    return { anchor, chunks: [anchor] };
-  }
-
   const start = Math.max(0, anchorIndex - before);
   const end = Math.min(fileChunks.length, anchorIndex + after + 1);
   return { anchor, chunks: fileChunks.slice(start, end) };

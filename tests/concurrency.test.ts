@@ -32,6 +32,26 @@ describe("concurrency", () => {
     expect(resolveWorkerConcurrency()).toBeGreaterThanOrEqual(1);
   });
 
+  test("honors validated concurrency overrides and falls back for invalid values", () => {
+    const previous = [process.env.MIRU_CONCURRENCY, process.env.MIRU_WORKERS];
+    try {
+      process.env.MIRU_CONCURRENCY = "3.8";
+      process.env.MIRU_WORKERS = "7";
+      expect(resolveWorkerConcurrency()).toBe(3);
+      process.env.MIRU_CONCURRENCY = "invalid";
+      expect(resolveWorkerConcurrency()).toBeGreaterThanOrEqual(1);
+      delete process.env.MIRU_CONCURRENCY;
+      expect(resolveWorkerConcurrency()).toBe(7);
+      process.env.MIRU_WORKERS = "0";
+      expect(resolveWorkerConcurrency()).toBeGreaterThanOrEqual(1);
+    } finally {
+      if (previous[0] === undefined) delete process.env.MIRU_CONCURRENCY;
+      else process.env.MIRU_CONCURRENCY = previous[0];
+      if (previous[1] === undefined) delete process.env.MIRU_WORKERS;
+      else process.env.MIRU_WORKERS = previous[1];
+    }
+  });
+
   for (const [name, run] of Object.entries(variants)) {
     describe(`mapPool A/B (${name})`, () => {
       test("preserves order", async () => {

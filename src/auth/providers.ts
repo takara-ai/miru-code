@@ -20,10 +20,19 @@ export interface AuthenticateOptions {
   interactive?: boolean;
 }
 
-async function promptApiKey(): Promise<string> {
+export interface AuthProviderDependencies {
+  promptHidden?: typeof promptHidden;
+  validateApiKey?: typeof validateEmbeddingApiKey;
+  promptConfirm?: typeof promptConfirm;
+  startDeviceAuthorization?: typeof startDeviceAuthorization;
+  pollDeviceAuthorization?: typeof pollDeviceAuthorization;
+  openBrowser?: (url: string) => boolean;
+}
+
+async function promptApiKey(promptHiddenImpl: typeof promptHidden = promptHidden): Promise<string> {
   let key = "";
   while (!key) {
-    key = await promptHidden("Takara API key (input hidden): ", process.stderr);
+    key = await promptHiddenImpl("Takara API key (input hidden): ", process.stderr);
     if (!key) {
       warn("API key cannot be empty.");
     }
@@ -43,12 +52,13 @@ async function resolveAuthMode(options: AuthenticateOptions): Promise<AuthMode> 
 
 async function authenticateWithApiKey(
   options: AuthenticateOptions,
+  dependencies: AuthProviderDependencies,
 ): Promise<AuthenticatedCredentials> {
-  const apiKey = options.apiKey ?? (await promptApiKey());
+  const apiKey = options.apiKey ?? (await promptApiKey(dependencies.promptHidden));
   if (!options.skipValidation) {
     const spinner = new Spinner("Validating API key");
     spinner.start();
-    const result = await validateEmbeddingApiKey({ apiKey });
+    const result = await (dependencies.validateApiKey ?? validateEmbeddingApiKey)({ apiKey });
     if (!result.valid) {
       spinner.stop();
       throw new Error(result.message);
@@ -60,19 +70,20 @@ async function authenticateWithApiKey(
 
 async function authenticateWithDeviceCode(
   options: AuthenticateOptions,
+  dependencies: AuthProviderDependencies,
 ): Promise<AuthenticatedCredentials> {
   writeStderr("");
   const spinner = new Spinner("Authenticating");
   spinner.start();
   try {
-    const start = await startDeviceAuthorization();
+    const start = await (dependencies.startDeviceAuthorization ?? startDeviceAuthorization)();
     const verificationUrl = start.verificationUriComplete ?? start.verificationUri;
 
     const shouldOpenBrowser =
       options.interactive &&
       (process.env.MIRU_OPEN_BROWSER === undefined || process.env.MIRU_OPEN_BROWSER === "1");
     if (shouldOpenBrowser) {
-      openBrowserForDeviceLogin(verificationUrl);
+      (dependencies.openBrowser ?? openBrowserForDeviceLogin)(verificationUrl);
     }
 
     let visit = dim(`  Visit ${verificationUrl}`);
@@ -81,7 +92,7 @@ async function authenticateWithDeviceCode(
     }
     spinner.follow(visit);
 
-    const tokens = await pollDeviceAuthorization(start);
+    const tokens = await (dependencies.pollDeviceAuthorization ?? pollDeviceAuthorization)(start);
     spinner.succeed("");
     return {
       kind: "device_code",
@@ -95,9 +106,12 @@ async function authenticateWithDeviceCode(
     spinner.stop();
     if (options.allowManualFallback && options.interactive) {
       warn(err instanceof Error ? err.message : String(err));
-      const fallback = await promptConfirm("Enter an API key instead?", true);
+      const fallback = await (dependencies.promptConfirm ?? promptConfirm)(
+        "Enter an API key instead?",
+        true,
+      );
       if (fallback) {
-        return authenticateWithApiKey(options);
+        return authenticateWithApiKey(options, dependencies);
       }
     }
     throw err;
@@ -106,10 +120,11 @@ async function authenticateWithDeviceCode(
 
 export async function authenticateWithProvider(
   options: AuthenticateOptions,
+  dependencies: AuthProviderDependencies = {},
 ): Promise<AuthenticatedCredentials> {
   const mode = await resolveAuthMode(options);
   if (mode === "device_code") {
-    return authenticateWithDeviceCode(options);
+    return authenticateWithDeviceCode(options, dependencies);
   }
-  return authenticateWithApiKey(options);
+  return authenticateWithApiKey(options, dependencies);
 }

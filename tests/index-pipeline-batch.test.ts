@@ -117,6 +117,116 @@ describe("BM25Index.addDocument", () => {
 });
 
 describe("createIndexFromPath window batching (no credentials)", () => {
+  test("indexes package entry metadata and skips empty or oversized files", async () => {
+    const root = await mkdtemp(join(tmpdir(), "miru-pipeline-entry-"));
+    const prevSearchV2 = process.env.MIRU_SEARCH_V2;
+    try {
+      delete process.env.MIRU_SEARCH_V2;
+      await writeFile(
+        join(root, "package.json"),
+        JSON.stringify({
+          bin: { miru: "./src/cli.ts" },
+          main: "./src/index.ts",
+          types: "./types.d.ts",
+        }),
+      );
+      await writeFile(join(root, "empty.ts"), "\n");
+      await writeFile(join(root, "huge.ts"), `export const value = "${"x".repeat(1_000_001)}";`);
+      await writeFile(join(root, "valid.ts"), "export function searchableEntry() { return 1; }\n");
+
+      const { chunks } = await createIndexFromPath(
+        root,
+        recordingEmbeddings(),
+        ["code", "config"],
+        root,
+      );
+      const entry = chunks.find((chunk) => chunk.content.startsWith("[package entry]"));
+      expect(entry?.content).toContain("bin miru: ./src/cli.ts");
+      expect(entry?.content).toContain("main: ./src/index.ts");
+      expect(entry?.content).toContain("types: ./types.d.ts");
+      expect(chunks.some((chunk) => chunk.file_path === "empty.ts")).toBe(false);
+      expect(chunks.some((chunk) => chunk.file_path === "huge.ts")).toBe(false);
+      expect(chunks.some((chunk) => chunk.file_path === "valid.ts")).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      if (prevSearchV2 === undefined) delete process.env.MIRU_SEARCH_V2;
+      else process.env.MIRU_SEARCH_V2 = prevSearchV2;
+    }
+  });
+
+  test("reports backend stats and applies embed backpressure", async () => {
+    const root = await mkdtemp(join(tmpdir(), "miru-pipeline-pressure-"));
+    const oldProfile = process.env.MIRU_PROFILE;
+    const oldBatch = process.env.MIRU_PIPELINE_EMBED_BATCH;
+    const oldInflight = process.env.MIRU_PIPELINE_EMBED_INFLIGHT;
+    try {
+      process.env.MIRU_PROFILE = "1";
+      process.env.MIRU_PIPELINE_EMBED_BATCH = "1";
+      process.env.MIRU_PIPELINE_EMBED_INFLIGHT = "1";
+      await writeManyShortTsFiles(root, 35);
+      let reset = 0;
+      let statsRead = 0;
+      const lines: string[] = [];
+      const originalError = console.error;
+      console.error = (value: unknown) => lines.push(String(value));
+      const backend = recordingEmbeddings() as ReturnType<typeof recordingEmbeddings> & {
+        resetStats: () => void;
+        getStats: () => { requests: number };
+      };
+      backend.resetStats = () => {
+        reset++;
+      };
+      backend.getStats = () => {
+        statsRead++;
+        return { requests: statsRead };
+      };
+      const originalEmbedInputs = backend.embedInputs;
+      if (!originalEmbedInputs) {
+        throw new Error("recording embeddings must support embedInputs");
+      }
+      backend.embedInputs = async (texts) => {
+        await Bun.sleep(2);
+        return originalEmbedInputs(texts);
+      };
+      try {
+        const { chunks } = await createIndexFromPath(root, backend, ["code"], root);
+        expect(chunks.length).toBeGreaterThan(30);
+      } finally {
+        console.error = originalError;
+      }
+      expect(reset).toBe(1);
+      expect(statsRead).toBe(1);
+      expect(lines.join("\n")).toContain('"embedding_transport":{"requests":1}');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      if (oldProfile === undefined) delete process.env.MIRU_PROFILE;
+      else process.env.MIRU_PROFILE = oldProfile;
+      if (oldBatch === undefined) delete process.env.MIRU_PIPELINE_EMBED_BATCH;
+      else process.env.MIRU_PIPELINE_EMBED_BATCH = oldBatch;
+      if (oldInflight === undefined) delete process.env.MIRU_PIPELINE_EMBED_INFLIGHT;
+      else process.env.MIRU_PIPELINE_EMBED_INFLIGHT = oldInflight;
+    }
+  });
+
+  test("rejects embedding responses with a mismatched vector count", async () => {
+    const root = await mkdtemp(join(tmpdir(), "miru-pipeline-mismatch-"));
+    try {
+      await writeFile(join(root, "one.ts"), "export const one = 1;\n");
+      const backend = recordingEmbeddings();
+      backend.embedInputs = async () => [];
+      let caught: unknown;
+      try {
+        await createIndexFromPath(root, backend, ["code"], root);
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toBeInstanceOf(Error);
+      expect((caught as Error).message).toBe("Embedding API returned 0 vectors for 1 inputs");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("embedInputs receives full batches except the final remainder", async () => {
     const root = await mkdtemp(join(tmpdir(), "miru-pipeline-batch-"));
     const prevBatch = process.env.MIRU_EMBEDDING_BATCH_SIZE;

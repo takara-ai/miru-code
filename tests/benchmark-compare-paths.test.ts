@@ -60,6 +60,75 @@ async function buildIndex(root: string): Promise<MiruIndex> {
 }
 
 describe("benchmarkSearchComparison path identity", () => {
+  test("handles empty rankings and failed Grep file reads with bare match lines", async () => {
+    const root = await buildTempRepo();
+    try {
+      const index = await buildIndex(root);
+      index.search = async () => [];
+      const empty = await benchmarkSearchComparison({
+        query: "authentication",
+        repoPath: root,
+        index,
+        topK: 3,
+        dependencies: {
+          grepSearch: async () => ({
+            files: [],
+            hits: [],
+            tokens: 0,
+            pattern: "authentication",
+            keywords: ["authentication"],
+          }),
+        },
+      });
+      expect(empty.benchmark.accuracy.top_k_overlap_pct).toBe(100);
+      expect(empty.benchmark.grep_read.read_full_tokens).toBe(0);
+
+      const missing = await benchmarkSearchComparison({
+        query: "authentication",
+        repoPath: root,
+        index,
+        topK: 3,
+        dependencies: {
+          grepSearch: async () => ({
+            files: ["missing.ts"],
+            hits: [
+              { file: "missing.ts", matchCount: 1, output: "/tmp/missing.ts:2-authentication" },
+            ],
+            tokens: 1,
+            pattern: "authentication",
+            keywords: ["authentication"],
+          }),
+        },
+      });
+      expect(missing.benchmark.grep_read.read_full_tokens).toBe(0);
+      expect(missing.benchmark.grep_read.read_window_tokens).toBe(0);
+      expect(missing.benchmark.accuracy.grep_only).toEqual(["missing.ts"]);
+
+      index.search = async () => [
+        { chunk: { ...index.chunks[0]!, file_path: "unindexed.ts" }, score: 1 },
+      ];
+      const unmatchedLine = await benchmarkSearchComparison({
+        query: "authentication",
+        repoPath: root,
+        index,
+        topK: 3,
+        dependencies: {
+          grepSearch: async () => ({
+            files: ["missing.ts"],
+            hits: [{ file: "missing.ts", matchCount: 1, output: "no line number here" }],
+            tokens: 1,
+            pattern: "authentication",
+            keywords: ["authentication"],
+          }),
+        },
+      });
+      expect(unmatchedLine.benchmark.miru.workflow_tokens).toBeGreaterThan(0);
+      expect(unmatchedLine.benchmark.grep_read.read_window_tokens).toBe(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("canonicalizes absolute Miru paths against relative Grep for accuracy", async () => {
     const root = await buildTempRepo();
     try {

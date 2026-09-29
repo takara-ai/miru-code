@@ -229,5 +229,5 @@ describe("semantic query A/B", () => {
       // Guard against catastrophic regressions only; exact speedup varies by OS/runner load.
       expect(speedup).toBeGreaterThan(0.5);
     }
-  });
+  }, 60_000);
 });

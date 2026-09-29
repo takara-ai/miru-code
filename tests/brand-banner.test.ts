@@ -37,6 +37,8 @@ describe("brand-banner", () => {
 
   test("printBrandBanner compact mode shows brand subtitle", () => {
     const lines: string[] = [];
+    const noColor = process.env.NO_COLOR;
+    delete process.env.NO_COLOR;
     const stream = {
       isTTY: true,
       columns: 40,
@@ -46,6 +48,8 @@ describe("brand-banner", () => {
     } as unknown as NodeJS.WriteStream;
     printBrandBanner(stream, true);
     expect(lines.join("")).toContain("hybrid code search for agents by takara.ai");
+    if (noColor === undefined) delete process.env.NO_COLOR;
+    else process.env.NO_COLOR = noColor;
   });
 
   test("isQuietBrand reads MIRU_QUIET", () => {
@@ -56,6 +60,30 @@ describe("brand-banner", () => {
       delete process.env.MIRU_QUIET;
     } else {
       process.env.MIRU_QUIET = previous;
+    }
+  });
+
+  test("printBrandBanner renders the framed banner for a wide stream", () => {
+    const lines: string[] = [];
+    const previous = process.env.MIRU_QUIET;
+    const noColor = process.env.NO_COLOR;
+    delete process.env.MIRU_QUIET;
+    delete process.env.NO_COLOR;
+    const stream = {
+      isTTY: true,
+      columns: 100,
+      write(chunk: string) {
+        lines.push(chunk);
+      },
+    } as unknown as NodeJS.WriteStream;
+    try {
+      printBrandBanner(stream);
+      expect(lines.join("")).toContain("Welcome to Miru");
+    } finally {
+      if (previous === undefined) delete process.env.MIRU_QUIET;
+      else process.env.MIRU_QUIET = previous;
+      if (noColor === undefined) delete process.env.NO_COLOR;
+      else process.env.NO_COLOR = noColor;
     }
   });
 });

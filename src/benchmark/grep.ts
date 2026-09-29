@@ -147,7 +147,7 @@ function normalizeRepoFile(repoRoot: string, filePath: string): string {
   return rel;
 }
 
-function parsePathLinePrefix(line: string): { path: string; line: number } | null {
+export function parsePathLinePrefix(line: string): { path: string; line: number } | null {
   for (let i = 0; i < line.length; i++) {
     const delim = line[i];
     if (delim !== ":" && delim !== "-") {
@@ -161,14 +161,12 @@ function parsePathLinePrefix(line: string): { path: string; line: number } | nul
       continue;
     }
     const trailing = line[j];
-    if (trailing !== ":" && trailing !== "-") {
-      continue;
+    if (trailing === ":" || trailing === "-") {
+      const lineNo = Number(line.slice(i + 1, j));
+      if (Number.isFinite(lineNo)) {
+        return { path: line.slice(0, i), line: lineNo };
+      }
     }
-    const lineNo = Number(line.slice(i + 1, j));
-    if (!Number.isFinite(lineNo)) {
-      continue;
-    }
-    return { path: line.slice(0, i), line: lineNo };
   }
   return null;
 }
@@ -177,6 +175,10 @@ export async function grepSearch(
   repoRoot: string,
   query: string,
   topK: number,
+  options: {
+    tool?: BenchmarkSearchTool | null;
+    spawn?: typeof spawnBenchmarkSearch;
+  } = {},
 ): Promise<GrepSearchResult> {
   const keywords = queryKeywords(query);
   const pattern = buildGrepPattern(keywords);
@@ -184,17 +186,18 @@ export async function grepSearch(
     return { files: [], hits: [], tokens: 0, pattern: null, keywords };
   }
 
-  const tool = selectBenchmarkSearchTool();
+  const tool = Object.hasOwn(options, "tool") ? options.tool : selectBenchmarkSearchTool();
   if (!tool) {
     throw new Error("No search tool found in PATH (tried rg, grep, and findstr on Windows)");
   }
+  const spawn = options.spawn ?? spawnBenchmarkSearch;
 
   const ranked =
     tool === "rg"
-      ? await rgRankedMatches(repoRoot, pattern, topK)
+      ? await rgRankedMatches(repoRoot, pattern, topK, spawn)
       : tool === "grep"
-        ? await grepRankedMatches(repoRoot, pattern, topK)
-        : await findstrRankedMatches(repoRoot, keywords, topK);
+        ? await grepRankedMatches(repoRoot, pattern, topK, spawn)
+        : await findstrRankedMatches(repoRoot, keywords, topK, spawn);
 
   const hits: GrepFileHit[] = [];
   let tokens = 0;
@@ -202,10 +205,10 @@ export async function grepSearch(
   for (const row of ranked) {
     const output =
       tool === "rg"
-        ? await rgFilePreview(row.absPath, pattern)
+        ? await rgFilePreview(row.absPath, pattern, spawn)
         : tool === "grep"
-          ? await grepFilePreview(row.absPath, pattern)
-          : await findstrFilePreview(row.absPath, keywords);
+          ? await grepFilePreview(row.absPath, pattern, spawn)
+          : await findstrFilePreview(row.absPath, keywords, spawn);
     hits.push({ file: row.file, matchCount: row.matchCount, output });
     tokens += countTokens(output);
   }
@@ -219,8 +222,13 @@ export async function grepSearch(
   };
 }
 
-async function rgRankedMatches(repoRoot: string, pattern: string, topK: number) {
-  const countText = await spawnBenchmarkSearch([
+async function rgRankedMatches(
+  repoRoot: string,
+  pattern: string,
+  topK: number,
+  spawn: typeof spawnBenchmarkSearch,
+) {
+  const countText = await spawn([
     "rg",
     "-i",
     "--count-matches",
@@ -231,8 +239,13 @@ async function rgRankedMatches(repoRoot: string, pattern: string, topK: number) 
   return parseCountMatches(repoRoot, countText, topK);
 }
 
-async function grepRankedMatches(repoRoot: string, pattern: string, topK: number) {
-  const countText = await spawnBenchmarkSearch([
+async function grepRankedMatches(
+  repoRoot: string,
+  pattern: string,
+  topK: number,
+  spawn: typeof spawnBenchmarkSearch,
+) {
+  const countText = await spawn([
     "grep",
     "-R",
     "-I",
@@ -285,13 +298,15 @@ function splitSearchToolLine(line: string): { path: string; rest: string } | nul
   return { path: line.slice(0, colon), rest: line.slice(colon + 1) };
 }
 
-async function findstrRankedMatches(repoRoot: string, keywords: string[], topK: number) {
+async function findstrRankedMatches(
+  repoRoot: string,
+  keywords: string[],
+  topK: number,
+  spawn: typeof spawnBenchmarkSearch,
+) {
   const counts = new Map<string, number>();
   for (const keyword of keywords) {
-    const text = await spawnBenchmarkSearch(
-      ["findstr", "/S", "/N", "/I", "/P", `/C:${keyword}`, "*"],
-      repoRoot,
-    );
+    const text = await spawn(["findstr", "/S", "/N", "/I", "/P", `/C:${keyword}`, "*"], repoRoot);
     for (const line of text.split("\n")) {
       const parsed = parsePathLinePrefix(line);
       if (!parsed?.path) {
@@ -346,8 +361,19 @@ function parseCountMatches(repoRoot: string, countText: string, topK: number) {
     .slice(0, topK);
 }
 
-async function rgFilePreview(absPath: string, pattern: string): Promise<string> {
-  return spawnBenchmarkSearch([
+export const grepTestUtils = {
+  buildGrepPattern,
+  normalizeRepoFile,
+  splitSearchToolLine,
+  parseCountMatches,
+};
+
+async function rgFilePreview(
+  absPath: string,
+  pattern: string,
+  spawn: typeof spawnBenchmarkSearch,
+): Promise<string> {
+  return spawn([
     "rg",
     "-i",
     "-n",
@@ -360,8 +386,12 @@ async function rgFilePreview(absPath: string, pattern: string): Promise<string> 
   ]);
 }
 
-async function grepFilePreview(absPath: string, pattern: string): Promise<string> {
-  return spawnBenchmarkSearch([
+async function grepFilePreview(
+  absPath: string,
+  pattern: string,
+  spawn: typeof spawnBenchmarkSearch,
+): Promise<string> {
+  return spawn([
     "grep",
     "-I",
     "-i",
@@ -376,13 +406,10 @@ async function grepFilePreview(absPath: string, pattern: string): Promise<string
   ]);
 }
 
-async function findstrFilePreview(absPath: string, keywords: string[]): Promise<string> {
-  return spawnBenchmarkSearch([
-    "findstr",
-    "/N",
-    "/I",
-    "/P",
-    ...keywords.map((k) => `/C:${k}`),
-    absPath,
-  ]);
+async function findstrFilePreview(
+  absPath: string,
+  keywords: string[],
+  spawn: typeof spawnBenchmarkSearch,
+): Promise<string> {
+  return spawn(["findstr", "/N", "/I", "/P", ...keywords.map((k) => `/C:${k}`), absPath]);
 }

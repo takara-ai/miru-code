@@ -190,9 +190,11 @@ async function setJsonBenchmark(
 }
 
 /** Inspect installed Miru MCP configs for `--benchmark`. */
-export async function getBenchmarkModeStatus(): Promise<BenchmarkModeTargetResult[]> {
+export async function getBenchmarkModeStatus(
+  targets: readonly AgentTarget[] = AGENT_TARGETS,
+): Promise<BenchmarkModeTargetResult[]> {
   const results: BenchmarkModeTargetResult[] = [];
-  for (const agent of AGENT_TARGETS) {
+  for (const agent of targets) {
     const mcp = agent.mcp;
     if (!mcp) {
       continue;
@@ -219,9 +221,12 @@ export async function getBenchmarkModeStatus(): Promise<BenchmarkModeTargetResul
 }
 
 /** Enable or disable `--benchmark` on every installed Miru MCP entry. */
-export async function setBenchmarkMode(enabled: boolean): Promise<BenchmarkModeTargetResult[]> {
+export async function setBenchmarkMode(
+  enabled: boolean,
+  targets: readonly AgentTarget[] = AGENT_TARGETS,
+): Promise<BenchmarkModeTargetResult[]> {
   const results: BenchmarkModeTargetResult[] = [];
-  for (const agent of AGENT_TARGETS) {
+  for (const agent of targets) {
     const mcp = agent.mcp;
     if (!mcp) {
       continue;

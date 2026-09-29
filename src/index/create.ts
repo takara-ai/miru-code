@@ -136,9 +136,6 @@ export async function createIndexFromPath(
       }
 
       const take = Math.min(embedBatchSize, pendingWindows.length);
-      if (!force && take < embedBatchSize) {
-        break;
-      }
 
       const batch = pendingWindows.splice(0, take);
       emittedApiBatches++;
@@ -158,9 +155,10 @@ export async function createIndexFromPath(
       })();
       embedPromises.push(promise);
       embedInFlight.add(promise);
-      promise.finally(() => {
-        embedInFlight.delete(promise);
-      });
+      promise.then(
+        () => embedInFlight.delete(promise),
+        () => embedInFlight.delete(promise),
+      );
     }
   };
 
@@ -209,9 +207,7 @@ export async function createIndexFromPath(
   await maybeScheduleEmbed(true);
   await Promise.all(embedPromises);
   // Finish any BM25 docs not yet processed during idle gaps.
-  while (bm25Cursor < emittedChunks.length) {
-    progressBm25(50);
-  }
+  progressBm25(Number.POSITIVE_INFINITY);
   const embedsDoneAt = performance.now();
 
   const chunks = emittedChunks;

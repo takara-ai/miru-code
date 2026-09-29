@@ -209,12 +209,11 @@ function boostSymbolDefinitions(
     const stem = basename(chunk.file_path)
       .replace(/\.[^.]+$/, "")
       .toLowerCase();
-    if (![...names].some((n) => stemMatches(stem, n.toLowerCase()))) {
-      continue;
-    }
-    const tier = definitionTier(chunk, names, boostUnit);
-    if (tier) {
-      boosted.set(key, tier);
+    if ([...names].some((n) => stemMatches(stem, n.toLowerCase()))) {
+      const tier = definitionTier(chunk, names, boostUnit);
+      if (tier) {
+        boosted.set(key, tier);
+      }
     }
   }
 }

@@ -234,8 +234,14 @@ export function cursorHookResponse(reason: string): string {
   });
 }
 
-export async function runSearchGuardFromStdin(): Promise<number> {
-  const text = await Bun.stdin.text();
+export async function runSearchGuardFromStdin(
+  io: {
+    readText?: () => Promise<string>;
+    stdout?: Pick<NodeJS.WriteStream, "write">;
+    stderr?: Pick<NodeJS.WriteStream, "write">;
+  } = {},
+): Promise<number> {
+  const text = await (io.readText ?? (() => Bun.stdin.text()))();
   if (!text.trim()) {
     return 0;
   }
@@ -254,19 +260,21 @@ export async function runSearchGuardFromStdin(): Promise<number> {
   }
 
   const format = hookResponseFormat(payload);
+  const stdout = io.stdout ?? process.stdout;
+  const stderr = io.stderr ?? process.stderr;
   if (format === "claude") {
-    process.stdout.write(claudeHookResponse(decision.reason));
+    stdout.write(claudeHookResponse(decision.reason));
     return 0;
   }
   if (format === "gemini") {
-    process.stdout.write(geminiHookResponse(decision.reason));
+    stdout.write(geminiHookResponse(decision.reason));
     return 0;
   }
   if (format === "stderr") {
-    process.stderr.write(decision.reason);
+    stderr.write(decision.reason);
     return 2;
   }
 
-  process.stdout.write(cursorHookResponse(decision.reason));
+  stdout.write(cursorHookResponse(decision.reason));
   return 2;
 }

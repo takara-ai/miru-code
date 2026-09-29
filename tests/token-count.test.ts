@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { copyFileSync, mkdtempSync, readFileSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   countTokens,
+  estimateResultTokens,
   resetTokenizerCache,
   tokenCountMethod,
   tokenizerJsonPath,
@@ -70,6 +71,41 @@ describe("token-count", () => {
     }
   });
 
+  test("rejects unsupported tokenizer models and totals result tokens", () => {
+    const dir = mkdtempSync(join(tmpdir(), "miru-invalid-tokenizer-"));
+    const path = join(dir, "tokenizer.json");
+    try {
+      writeFileSync(path, JSON.stringify({ model: { type: "BPE" } }));
+      expect(() => loadTokenizerFromFile(path)).toThrow("Unsupported tokenizer model type: BPE");
+      expect(
+        estimateResultTokens([
+          {
+            chunk: {
+              content: "Hello world",
+              file_path: "a",
+              start_line: 1,
+              end_line: 1,
+              language: "text",
+            },
+            score: 1,
+          },
+          {
+            chunk: {
+              content: "Hello",
+              file_path: "b",
+              start_line: 1,
+              end_line: 1,
+              language: "text",
+            },
+            score: 0.5,
+          },
+        ]),
+      ).toBe(3);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("createBertWordPieceTokenizer accepts parsed json", () => {
     const tokenizer = createBertWordPieceTokenizer(
       JSON.parse(readFileSync(BUNDLED, "utf-8")) as Parameters<
@@ -78,5 +114,18 @@ describe("token-count", () => {
     );
     expect(tokenizer.encode("Hello world")).toEqual(["hello", "world"]);
     expect(tokenizer.encode("#!/usr/bin/env bun\nimport { x }")).toContain("import");
+  });
+
+  test("WordPiece handles whitespace, Chinese characters, long tokens, and unknown pieces", () => {
+    const tokenizer = createBertWordPieceTokenizer({
+      model: {
+        vocab: { "[UNK]": 0, hello: 1, 世: 2 },
+        max_input_chars_per_word: 3,
+      },
+    });
+    expect(tokenizer.encode("  \n\t")).toEqual([]);
+    expect(tokenizer.encode("世")).toEqual(["世"]);
+    expect(tokenizer.encode("hello")).toEqual(["[UNK]"]);
+    expect(tokenizer.encode("xyz")).toEqual(["[UNK]"]);
   });
 });

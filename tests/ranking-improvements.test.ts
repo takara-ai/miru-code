@@ -152,6 +152,79 @@ describe("location ranking boosts", () => {
     expect(scores.get(chunkKey(cliUiChunk))).toBeGreaterThan(1);
   });
 
+  test("location boosts match normalized stems and skip unrelated entry points", () => {
+    const cli = chunk("function main() {}", "src/cli-ui.ts");
+    const unrelated = chunk("function main() {}", "src/other.ts");
+    const byKey = new Map([
+      [chunkKey(cli), cli],
+      [chunkKey(unrelated), unrelated],
+    ]);
+    const scores = new Map<string, number>();
+    boostLocationSignals(scores, "where is cli_ui defined", 1, [cli, unrelated], byKey);
+    expect(scores.has(chunkKey(cli))).toBe(true);
+    expect(scores.has(chunkKey(unrelated))).toBe(false);
+
+    const noLocation = new Map<string, number>();
+    boostLocationSignals(noLocation, "search ranking", 1, [cli], byKey);
+    expect(noLocation.size).toBe(0);
+
+    const cliMain = chunk("function main() {}", "src/cli.ts");
+    const hyphenScores = new Map<string, number>();
+    const hyphenChunks = new Map<string, Chunk>([[chunkKey(cliMain), cliMain]]);
+    boostLocationSignals(hyphenScores, "where is cli-ui defined", 1, [cliMain], hyphenChunks);
+    expect(hyphenScores.has(chunkKey(cliMain))).toBe(false);
+    const exactScores = new Map<string, number>();
+    boostLocationSignals(exactScores, "where is cli defined", 1, [cliMain], hyphenChunks);
+    expect(exactScores.has(chunkKey(cliMain))).toBe(true);
+  });
+
+  test("exact stem boosts skip missing chunks, generic words, and incidental implementation names", () => {
+    const handler = chunk("handle requests", "src/handler.ts");
+    const utility = chunk("specific logic", "src/foo.ts");
+    const scores = new Map([
+      [chunkKey(handler), 1],
+      [chunkKey(utility), 1],
+      ["missing", 1],
+    ]);
+    const byKey = new Map([
+      [chunkKey(handler), handler],
+      [chunkKey(utility), utility],
+    ]);
+    boostExactStemMatches(scores, "handler foo", 1, byKey);
+    expect(scores.get(chunkKey(handler))).toBe(1);
+    expect(scores.get(chunkKey(utility))).toBe(1);
+
+    const noKeywords = new Map([[chunkKey(handler), 1]]);
+    boostExactStemMatches(noKeywords, "???", 1, byKey);
+    expect(noKeywords.get(chunkKey(handler))).toBe(1);
+
+    const searchImplementation = chunk("implementation details", "src/search.ts");
+    const commandImplementation = chunk("command implementation", "src/command.ts");
+    const implementationScores = new Map([
+      [chunkKey(searchImplementation), 1],
+      [chunkKey(commandImplementation), 1],
+    ]);
+    boostExactStemMatches(
+      implementationScores,
+      "command search",
+      1,
+      new Map([
+        [chunkKey(searchImplementation), searchImplementation],
+        [chunkKey(commandImplementation), commandImplementation],
+      ]),
+    );
+    expect(implementationScores.get(chunkKey(searchImplementation))).toBe(1);
+
+    const installer = chunk("install", "src/installer/setup.ts");
+    const integrationScores = new Map([[chunkKey(installer), 2]]);
+    penalizeInstallerForLocation(
+      integrationScores,
+      "where do we setup hooks",
+      new Map([[chunkKey(installer), installer]]),
+    );
+    expect(integrationScores.get(chunkKey(installer))).toBe(2);
+  });
+
   test("penalizeInstallerForLocation demotes installer on location queries", () => {
     const installChunk = chunk(
       "export async function mergeClaudeHooks",

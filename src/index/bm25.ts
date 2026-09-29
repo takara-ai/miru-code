@@ -49,6 +49,8 @@ export class BM25Index {
   private numDocs = 0;
   private totalLen = 0;
 
+  constructor() {}
+
   /** Append one tokenized document. Safe to call incrementally while indexing. */
   addDocument(doc: string[]): number {
     const docIndex = this.numDocs;

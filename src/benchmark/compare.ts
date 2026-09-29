@@ -49,9 +49,6 @@ function firstGrepMatchLine(hit: GrepFileHit | undefined): number | null {
 }
 
 function expandLineSpan(chunks: { start_line: number; end_line: number }[]): number {
-  if (chunks.length === 0) {
-    return 0;
-  }
   const start = Math.min(...chunks.map((c) => c.start_line));
   const end = Math.max(...chunks.map((c) => c.end_line));
   return end - start + 1;
@@ -74,9 +71,6 @@ async function readLineWindowTokens(
   try {
     const text = await readFile(absPath, "utf-8");
     const lines = text.split("\n");
-    if (lines.length === 0) {
-      return 0;
-    }
     const half = Math.max(1, Math.floor(lineSpan / 2));
     const start = Math.max(1, centerLine - half);
     const end = Math.min(lines.length, centerLine + half);
@@ -127,9 +121,6 @@ function topKOverlapPct(miruFiles: string[], grepFiles: string[]): number {
     return 100;
   }
   const union = new Set([...miruFiles, ...grepFiles]);
-  if (union.size === 0) {
-    return 0;
-  }
   const overlap = miruFiles.filter((file) => grepFiles.includes(file)).length;
   return Math.round((overlap / union.size) * 100);
 }
@@ -169,9 +160,11 @@ export async function benchmarkSearchComparison(options: {
   /** Keep only the best hit per file (default true). Matches MCP `dedupe_by_file`. */
   dedupeByFile?: boolean;
   relevant?: string[];
+  dependencies?: { grepSearch?: typeof grepSearch };
 }): Promise<{ benchmark: SearchBenchmarkBlock; results: SearchResult[] }> {
   const { query, repoPath, index, topK, relevant } = options;
   const dedupeByFile = options.dedupeByFile !== false;
+  const searchGrep = options.dependencies?.grepSearch ?? grepSearch;
   const parallelStart = performance.now();
 
   const miruPromise = (async () => {
@@ -194,7 +187,7 @@ export async function benchmarkSearchComparison(options: {
 
   const grepSearchPromise = (async () => {
     const started = performance.now();
-    const grep = await grepSearch(repoPath, query, topK);
+    const grep = await searchGrep(repoPath, query, topK);
     return { grep, latencyMs: performance.now() - started };
   })();
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readdir } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { toAgentBenchmarkSummary } from "../src/benchmark/compare.ts";
@@ -311,6 +311,23 @@ await appendBenchmarkQuery(${JSON.stringify(record)}, { path: ${JSON.stringify(p
     const after = await loadBenchmarkHistory(path);
     expect(after.n).toBe(1);
     expect(await Bun.file(join(dir, bakName)).exists()).toBe(true);
+  });
+
+  test("keeps returning empty history when backup rotation fails", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "miru-bench-rotate-fail-"));
+    const path = join(dir, "benchmark-history.json");
+    const backupPath = `${path}.bak.12345`;
+    await Bun.write(path, "not-json");
+    await mkdir(backupPath);
+    await Bun.write(join(backupPath, "keep"), "existing backup");
+    const originalNow = Date.now;
+    Date.now = () => 12345;
+    try {
+      expect((await loadBenchmarkHistory(path)).n).toBe(0);
+      expect(await Bun.file(path).exists()).toBe(true);
+    } finally {
+      Date.now = originalNow;
+    }
   });
 
   test("unreadable history is rotated aside", async () => {

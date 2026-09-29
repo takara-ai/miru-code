@@ -137,11 +137,9 @@ export async function hybridSearch(options: {
 
   const allKeys = new Set([...normalizedSemantic.keys(), ...normalizedBm25.keys()]);
   const sortedKeys = [...allKeys].sort((a, b) => {
-    const ca = chunksByKey.get(a);
-    const cb = chunksByKey.get(b);
-    if (!ca || !cb) {
-      return 0;
-    }
+    // Every score key was produced from a chunk in this query.
+    const ca = chunksByKey.get(a) as Chunk;
+    const cb = chunksByKey.get(b) as Chunk;
     return ca.start_line - cb.start_line;
   });
 
@@ -164,13 +162,7 @@ export async function hybridSearch(options: {
   return [...combinedScores.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, topK)
-    .flatMap(([key, score]) => {
-      const chunk = chunksByKey.get(key);
-      if (!chunk) {
-        return [];
-      }
-      return [{ chunk, score }];
-    });
+    .map(([key, score]) => ({ chunk: chunksByKey.get(key) as Chunk, score }));
 }
 
 export async function searchSemanticOnly(options: {

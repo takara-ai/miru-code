@@ -192,16 +192,14 @@ function completeHtmlTag(
   for (let i = Math.max(0, start - MAX_DECLARATION_LOOKBACK); i <= anchor; i++) {
     const line = lines[i] ?? "";
     for (const match of line.matchAll(HTML_TAG_RE)) {
-      const name = match[1]?.toLowerCase();
-      if (!name) {
-        continue;
-      }
+      const name = (match[1] as string).toLowerCase();
       if (match[0].startsWith("</")) {
-        for (let j = openTags.length - 1; j >= 0; j--) {
-          if (openTags[j]?.name === name) {
-            openTags.splice(j, 1);
-            break;
-          }
+        const matchingIndex = openTags.reduce(
+          (last, tag, index) => (tag.name === name ? index : last),
+          -1,
+        );
+        if (matchingIndex >= 0) {
+          openTags.splice(matchingIndex, 1);
         }
       } else if (!match[0].endsWith("/>") && !HTML_VOID_TAGS.has(name)) {
         openTags.push({ name, start: i });
@@ -374,10 +372,6 @@ function compactSupportingSnippet(snippet: SnippetResult, maxLines: number): Sni
 /** Pick the 0-based line index inside `content` that best matches the query. */
 export function anchorLineOffset(content: string, query: string): number {
   const lines = content.split("\n");
-  if (lines.length === 0) {
-    return 0;
-  }
-
   const terms = queryMatchTerms(query);
   let bestIndex = Math.floor(lines.length / 2);
   let bestScore = -1;
@@ -401,18 +395,6 @@ export function trimChunkToSnippet(
   anchorLine?: number,
 ): SnippetResult {
   const lines = chunk.content.split("\n");
-  if (lines.length === 0) {
-    return {
-      chunk,
-      meta: {
-        truncated: false,
-        anchor_line: chunk.start_line,
-        full_start_line: chunk.start_line,
-        full_end_line: chunk.end_line,
-      },
-    };
-  }
-
   const queryAnchorOffset = anchorLineOffset(chunk.content, query);
   const anchorOffset =
     anchorLine == null

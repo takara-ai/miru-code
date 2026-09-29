@@ -89,6 +89,15 @@ describe("buildChunkSelector", () => {
     expect(optimized).toEqual([0, 1, 2, 3, 4]);
   });
 
+  test("normalizes path separators and matches directory prefixes", () => {
+    const mappings = makeMappings();
+    mappings.fileMapping.set("src\\nested\\a.ts", [5]);
+    expect(buildChunkSelector(mappings, undefined, ["./src/nested/"])).toEqual([5]);
+    expect(buildChunkSelector(mappings, ["missing"], ["src"])).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(buildChunkSelector(mappings, [""], undefined)).toEqual([]);
+    expect(buildChunkSelector(mappings, undefined, [""])).toEqual([]);
+  });
+
   test("A/B agrees on synthetic large mappings", () => {
     const fileMapping = new Map<string, number[]>();
     const languageMapping = new Map<string, number[]>([

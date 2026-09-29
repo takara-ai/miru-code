@@ -70,6 +70,18 @@ test("stdio MCP runtime handles initialize, tools/list, and tools/call", async (
   const callResult = call.result as { content: Array<{ type: string; text: string }> };
   expect(callResult.content[0]?.type).toBe("text");
   expect(callResult.content[0]?.text.length).toBeGreaterThan(0);
+  let logged = "";
+  const originalError = console.error;
+  console.error = (value?: unknown) => {
+    logged = String(value);
+  };
+  try {
+    transport.onerror?.(new Error("transport failed"));
+  } finally {
+    console.error = originalError;
+  }
+  expect(logged).toContain("transport failed");
+  await server.close();
 });
 
 test("benchmark MCP mode exposes read_benchmark and mentions rollup in instructions", async () => {

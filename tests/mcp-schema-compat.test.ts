@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { IndexCache } from "../src/mcp/index-cache.ts";
 import { createMcpServer } from "../src/mcp/server.ts";
 import { SUPPORTED_PROTOCOL_VERSIONS } from "../src/mcp/stdio.ts";
 import { MemoryTransport } from "./helpers/mcp-memory-transport.ts";
+import { loadOfficialMcpSchema } from "./helpers/mcp-schema.ts";
 import {
   assertJsonRpcError,
   assertJsonRpcResultMatches,
@@ -48,6 +49,41 @@ async function runHandshake(options?: {
 }
 
 describe("native MCP server matches official 2025-11-25 schema", () => {
+  test("schema loader downloads missing cache and reports failed HTTP responses", async () => {
+    const root = await mkdtemp(join(tmpdir(), "miru-schema-download-"));
+    const schemaPath = join(root, "cache", "schema.json");
+    const body = JSON.stringify({
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      $defs: {},
+    });
+    try {
+      const loaded = await loadOfficialMcpSchema({
+        schemaPath,
+        fetchImpl: async () => new Response(body, { status: 200 }),
+      });
+      expect(loaded.$defs).toEqual({});
+      expect(await Bun.file(schemaPath).text()).toBe(body);
+      await expect(
+        loadOfficialMcpSchema({
+          schemaPath: join(root, "missing", "schema.json"),
+          fetchImpl: async () => new Response("offline", { status: 503 }),
+        }),
+      ).rejects.toThrow("Failed to download MCP schema (503)");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("schema assertions report invalid tool and JSON-RPC data", () => {
+    expect(() => assertMatchesOfficialMcpSchema("Tool", {})).toThrow(
+      /Value does not match official MCP schema Tool/,
+    );
+    expect(() => assertJsonRpcError({})).toThrow(/JSONRPCErrorResponse/);
+    expect(() => assertJsonRpcResultMatches({}, "InitializeResult")).toThrow(
+      /JSONRPCResultResponse/,
+    );
+  });
+
   test("initialize, ping, tools/list, and tools/call responses validate", async () => {
     const transport = await runHandshake();
 

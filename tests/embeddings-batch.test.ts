@@ -1,9 +1,38 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   dequantizeEmbedding,
   OpenAIEmbeddingBackend,
+  sageMakerModelId,
   sanitizeEmbeddingInput,
 } from "../src/embeddings/openai.ts";
+
+async function withApiEnvironment(run: (credentialsDir: string) => Promise<void>): Promise<void> {
+  const credentialsDir = await mkdtemp(join(tmpdir(), "miru-openai-client-"));
+  const previous = {
+    key: process.env.TAKARA_API_KEY,
+    dir: process.env.MIRU_CREDENTIALS_DIR,
+    base: process.env.MIRU_OPENAI_BASE_URL,
+  };
+  process.env.TAKARA_API_KEY = "test-api-key";
+  process.env.MIRU_CREDENTIALS_DIR = credentialsDir;
+  process.env.MIRU_OPENAI_BASE_URL = "https://embedding.example.test/v1";
+  try {
+    await run(credentialsDir);
+  } finally {
+    await rm(credentialsDir, { recursive: true, force: true });
+    for (const [key, value] of [
+      ["TAKARA_API_KEY", previous.key],
+      ["MIRU_CREDENTIALS_DIR", previous.dir],
+      ["MIRU_OPENAI_BASE_URL", previous.base],
+    ] as const) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
 
 function oneHot(dim: number, index: number): number[] {
   const vec = Array.from({ length: dim }, () => 0);
@@ -79,6 +108,99 @@ describe("OpenAIEmbeddingBackend int8 responses", () => {
 });
 
 describe("OpenAIEmbeddingBackend batching", () => {
+  test("returns empty vectors without calling the API for empty documents", async () => {
+    let requests = 0;
+    const backend = new OpenAIEmbeddingBackend({
+      model: "empty-documents",
+      client: {
+        async createEmbeddings() {
+          requests++;
+          return { data: [] };
+        },
+      },
+    });
+    expect(await backend.embedInputs([])).toEqual([]);
+    const missingText = new Proxy(["placeholder"], {
+      get(target, property, receiver) {
+        return property === "0" ? undefined : Reflect.get(target, property, receiver);
+      },
+    });
+    expect(await backend.embedDocuments(missingText)).toEqual([new Float32Array(0)]);
+    expect(requests).toBe(0);
+  });
+
+  test("embedQuery delegates to document embedding and SageMaker model IDs are endpoint-scoped", async () => {
+    const backend = new OpenAIEmbeddingBackend({
+      model: "query-model",
+      dimensions: 2,
+      client: {
+        async createEmbeddings(input) {
+          expect(input).toEqual(["query text"]);
+          return { data: [{ index: 0, embedding: [0.25, 0.75] }] };
+        },
+      },
+    });
+    const vector = await backend.embedQuery("query text");
+    expect(vector[0]).toBeCloseTo(0.31622777, 6);
+    expect(vector[1]).toBeCloseTo(0.9486833, 6);
+    expect(sageMakerModelId("prod-endpoint")).toBe("sagemaker:prod-endpoint");
+  });
+
+  test("default HTTP client sends authorized requests and tracks/reset stats", async () => {
+    await withApiEnvironment(async () => {
+      const requests: Array<{ url: string; init?: RequestInit }> = [];
+      const backend = new OpenAIEmbeddingBackend({
+        model: "test-http-model",
+        dimensions: 2,
+        fetchImpl: async (url, init) => {
+          requests.push({ url: String(url), init });
+          return Response.json({ data: [{ index: 0, embedding: [1, 0] }] });
+        },
+      });
+
+      const [vector] = await backend.embedInputs(["hello"]);
+      expect(vector?.[0]).toBe(1);
+      expect(requests[0]?.url).toBe("https://embedding.example.test/v1/embeddings");
+      expect(requests[0]?.init?.method).toBe("POST");
+      expect((requests[0]?.init?.headers as Record<string, string>).Authorization).toBe(
+        "Bearer test-api-key",
+      );
+      expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({
+        model: "test-http-model",
+        input: ["hello"],
+        dimensions: 2,
+      });
+      expect(backend.getStats()).toMatchObject({ requests: 1, inputItems: 1, inputChars: 5 });
+      backend.resetStats();
+      expect(backend.getStats()).toEqual({
+        requests: 0,
+        retries: 0,
+        payloadTooLarge: 0,
+        errors: 0,
+        inputItems: 0,
+        inputChars: 0,
+        totalRttMs: 0,
+        maxRttMs: 0,
+      });
+    });
+  });
+
+  test("default HTTP client turns non-success and malformed payloads into errors", async () => {
+    await withApiEnvironment(async () => {
+      const denied = new OpenAIEmbeddingBackend({
+        model: "test-http-model",
+        fetchImpl: async () => new Response("forbidden", { status: 403 }),
+      });
+      await expect(denied.embedInputs(["hello"])).rejects.toThrow("Not authorized");
+
+      const malformed = new OpenAIEmbeddingBackend({
+        model: "test-http-model",
+        fetchImpl: async () => Response.json({ nope: true }),
+      });
+      await expect(malformed.embedInputs(["hello"])).rejects.toThrow("invalid payload");
+    });
+  });
+
   test("embedDocuments batches windows and assigns vectors to correct documents", async () => {
     const requestSizes: number[] = [];
     const backend = new OpenAIEmbeddingBackend({

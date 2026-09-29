@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { brandColor, colorEnabled, hexToRgb } from "../src/terminal.ts";
+import {
+  brandColor,
+  colorEnabled,
+  cropCommonLeading,
+  displayWidth,
+  hexToRgb,
+  padLineToWidth,
+} from "../src/terminal.ts";
 
 const TAKARA_RED: readonly [number, number, number] = [217, 16, 9];
 
@@ -51,6 +58,18 @@ describe("terminal colors", () => {
     });
   });
 
+  test("brandColor honors FORCE_COLOR and grayscale palette shortcuts", () => {
+    withEnv({ FORCE_COLOR: "3", COLORTERM: undefined }, () => {
+      expect(brandColor("x", TAKARA_RED, ttyStream)).toContain("38;2;");
+    });
+    withEnv({ FORCE_COLOR: undefined, COLORTERM: undefined }, () => {
+      expect(brandColor("x", [0, 0, 0], ttyStream)).toContain("38;5;16m");
+      expect(brandColor("x", [255, 255, 255], ttyStream)).toContain("38;5;231m");
+      expect(brandColor("x", [128, 129, 127], ttyStream)).toContain("38;5;");
+    });
+    expect(colorEnabled({ isTTY: false } as NodeJS.WriteStream)).toBe(false);
+  });
+
   test("brandColor leaves text plain when color is disabled", () => {
     withEnv({ NO_COLOR: "1", TERM: "xterm-256color" }, () => {
       expect(colorEnabled(ttyStream)).toBe(false);
@@ -66,5 +85,33 @@ describe("terminal colors", () => {
 
   test("hexToRgb rejects invalid input", () => {
     expect(() => hexToRgb("#fff")).toThrow("Invalid hex color");
+  });
+
+  test("crops shared indentation, trims trailing spaces, and preserves blank art", () => {
+    expect(cropCommonLeading(["    first  ", "      second", "  third"])).toEqual([
+      "  first",
+      "    second",
+      "third",
+    ]);
+    expect(cropCommonLeading(["   ", "  "])).toEqual(["", ""]);
+    expect(cropCommonLeading([])).toEqual([]);
+  });
+
+  test("measures terminal columns with combining, wide, control, and ANSI characters", () => {
+    expect(displayWidth("a\u0301\0中🙂")).toBe(5);
+    expect(displayWidth("\x1b[31mred\x1b[0m")).toBe(3);
+    expect(displayWidth("\x1b[31red")).toBe(0);
+    expect(padLineToWidth("中", 4)).toBe("中  ");
+    expect(padLineToWidth("long", 2)).toBe("long");
+  });
+
+  test("recognizes 24bit COLORTERM and maps grayscale palette values", () => {
+    withEnv({ COLORTERM: "24bit", FORCE_COLOR: undefined }, () => {
+      expect(brandColor("x", TAKARA_RED, ttyStream)).toContain("38;2;");
+    });
+    withEnv({ COLORTERM: undefined, FORCE_COLOR: undefined }, () => {
+      expect(brandColor("x", [0, 1, 2], ttyStream)).toContain("38;5;16m");
+      expect(brandColor("x", [250, 250, 250], ttyStream)).toContain("38;5;231m");
+    });
   });
 });

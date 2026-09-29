@@ -85,4 +85,55 @@ describe("validateEmbeddingApiKey", () => {
       else process.env.MIRU_SAGEMAKER_ENDPOINT_ARN = prevArn;
     }
   });
+
+  test("reports connection, authorization, response text, and invalid payload failures", async () => {
+    const options = {
+      apiKey: "key",
+      baseUrl: "https://example.test/v1/",
+      model: "test",
+      dimensions: 3,
+    };
+    const disconnected = await validateEmbeddingApiKey(options, async () => {
+      throw new Error("offline");
+    });
+    expect(disconnected.message).toContain(
+      "Could not reach embedding API at https://example.test/v1: offline",
+    );
+
+    const forbidden = await validateEmbeddingApiKey(
+      options,
+      async () => new Response("private", { status: 403 }),
+    );
+    expect(forbidden.status).toBe(403);
+    expect(forbidden.message).toContain("Not authorized");
+
+    const serverError = await validateEmbeddingApiKey(
+      options,
+      async () => new Response("x".repeat(300), { status: 500 }),
+    );
+    expect(serverError.message.length).toBeLessThan(250);
+    expect(serverError.message).toStartWith("Embedding API returned 500:");
+
+    const invalidJson = await validateEmbeddingApiKey(
+      options,
+      async () => new Response("{", { status: 200 }),
+    );
+    expect(invalidJson.message).toContain("invalid JSON");
+
+    const wrongDimensions = await validateEmbeddingApiKey(options, async () =>
+      Response.json({ data: [{ embedding: [1, 2] }] }),
+    );
+    expect(wrongDimensions.message).toContain("Expected 3 embedding dimensions, got 2");
+  });
+
+  test("handles missing embeddings and non-Error fetch rejections", async () => {
+    const options = { apiKey: "key", baseUrl: "https://example.test", model: "test" };
+    const missing = await validateEmbeddingApiKey(options, async () => Response.json({ data: [] }));
+    expect(missing.message).toContain("empty response");
+
+    const rejected = await validateEmbeddingApiKey(options, async () => {
+      throw "offline";
+    });
+    expect(rejected.message).toContain(": offline");
+  });
 });

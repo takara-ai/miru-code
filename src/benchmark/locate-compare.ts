@@ -42,13 +42,20 @@ export async function benchmarkLocateComparison(options: {
   repoPath: string;
   index: MiruIndex;
   locate?: LiteralLocateOptions;
+  dependencies?: {
+    selectComparableLiteralSearchTool?: typeof selectComparableLiteralSearchTool;
+  };
 }): Promise<LocateBenchmarkComparison> {
   if (options.locate?.limit != null) {
     throw new Error(
       "Cannot benchmark a limited locate response against native grep: rg/grep limits are per file, while locate.limit is global. Omit limit to keep token and recall comparisons valid.",
     );
   }
-  if (!selectComparableLiteralSearchTool()) {
+  if (
+    !(
+      options.dependencies?.selectComparableLiteralSearchTool ?? selectComparableLiteralSearchTool
+    )()
+  ) {
     throw new Error(
       "A comparable literal benchmark requires rg or compatible grep; findstr is not equivalent for scoped locate output.",
     );

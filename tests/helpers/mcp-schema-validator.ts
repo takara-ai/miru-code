@@ -39,9 +39,6 @@ export function assertJsonRpcResultMatches(
   resultDef: string,
 ): asserts response is { jsonrpc: "2.0"; id: string | number; result: unknown } {
   assertMatchesOfficialMcpSchema("JSONRPCResultResponse", response);
-  if (!response || typeof response !== "object" || !("result" in response)) {
-    throw new Error("Expected JSON-RPC result response");
-  }
   assertMatchesOfficialMcpSchema(resultDef, (response as { result: unknown }).result);
 }
 

@@ -25,17 +25,17 @@ function isUnsubstitutedPlaceholder(value: string): boolean {
   return value.startsWith("${") && value.endsWith("}");
 }
 
-export function resolveCredentialsDir(): string {
+export function resolveCredentialsDir(platform: NodeJS.Platform = process.platform): string {
   const override = process.env.MIRU_CREDENTIALS_DIR;
   if (override && !isUnsubstitutedPlaceholder(override)) {
     return override;
   }
   const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
-  if (process.platform === "win32") {
+  if (platform === "win32") {
     const base = process.env.APPDATA ?? join(home, "AppData", "Roaming");
     return join(base, "miru");
   }
-  if (process.platform === "darwin") {
+  if (platform === "darwin") {
     return join(home, "Library", "Application Support", "miru");
   }
   const xdg = process.env.XDG_CONFIG_HOME ?? join(home, ".config");
@@ -46,12 +46,12 @@ export function resolveCredentialsDir(): string {
  * Global Miru state directory (credentials, benchmark history, etc.).
  * Same location as `resolveCredentialsDir()`; prefer this name for non-secret files.
  */
-export function resolveMiruStateDir(): string {
-  return resolveCredentialsDir();
+export function resolveMiruStateDir(platform: NodeJS.Platform = process.platform): string {
+  return resolveCredentialsDir(platform);
 }
 
-export function resolveCredentialsPath(): string {
-  return join(resolveCredentialsDir(), CREDENTIALS_FILENAME);
+export function resolveCredentialsPath(platform: NodeJS.Platform = process.platform): string {
+  return join(resolveCredentialsDir(platform), CREDENTIALS_FILENAME);
 }
 
 export async function readStoredCredentials(): Promise<StoredCredentials | null> {
@@ -267,12 +267,7 @@ export async function clearStoredCredentials(): Promise<{ cleared: boolean; path
   }
 
   // Read for env cleanup, but never let parse errors block deletion.
-  let stored: StoredCredentials | null = null;
-  try {
-    stored = await readStoredCredentials();
-  } catch {
-    // Ignore parse/read errors — removal still proceeds.
-  }
+  const stored = await readStoredCredentials();
   await rm(path, { force: true });
 
   if (stored) {
