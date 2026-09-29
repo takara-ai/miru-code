@@ -53,8 +53,9 @@ function target(id: AgentTarget["id"], options: Partial<AgentTarget> = {}): Agen
 describe("installer agent path resolution and detection", () => {
   test("uses platform paths and OpenCode JSON config precedence", async () => {
     root = await mkdtemp(join(tmpdir(), "miru-agent-paths-"));
+    const home = homedir();
     process.env.XDG_CONFIG_HOME = root;
-    const configDir = opencodeConfigDir(homedir());
+    const configDir = opencodeConfigDir(home);
     expect(configDir).toBe(join(root, "opencode"));
     expect(opencodeMcpPath()).toBe(join(configDir, "opencode.jsonc"));
     await mkdir(configDir, { recursive: true });
@@ -67,7 +68,7 @@ describe("installer agent path resolution and detection", () => {
     expect(visualStudioMcpPath()).toBe(join(root, ".mcp.json"));
     expect(visualStudioInstallDir("linux")).toBeNull();
     expect(vscodeMcpPath("darwin")).toBe(
-      join(homedir(), "Library", "Application Support", "Code", "User", "mcp.json"),
+      join(home, "Library", "Application Support", "Code", "User", "mcp.json"),
     );
   });
 
@@ -98,7 +99,7 @@ describe("installer agent path resolution and detection", () => {
         }) as typeof Bun.spawn,
       }),
     ).toBe(false);
-    expect(await isAgentDetected(target("visualstudio"))).toBe(false);
+    expect(await isAgentDetected(target("visualstudio"), { platform: "linux" })).toBe(false);
     expect(
       await isAgentDetected(target("windsurf", { binary: "windsurf" }), {
         existsSync: () => false,
