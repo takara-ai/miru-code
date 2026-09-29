@@ -81,14 +81,16 @@ function sectionObject(
   root: Record<string, unknown>,
   sectionKey: string,
 ): Record<string, unknown> | "error" {
-  const section = root[sectionKey];
-  if (section === undefined) {
-    return {};
+  let section: unknown = root;
+  for (const key of sectionKey.split(".")) {
+    if (!section || typeof section !== "object" || Array.isArray(section)) return "error";
+    const child = (section as Record<string, unknown>)[key];
+    if (child === undefined) return {};
+    section = child;
   }
-  if (!section || typeof section !== "object" || Array.isArray(section)) {
-    return "error";
-  }
-  return section as Record<string, unknown>;
+  return section && typeof section === "object" && !Array.isArray(section)
+    ? (section as Record<string, unknown>)
+    : "error";
 }
 
 export async function mergeJsonMember(
@@ -163,14 +165,24 @@ function withMergedMember(
   memberKey: string,
   value: Record<string, unknown>,
 ): Record<string, unknown> {
-  const next = { ...root };
-  const section =
-    next[sectionKey] && typeof next[sectionKey] === "object" && !Array.isArray(next[sectionKey])
-      ? { ...(next[sectionKey] as Record<string, unknown>) }
-      : {};
-  section[memberKey] = value;
-  next[sectionKey] = section;
-  return next;
+  const keys = sectionKey.split(".");
+  const update = (object: Record<string, unknown>, depth: number): Record<string, unknown> => {
+    const next = { ...object };
+    if (depth === keys.length) {
+      next[memberKey] = value;
+      return next;
+    }
+    const key = keys[depth];
+    if (!key) return next;
+    const child = next[key];
+    const section =
+      child && typeof child === "object" && !Array.isArray(child)
+        ? (child as Record<string, unknown>)
+        : {};
+    next[key] = update(section, depth + 1);
+    return next;
+  };
+  return update(root, 0);
 }
 
 function withRemovedMember(
@@ -178,21 +190,29 @@ function withRemovedMember(
   sectionKey: string,
   memberKey: string,
 ): Record<string, unknown> {
-  const next = { ...root };
-  const section =
-    next[sectionKey] && typeof next[sectionKey] === "object" && !Array.isArray(next[sectionKey])
-      ? { ...(next[sectionKey] as Record<string, unknown>) }
-      : null;
-  if (!section || !(memberKey in section)) {
-    return next;
-  }
-  delete section[memberKey];
-  if (Object.keys(section).length === 0) {
-    delete next[sectionKey];
-  } else {
-    next[sectionKey] = section;
-  }
-  return next;
+  const keys = sectionKey.split(".");
+  const remove = (
+    object: Record<string, unknown>,
+    depth: number,
+  ): { value: Record<string, unknown>; changed: boolean } => {
+    const next = { ...object };
+    if (depth === keys.length) {
+      if (!(memberKey in next)) return { value: next, changed: false };
+      delete next[memberKey];
+      return { value: next, changed: true };
+    }
+    const key = keys[depth];
+    const child = key ? next[key] : undefined;
+    if (!key || !child || typeof child !== "object" || Array.isArray(child)) {
+      return { value: next, changed: false };
+    }
+    const result = remove(child as Record<string, unknown>, depth + 1);
+    if (!result.changed) return { value: next, changed: false };
+    if (Object.keys(result.value).length === 0) delete next[key];
+    else next[key] = result.value;
+    return { value: next, changed: true };
+  };
+  return remove(root, 0).value;
 }
 
 function upsertJsonMemberText(
@@ -293,11 +313,36 @@ function hasJsoncSyntax(text: string): boolean {
   return false;
 }
 
-/**
- * Locate a section object at the document root only.
- * Nested keys with the same name (e.g. Claude Code projects.*.mcpServers) are ignored.
- */
+/** Locate an object section by dotted path, matching each key among direct children. */
 function findSectionRange(
+  text: string,
+  sectionKey: string,
+): { openBrace: number; closeBrace: number; indent: string } | null {
+  const keys = sectionKey.split(".");
+  let container = text;
+  let offset = 0;
+  let result: { openBrace: number; closeBrace: number; indent: string } | null = null;
+  for (let index = 0; index < keys.length; index++) {
+    const key = keys[index];
+    if (!key) return null;
+    result = findDirectSectionRange(container, key);
+    if (!result) return null;
+    if (index < keys.length - 1) {
+      offset += result.openBrace;
+      container = container.slice(result.openBrace, result.closeBrace + 1);
+    }
+  }
+  return result
+    ? {
+        ...result,
+        openBrace: offset + result.openBrace,
+        closeBrace: offset + result.closeBrace,
+      }
+    : null;
+}
+
+/** Locate a single child object in a root object, ignoring similarly named nested keys. */
+function findDirectSectionRange(
   text: string,
   sectionKey: string,
 ): { openBrace: number; closeBrace: number; indent: string } | null {

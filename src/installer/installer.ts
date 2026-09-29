@@ -125,10 +125,12 @@ async function readExistingJsonMcpEntry(
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       return null;
     }
-    const section = (parsed as Record<string, unknown>)[sectionKey];
-    if (!section || typeof section !== "object" || Array.isArray(section)) {
-      return null;
+    let section: unknown = parsed;
+    for (const key of sectionKey.split(".")) {
+      if (!section || typeof section !== "object" || Array.isArray(section)) return null;
+      section = (section as Record<string, unknown>)[key];
     }
+    if (!section || typeof section !== "object" || Array.isArray(section)) return null;
     const entry = (section as Record<string, unknown>)[memberKey];
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
       return null;

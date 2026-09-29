@@ -87,7 +87,6 @@ const BARE_STDIO_SERVER_CONFIG: Record<string, unknown> = {
 const OPENCODE_SERVER_CONFIG: Record<string, unknown> = {
   command: ["bunx", "@takara-ai/miru-code"],
   type: "local",
-  enabled: true,
 };
 
 export const INSTRUCTIONS = `${MIRU_START}
@@ -280,7 +279,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     displayName: "OpenCode",
     binary: "opencode",
     configDir: opencodeConfigDir(HOME),
-    mcp: jsonMcp(opencodeMcpPath(), "mcp", OPENCODE_SERVER_CONFIG),
+    mcp: jsonMcp(opencodeMcpPath(), "mcp.servers", OPENCODE_SERVER_CONFIG),
     instructionsPath: join(opencodeConfigDir(HOME), "AGENTS.md"),
     cursorRulesPath: null,
     legacyHooksPath: join(opencodeConfigDir(HOME), "plugins", "miru-search-guard.ts"),
