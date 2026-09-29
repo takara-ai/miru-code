@@ -44,7 +44,9 @@ describe("cloneGitRepository", () => {
     );
     expect(await commit.exited).toBe(0);
     const clone = await cloneGitRepository(source, "coverage-test");
-    expect(await Bun.file(join(clone, "readme.txt")).text()).toBe("coverage\n");
+    expect((await Bun.file(join(clone, "readme.txt")).text()).replace(/\r\n/g, "\n")).toBe(
+      "coverage\n",
+    );
     await rm(clone, { recursive: true, force: true });
     await rm(root, { recursive: true, force: true });
   });

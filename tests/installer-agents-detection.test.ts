@@ -65,15 +65,19 @@ describe("installer agent path resolution and detection", () => {
 
     process.env.USERPROFILE = root;
     expect(visualStudioMcpPath()).toBe(join(root, ".mcp.json"));
-    expect(visualStudioInstallDir()).toBeNull();
-    expect(vscodeMcpPath()).toBe(
+    expect(visualStudioInstallDir("linux")).toBeNull();
+    expect(vscodeMcpPath("darwin")).toBe(
       join(homedir(), "Library", "Application Support", "Code", "User", "mcp.json"),
     );
   });
 
   test("detects agents by executable or config directory and honors Windsurf paths", async () => {
     root = await mkdtemp(join(tmpdir(), "miru-agent-detect-"));
-    expect(await isAgentDetected(target("cursor", { binary: "sh" }))).toBe(true);
+    expect(
+      await isAgentDetected(target("cursor", { binary: "sh" }), {
+        commandOnPath: async (command) => command === "sh",
+      }),
+    ).toBe(true);
     expect(await isAgentDetected(target("cursor", { binary: "miru-missing-command-xyz" }))).toBe(
       false,
     );

@@ -98,18 +98,20 @@ describe("validated cache bundles", () => {
       process.env.MIRU_CACHE_HOME = "";
       process.env.HOME = "/home/miru";
       delete process.env.USERPROFILE;
-      expect(resolveCacheFolder("darwin")).toBe("/home/miru/Library/Caches/miru");
+      expect(resolveCacheFolder("darwin")).toBe(join("/home/miru", "Library", "Caches", "miru"));
       process.env.XDG_CACHE_HOME = "/cache-root";
-      expect(resolveCacheFolder("linux")).toBe("/cache-root/miru");
+      expect(resolveCacheFolder("linux")).toBe(join("/cache-root", "miru"));
       delete process.env.XDG_CACHE_HOME;
-      expect(resolveCacheFolder("linux")).toBe("/home/miru/.cache/miru");
+      expect(resolveCacheFolder("linux")).toBe(join("/home/miru", ".cache", "miru"));
       process.env.LOCALAPPDATA = "C:/Users/miru/Local";
-      expect(resolveCacheFolder("win32")).toBe("C:/Users/miru/Local/miru/Cache");
+      expect(resolveCacheFolder("win32")).toBe(join("C:/Users/miru/Local", "miru", "Cache"));
       delete process.env.LOCALAPPDATA;
       process.env.APPDATA = "C:/Users/miru/Roaming";
-      expect(resolveCacheFolder("win32")).toBe("C:/Users/miru/Roaming/miru/Cache");
+      expect(resolveCacheFolder("win32")).toBe(join("C:/Users/miru/Roaming", "miru", "Cache"));
       delete process.env.APPDATA;
-      expect(resolveCacheFolder("win32")).toBe("/home/miru/AppData/Local/miru/Cache");
+      expect(resolveCacheFolder("win32")).toBe(
+        join("/home/miru", "AppData", "Local", "miru", "Cache"),
+      );
       process.env.MIRU_CACHE_HOME = "/override";
       expect(resolveCacheFolder("linux")).toBe("/override");
     } finally {

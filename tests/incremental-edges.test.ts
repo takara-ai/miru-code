@@ -30,7 +30,7 @@ describe("incremental indexing edge cases", () => {
     expect(normalizeRelativePath(".\\src\\file.ts")).toBe("src/file.ts");
     const root = join(tmpdir(), "miru-relative-root");
     expect(relativePathFromRoot(root, join(tmpdir(), "outside.ts"))).toBe(
-      join(tmpdir(), "outside.ts"),
+      normalizeRelativePath(join(tmpdir(), "outside.ts")),
     );
     expect(relativePathFromRoot(root, "src/file.ts")).toBe("src/file.ts");
   });

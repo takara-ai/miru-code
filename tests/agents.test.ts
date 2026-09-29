@@ -17,7 +17,7 @@ describe("agent templates", () => {
       expect(template.length).toBeGreaterThan(100);
       expect(template.endsWith("\n")).toBe(true);
       expect(agentDestination(agent)).toContain(
-        agent === "copilot" ? ".github/agents" : `.${agent}/agents`,
+        join(agent === "copilot" ? ".github" : `.${agent}`, "agents"),
       );
     }
   });
