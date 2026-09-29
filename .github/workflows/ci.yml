@@ -57,5 +57,14 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get update && sudo apt-get install -y ripgrep
 
+      - name: Test with coverage
+        if: matrix.os == 'ubuntu-latest'
+        run: bun run coverage
+
+      - name: Check coverage badge
+        if: matrix.os == 'ubuntu-latest'
+        run: bun run scripts/update-coverage-badge.ts --check
+
       - name: Test
+        if: matrix.os != 'ubuntu-latest'
         run: bun test

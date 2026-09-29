@@ -1,6 +1,6 @@
 # Miru (見る)
 
-[![CI](https://github.com/takara-ai/miru-code/actions/workflows/ci.yml/badge.svg)](https://github.com/takara-ai/miru-code/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE) [![bun](https://img.shields.io/badge/runtime-bun%201.1%2B-black)](https://bun.sh)
+[![CI](https://github.com/takara-ai/miru-code/actions/workflows/ci.yml/badge.svg)](https://github.com/takara-ai/miru-code/actions/workflows/ci.yml) [![coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ftakara-ai%2Fmiru-code%2Fmain%2Fdocs%2Fcoverage-badge.json)](https://github.com/takara-ai/miru-code/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE) [![bun](https://img.shields.io/badge/runtime-bun%201.1%2B-black)](https://bun.sh)
 
 
 **Hybrid code search for AI coding agents.** Find code by meaning, not grep.

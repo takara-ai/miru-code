@@ -50,6 +50,8 @@
     "miru": "bun run src/cli.ts",
     "mcp": "bun run src/cli.ts",
     "test": "bun test",
+    "coverage": "bun test --coverage --coverage-reporter=lcov",
+    "coverage:badge": "bun run coverage && bun run scripts/update-coverage-badge.ts",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
