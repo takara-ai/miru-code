@@ -57,6 +57,11 @@ export function opencodeConfigDir(home: string): string {
   return xdg ? join(xdg, "opencode") : join(home, ".config", "opencode");
 }
 
+/** OpenCode's first-class global skill location for Miru code-search routing. */
+export function opencodeMiruSkillPath(home: string): string {
+  return join(opencodeConfigDir(home), "skills", "miru-code-search", "SKILL.md");
+}
+
 export type InstallAction =
   | "created"
   | "updated"
@@ -135,6 +140,8 @@ export interface AgentTarget {
    * On-demand STE skill directory (`…/skills/ste/`), or null if unsupported.
    */
   steSkillDir: string | null;
+  /** OpenCode's global Miru code-search skill, advertised on each model step. */
+  miruSkillPath?: string | null;
 }
 
 export function opencodeMcpPath(): string {
@@ -243,6 +250,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     subagentId: "cursor",
     cavemanSkillPath: SHARED_CAVEMAN_SKILL,
     steSkillDir: SHARED_STE_SKILL_DIR,
+    miruSkillPath: opencodeMiruSkillPath(HOME),
   },
   {
     id: "gemini",
@@ -429,7 +437,7 @@ export async function isAgentDetected(
     return true;
   }
   if (agent.configDir) {
-    return Bun.file(agent.configDir).exists();
+    return (dependencies.existsSync ?? existsSync)(agent.configDir);
   }
   return false;
 }
