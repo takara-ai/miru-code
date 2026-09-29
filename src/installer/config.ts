@@ -1,15 +1,17 @@
 import { unlink } from "node:fs/promises";
-import { type InstallAction, MIRU_END, MIRU_START } from "./agents.ts";
+import { type InstallAction, MIRU_BUNX_PACKAGE, MIRU_END, MIRU_START } from "./agents.ts";
 
 const CODEX_MCP_HEADER = "[mcp_servers.miru]";
 const CODEX_MCP_BLOCK = `[mcp_servers.miru]
 command = "bunx"
-args = ["@takara-ai/miru-code"]
+args = ["${MIRU_BUNX_PACKAGE}"]
+startup_timeout_sec = 60
 `;
 /** Same Codex block with `--benchmark` preserved across reinstall. */
 const CODEX_MCP_BLOCK_BENCHMARK = `[mcp_servers.miru]
 command = "bunx"
-args = ["@takara-ai/miru-code", "--benchmark"]
+args = ["${MIRU_BUNX_PACKAGE}", "--benchmark"]
+startup_timeout_sec = 60
 `;
 
 /** Strip line and block comments so JSONC configs can be parsed. */

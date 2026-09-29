@@ -127,7 +127,7 @@ miru uninstall   # remove miru config
 
 Current limitation:
 
-- these plugin manifests still launch the published Miru runtime through `bunx @takara-ai/miru-code`
+- these plugin manifests launch the published Miru runtime through `bunx @takara-ai/miru-code@latest`
 - that means local source edits do not affect plugin behavior until a package version is published
 - and a fully self-contained “no Bun required” plugin install is still future work
 
@@ -177,7 +177,7 @@ miru find-related src/auth.ts 42 ./src
 Terminal output is human-readable; use `--json` for scripts. One-off without installing:
 
 ```bash
-bunx @takara-ai/miru-code search "auth middleware" ./src
+bunx @takara-ai/miru-code@latest search "auth middleware" ./src
 ```
 
 ---
@@ -418,7 +418,7 @@ For benchmark mode, set `"args": ["--benchmark"]` (or append that flag). Prefer 
 
 Run `miru setup` once so the server can load credentials from `credentials.json`. If the MCP server starts in an interactive terminal without stored credentials, it will start device login automatically.
 
-Use `bunx` + `@takara-ai/miru-code` if `miru` is not global. Wrapper key varies by IDE (`mcpServers`, `servers`, or `mcp`).
+Use `bunx` + `@takara-ai/miru-code@latest` if `miru` is not global. The installer uses this command so each new MCP server launch can pick up a published version without a global update. A running server keeps its current version until restarted. Wrapper key varies by IDE (`mcpServers`, `servers`, or `mcp`).
 
 ## Developing
 

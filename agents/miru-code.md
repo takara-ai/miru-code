@@ -52,4 +52,4 @@ miru expand src/auth.ts 42 .
 miru find-related src/auth.ts 42 .
 ```
 
-If `miru` is not on `$PATH`, use `bunx @takara-ai/miru-code`.
+If `miru` is not on `$PATH`, use `bunx @takara-ai/miru-code@latest`.

@@ -71,7 +71,7 @@ miru find-related src/auth.ts 42 .
 \`\`\`
 
 After large refactors or CLI-only use, run \`miru clear <path>\` to rebuild the disk cache.
-If \`miru\` is not on \`$PATH\`, use \`bunx @takara-ai/miru-code\`.`;
+If \`miru\` is not on \`$PATH\`, use \`bunx @takara-ai/miru-code@latest\`.`;
 
 export function buildSubagentBody(native: NativeToolNames): string {
   return `When Miru MCP is available, use MCP \`search\`, \`locate\`, \`expand\`, and \`find_related\` — not ${native.explorationDenied} for exploration.

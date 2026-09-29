@@ -1,4 +1,9 @@
-import { AGENT_TARGETS, type AgentTarget, type InstallAction } from "./agents.ts";
+import {
+  AGENT_TARGETS,
+  type AgentTarget,
+  type InstallAction,
+  MIRU_BUNX_PACKAGE,
+} from "./agents.ts";
 import { removeTomlBlock, stripJsonComments } from "./config.ts";
 
 export const MCP_BENCHMARK_FLAG = "--benchmark";
@@ -7,9 +12,9 @@ const CODEX_MCP_HEADER = "[mcp_servers.miru]";
 
 function codexMcpBlock(enabled: boolean): string {
   const args = enabled
-    ? `["@takara-ai/miru-code", "${MCP_BENCHMARK_FLAG}"]`
-    : '["@takara-ai/miru-code"]';
-  return `${CODEX_MCP_HEADER}\ncommand = "bunx"\nargs = ${args}\n`;
+    ? `["${MIRU_BUNX_PACKAGE}", "${MCP_BENCHMARK_FLAG}"]`
+    : `["${MIRU_BUNX_PACKAGE}"]`;
+  return `${CODEX_MCP_HEADER}\ncommand = "bunx"\nargs = ${args}\nstartup_timeout_sec = 60\n`;
 }
 
 export function withBenchmarkFlag(list: string[], enabled: boolean): string[] {

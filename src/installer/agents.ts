@@ -75,22 +75,23 @@ export type InstallMode = "install" | "uninstall";
 
 export const MIRU_START = "<!-- miru:start -->";
 export const MIRU_END = "<!-- miru:end -->";
+export const MIRU_BUNX_PACKAGE = "@takara-ai/miru-code@latest";
 
 const HOME = homedir();
 
 const STDIO_SERVER_CONFIG: Record<string, unknown> = {
   command: "bunx",
-  args: ["@takara-ai/miru-code"],
+  args: [MIRU_BUNX_PACKAGE],
   type: "stdio",
 };
 
 const BARE_STDIO_SERVER_CONFIG: Record<string, unknown> = {
   command: "bunx",
-  args: ["@takara-ai/miru-code"],
+  args: [MIRU_BUNX_PACKAGE],
 };
 
 const OPENCODE_SERVER_CONFIG: Record<string, unknown> = {
-  command: ["bunx", "@takara-ai/miru-code"],
+  command: ["bunx", MIRU_BUNX_PACKAGE],
   type: "local",
 };
 
