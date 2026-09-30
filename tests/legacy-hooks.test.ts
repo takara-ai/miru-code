@@ -55,6 +55,40 @@ describe("legacy search-hook cleanup", () => {
     }
   });
 
+  test("removes the last shared owner even when no Miru hook remains", async () => {
+    const root = await mkdtemp(join(tmpdir(), "miru-old-copilot-owner-"));
+    try {
+      const configs = [
+        { miruOwners: ["vscode"], setting: true },
+        { miruOwners: ["vscode"], hooks: { PostToolUse: [{ command: "user hook" }] } },
+        { miruOwners: ["vscode"], hooks: { PreToolUse: [{ command: "user hook" }] } },
+      ];
+      for (const [index, config] of configs.entries()) {
+        const path = join(root, `${index}.json`);
+        await Bun.write(path, JSON.stringify(config));
+        expect(await removeLegacySearchHooks("vscode", path, "vscode")).toBe("removed");
+        const remaining = JSON.parse(await Bun.file(path).text());
+        expect(remaining.miruOwners).toBeUndefined();
+        expect(remaining.hooks).toEqual(config.hooks);
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("leaves unrelated hooks alone when no legacy Miru command matches", async () => {
+    const root = await mkdtemp(join(tmpdir(), "miru-unrelated-hooks-"));
+    try {
+      const path = join(root, "settings.json");
+      const config = { hooks: { PreToolUse: [null, [], { hooks: [{ command: "user hook" }] }] } };
+      await Bun.write(path, JSON.stringify(config));
+      expect(await removeLegacySearchHooks("claude", path)).toBe("not-found");
+      expect(JSON.parse(await Bun.file(path).text())).toEqual(config);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("removes OpenCode's Miru-specific plugin and ignores missing or malformed configs", async () => {
     const root = await mkdtemp(join(tmpdir(), "miru-old-opencode-hooks-"));
     try {
