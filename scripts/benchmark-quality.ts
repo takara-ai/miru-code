@@ -5,6 +5,7 @@ import { clearCache } from "../src/cache.ts";
 import { resolveEmbeddingDimensions, resolveEmbeddingModel } from "../src/embeddings/openai.ts";
 import { MiruIndex } from "../src/miru-index.ts";
 import type { SearchResult } from "../src/types.ts";
+import { dedupeResultsByFile } from "../src/utils.ts";
 import {
   type BenchmarkTask,
   benchmarkDir,
@@ -18,6 +19,7 @@ import {
 } from "./benchmark-lib.ts";
 
 const TOP_K = 10;
+const AGENT_TOP_K = 5;
 const LATENCY_RUNS = 5;
 
 function percentile(values: number[], p: number): number {
@@ -50,6 +52,8 @@ interface EvalOptions {
   semanticOnly: boolean;
   verbose: boolean;
   fresh: boolean;
+  /** Score what the MCP `search` tool returns: top 5 chunks, then deduped by file. */
+  agentView: boolean;
 }
 
 interface PerQueryResult {
@@ -99,10 +103,13 @@ async function evaluateRepo(
       const started = performance.now();
       results = await index.search({
         query: task.query,
-        topK: TOP_K,
+        topK: options.agentView ? AGENT_TOP_K : TOP_K,
         rerank: !options.semanticOnly,
         alpha: options.semanticOnly ? 1.0 : null,
       });
+      if (options.agentView) {
+        results = dedupeResultsByFile(results);
+      }
       queryLatencies.push(performance.now() - started);
     }
     latencies.push(median(queryLatencies));
@@ -157,6 +164,7 @@ let dimensionsArg: number | undefined;
 let semanticOnly = false;
 let verbose = false;
 let fresh = false;
+let agentView = false;
 let showWorst = 0;
 
 for (let i = 0; i < args.length; i++) {
@@ -182,6 +190,8 @@ for (let i = 0; i < args.length; i++) {
     verbose = true;
   } else if (arg === "--fresh") {
     fresh = true;
+  } else if (arg === "--agent-view") {
+    agentView = true;
   } else if (arg === "--worst" && args[i + 1]) {
     const raw = args[++i];
     if (raw) {
@@ -208,7 +218,7 @@ if (tasks.length === 0) {
 
 const model = modelArg ?? resolveEmbeddingModel();
 const dimensions = dimensionsArg ?? resolveEmbeddingDimensions(model);
-const mode = semanticOnly ? "semantic-only" : "hybrid";
+const mode = `${semanticOnly ? "semantic-only" : "hybrid"}${agentView ? "+agent-view" : ""}`;
 
 console.error(`Model: ${model}  dims: ${dimensions ?? "api-default"}  mode: ${mode}`);
 console.error(
@@ -221,6 +231,7 @@ const evalOptions: EvalOptions = {
   semanticOnly,
   verbose,
   fresh,
+  agentView,
 };
 
 const byRepo = groupByRepo(tasks);
