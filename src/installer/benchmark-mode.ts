@@ -12,9 +12,25 @@ const CODEX_MCP_HEADER = "[mcp_servers.miru]";
 
 function codexMcpBlock(enabled: boolean): string {
   const args = enabled
-    ? `["${MIRU_BUNX_PACKAGE}", "${MCP_BENCHMARK_FLAG}"]`
-    : `["${MIRU_BUNX_PACKAGE}"]`;
+    ? `["${MIRU_BUNX_PACKAGE}", "mcp", "${MCP_BENCHMARK_FLAG}"]`
+    : `["${MIRU_BUNX_PACKAGE}", "mcp"]`;
   return `${CODEX_MCP_HEADER}\ncommand = "bunx"\nargs = ${args}\nstartup_timeout_sec = 60\n`;
+}
+
+function withMcpSubcommand(list: string[], command: unknown): string[] {
+  if (list.includes("mcp")) return list;
+  if (command === "miru") return ["mcp", ...list];
+
+  const packageIndex = list.findIndex((item) => /^@takara-ai\/miru-code(?:@.+)?$/.test(item));
+  if (packageIndex >= 0) {
+    return [...list.slice(0, packageIndex + 1), "mcp", ...list.slice(packageIndex + 1)];
+  }
+
+  const miruIndex = list.indexOf("miru");
+  if (miruIndex >= 0) {
+    return [...list.slice(0, miruIndex + 1), "mcp", ...list.slice(miruIndex + 1)];
+  }
+  return list;
 }
 
 export function withBenchmarkFlag(list: string[], enabled: boolean): string[] {
@@ -36,7 +52,7 @@ export function applyBenchmarkFlagToMcpEntry(
 
   if (Array.isArray(next.args)) {
     const args = next.args.filter((item): item is string => typeof item === "string");
-    const updated = withBenchmarkFlag(args, enabled);
+    const updated = withBenchmarkFlag(withMcpSubcommand(args, next.command), enabled);
     if (JSON.stringify(updated) !== JSON.stringify(args)) {
       next.args = updated;
       changed = true;
@@ -45,7 +61,7 @@ export function applyBenchmarkFlagToMcpEntry(
 
   if (Array.isArray(next.command)) {
     const command = next.command.filter((item): item is string => typeof item === "string");
-    const updated = withBenchmarkFlag(command, enabled);
+    const updated = withBenchmarkFlag(withMcpSubcommand(command, next.command), enabled);
     if (JSON.stringify(updated) !== JSON.stringify(command)) {
       next.command = updated;
       changed = true;
@@ -127,7 +143,10 @@ async function setTomlBenchmark(
     return "missing";
   }
   const current = await statusForToml(path);
-  if (current === enabled) {
+  const section =
+    text.slice(text.indexOf(CODEX_MCP_HEADER) + CODEX_MCP_HEADER.length).split(/^\[/m)[0] ?? "";
+  const hasMcpArg = /^args\s*=\s*\[[^\n]*["']mcp["']/m.test(section);
+  if (current === enabled && hasMcpArg) {
     return "unchanged";
   }
 

@@ -84,6 +84,7 @@ test("Codex, Claude, and Cursor plugin manifests point at the Miru MCP runtime",
     command: "bunx",
     args: [
       "@takara-ai/miru-code@latest",
+      "mcp",
       `--benchmark=${pluginPlaceholder("user_config.benchmark")}`,
     ],
     env: { MIRU_CREDENTIALS_DIR: pluginPlaceholder("CLAUDE_PLUGIN_DATA") },
@@ -96,7 +97,7 @@ test("Codex, Claude, and Cursor plugin manifests point at the Miru MCP runtime",
   expect(mcp.mcpServers.miru).toEqual({
     type: "stdio",
     command: "bunx",
-    args: ["@takara-ai/miru-code@latest"],
+    args: ["@takara-ai/miru-code@latest", "mcp"],
     env: { MIRU_CREDENTIALS_DIR: pluginPlaceholder("PLUGIN_DATA") },
   });
 
@@ -111,7 +112,7 @@ test("Codex, Claude, and Cursor plugin manifests point at the Miru MCP runtime",
   expect(kiroMcp.mcpServers.miru).toEqual({
     type: "stdio",
     command: "bunx",
-    args: ["@takara-ai/miru-code@latest"],
+    args: ["@takara-ai/miru-code@latest", "mcp"],
   });
 });
 

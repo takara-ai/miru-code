@@ -4,7 +4,7 @@
     "miru": {
       "type": "stdio",
       "command": "bunx",
-      "args": ["@takara-ai/miru-code@latest"],
+      "args": ["@takara-ai/miru-code@latest", "mcp"],
       "env": {
         "MIRU_CREDENTIALS_DIR": "${PLUGIN_DATA}"
       }

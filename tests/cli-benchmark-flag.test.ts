@@ -8,17 +8,23 @@ import { join } from "node:path";
 // rather than omitting it — `runMcp` in src/cli.ts must parse both the bare
 // `--benchmark` flag (used by the installer's rewritten configs) and the
 // `--benchmark=true`/`--benchmark=false` value form (used by the plugin).
-async function listToolNames(extraArg: string | null): Promise<string[]> {
+async function listToolNames(extraArg: string | null, explicit = true): Promise<string[]> {
   const credDir = await mkdtemp(join(tmpdir(), "miru-cli-benchmark-flag-"));
   try {
     const proc = Bun.spawn({
-      cmd: extraArg ? ["bun", "src/cli.ts", extraArg] : ["bun", "src/cli.ts"],
+      cmd: [
+        process.execPath,
+        "src/cli.ts",
+        ...(explicit ? ["mcp"] : []),
+        ...(extraArg ? [extraArg] : []),
+      ],
       cwd: join(import.meta.dir, ".."),
       env: {
         ...process.env,
         MIRU_CREDENTIALS_DIR: credDir,
         TAKARA_API_KEY: "",
         MIRU_SAGEMAKER_ENDPOINT_ARN: "",
+        MIRU_NO_UPDATE_CHECK: "1",
       },
       stdin: "pipe",
       stdout: "pipe",
@@ -89,5 +95,10 @@ test("--benchmark=false does not register read_benchmark", async () => {
 
 test("bare --benchmark (installer form) still registers read_benchmark", async () => {
   const toolNames = await listToolNames("--benchmark");
+  expect(toolNames).toContain("read_benchmark");
+});
+
+test("legacy headless --benchmark launch still registers read_benchmark", async () => {
+  const toolNames = await listToolNames("--benchmark", false);
   expect(toolNames).toContain("read_benchmark");
 });

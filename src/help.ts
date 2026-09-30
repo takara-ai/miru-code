@@ -28,7 +28,7 @@ export function printMainHelp(): void {
   header();
 
   section("Usage");
-  writeStdout("  miru                         Start MCP server (stdio)");
+  writeStdout("  miru                         Show help in a terminal");
   writeStdout("  miru <command> [options]");
   divider();
 
@@ -37,6 +37,7 @@ export function printMainHelp(): void {
   commandRow("locate", "Exact substring location in the index");
   commandRow("expand", "Adjacent chunks in the same file as a hit");
   commandRow("find-related", "Find chunks related to a file:line");
+  commandRow("mcp", "Start MCP server (stdio)");
   commandRow("setup", "Authenticate with Takara");
   commandRow("install", "Configure miru across coding agents");
   commandRow("uninstall", "Remove miru agent configuration");
@@ -243,9 +244,9 @@ export function printCommandHelp(command: string): void {
       writeStdout("");
       return;
     case "mcp":
-      commandHeader("mcp", "Stdio MCP server (default with no subcommand).");
+      commandHeader("mcp", "Stdio MCP server.");
       section("Usage");
-      writeStdout("  miru [--ref BRANCH] [--content TYPE ...] [--benchmark]");
+      writeStdout("  miru mcp [--ref BRANCH] [--content TYPE ...] [--benchmark]");
       writeStdout("  Default content: code config");
       writeStdout("");
       writeStdout("Indexes on the first search/expand/find_related tool call (repo argument).");

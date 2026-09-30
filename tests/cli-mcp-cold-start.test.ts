@@ -3,13 +3,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// Regression test for the actual bug PRD-311's headless-auth-tool fix addresses:
-// the plugin's .mcp.json spawns `bunx @takara-ai/miru-code` with no subcommand,
-// which used to route through a credential pre-flight that threw and killed the
-// whole process on a cold start with no cached credentials — before any MCP tool
-// ever registered. This spawns the real CLI entrypoint the same way (no args) and
-// asserts the process stays alive and answers tools/list, rather than testing the
-// pieces `runMcpWithCredentials` calls in isolation.
+// Older MCP configurations spawn Miru without a subcommand. This test verifies
+// that their headless stdio launch still reaches the server on a cold start with
+// no cached credentials and answers tools/list rather than exiting with help.
 //
 // main() also runs an update-notification check before dispatching to
 // runMcpWithCredentials, which does a real network fetch. On windows-latest CI

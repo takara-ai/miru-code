@@ -127,7 +127,7 @@ miru uninstall   # remove miru config
 
 Current limitation:
 
-- these plugin manifests launch the published Miru runtime through `bunx @takara-ai/miru-code@latest`
+- these plugin manifests launch the published Miru runtime through `bunx @takara-ai/miru-code@latest mcp`
 - that means local source edits do not affect plugin behavior until a package version is published
 - and a fully self-contained “no Bun required” plugin install is still future work
 
@@ -258,7 +258,7 @@ Set `MIRU_AST_CHUNKING=0` to disable AST and use structural → lines only.
 
 ## CLI reference
 
-Run `miru -h` for the command list, or `miru <command> -h` for details.
+Run `miru` in a terminal or `miru -h` for the command list, or `miru <command> -h` for details.
 
 | Command                                  | Purpose                                                                           |
 | ----------------------------------------- | --------------------------------------------------------------------------------- |
@@ -272,7 +272,7 @@ Run `miru -h` for the command list, or `miru <command> -h` for details.
 | `miru benchmark on/off/status/clear`     | Toggle MCP benchmark mode / clear report                                          |
 | `miru init --agent <id>`                 | Project-local sub-agent                                                           |
 | `miru clear [path]`                      | Drop index cache (use after big CLI-only refactors)                               |
-| `miru`                                   | Start MCP server (`--benchmark` for comparisons)                                  |
+| `miru mcp`                               | Start MCP server (`--benchmark` for comparisons)                                  |
 
 
 CLI uses hyphens (`find-related`); MCP tool names use underscores (`find_related`).
@@ -409,16 +409,18 @@ Override with `MIRU_BENCHMARK_HISTORY_PATH`. Append-only JSONL of compact token 
 {
   "miru": {
     "command": "miru",
-    "args": []
+    "args": ["mcp"]
   }
 }
 ```
 
-For benchmark mode, set `"args": ["--benchmark"]` (or append that flag). Prefer `miru benchmark on` after a normal install — it updates every agent config.
+For benchmark mode, set `"args": ["mcp", "--benchmark"]` (or append the flag). Prefer `miru benchmark on` after a normal install — it updates every agent config.
 
 Run `miru setup` once so the server can load credentials from `credentials.json`. If the MCP server starts in an interactive terminal without stored credentials, it will start device login automatically.
 
 Use `bunx` + `@takara-ai/miru-code@latest` if `miru` is not global. The installer uses this command so each new MCP server launch can pick up a published version without a global update. A running server keeps its current version until restarted. Wrapper key varies by IDE (`mcpServers`, `servers`, or `mcp`).
+
+Older headless MCP configs that launch `miru` without a subcommand, with or without MCP flags, continue to work. Run `miru install` again to update managed entries to the explicit `mcp` subcommand, then restart your coding agent. For manual MCP configs, add `mcp` after the executable or package name.
 
 ## Developing
 

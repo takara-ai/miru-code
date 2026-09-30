@@ -2,6 +2,7 @@
 import { type AgentId, writeAgentFile } from "./agents.ts";
 import { clearBenchmarkHistory, resolveBenchmarkHistoryPath } from "./benchmark/history.ts";
 import { clearCache } from "./cache.ts";
+import { shouldRunMcp } from "./cli-mode.ts";
 import {
   fail,
   formatRelatedHeader,
@@ -70,26 +71,6 @@ try {
 } catch {
   // Leave recovery to ensureCredentials / setup.
 }
-
-const CLI_COMMANDS = new Set([
-  "search",
-  "locate",
-  "expand",
-  "find-related",
-  "init",
-  "install",
-  "uninstall",
-  "setup",
-  "clear",
-  "benchmark",
-  "env",
-  "environment",
-  "help",
-  "-h",
-  "--help",
-  "-v",
-  "--version",
-]);
 
 const AGENTS = new Set<AgentId>(AGENT_IDS);
 
@@ -390,18 +371,8 @@ async function runBenchmarkCommand(rest: string[]): Promise<void> {
 async function runCli(argv: string[]): Promise<void> {
   const [command, ...rest] = argv;
 
-  if (command === undefined) {
+  if (command === undefined || command === "-h" || command === "--help") {
     printMainHelp();
-    return;
-  }
-
-  if (command === "-h" || command === "--help") {
-    printMainHelp();
-    return;
-  }
-
-  if (command === "-v" || command === "--version") {
-    console.log(miruVersion());
     return;
   }
 
@@ -730,13 +701,13 @@ async function main(): Promise<void> {
 
   const updateNotice = maybeNotifyUpdate();
 
-  if (first && CLI_COMMANDS.has(first)) {
-    await Promise.all([runCli(argv), updateNotice]);
+  if (shouldRunMcp(argv, Boolean(process.stdin.isTTY), Boolean(process.stdout.isTTY))) {
+    await updateNotice;
+    await runMcpWithCredentials(first === "mcp" ? argv.slice(1) : argv);
     return;
   }
 
-  await updateNotice;
-  await runMcpWithCredentials(argv);
+  await Promise.all([runCli(argv), updateNotice]);
 }
 
 main().catch((err) => {

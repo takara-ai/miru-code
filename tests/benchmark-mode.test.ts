@@ -60,12 +60,12 @@ describe("benchmark mode helpers", () => {
     );
     expect(on.changed).toBe(true);
     expect(on.enabled).toBe(true);
-    expect(on.entry.args).toEqual(["@takara-ai/miru-code", MCP_BENCHMARK_FLAG]);
+    expect(on.entry.args).toEqual(["@takara-ai/miru-code", "mcp", MCP_BENCHMARK_FLAG]);
 
     const off = applyBenchmarkFlagToMcpEntry(on.entry, false);
     expect(off.changed).toBe(true);
     expect(off.enabled).toBe(false);
-    expect(off.entry.args).toEqual(["@takara-ai/miru-code"]);
+    expect(off.entry.args).toEqual(["@takara-ai/miru-code", "mcp"]);
 
     const again = applyBenchmarkFlagToMcpEntry(off.entry, false);
     expect(again.changed).toBe(false);
@@ -76,9 +76,26 @@ describe("benchmark mode helpers", () => {
       { command: ["bunx", "@takara-ai/miru-code"], type: "local", enabled: true },
       true,
     );
-    expect(on.entry.command).toEqual(["bunx", "@takara-ai/miru-code", MCP_BENCHMARK_FLAG]);
+    expect(on.entry.command).toEqual(["bunx", "@takara-ai/miru-code", "mcp", MCP_BENCHMARK_FLAG]);
     const off = applyBenchmarkFlagToMcpEntry(on.entry, false);
-    expect(off.entry.command).toEqual(["bunx", "@takara-ai/miru-code"]);
+    expect(off.entry.command).toEqual(["bunx", "@takara-ai/miru-code", "mcp"]);
+  });
+
+  test("benchmark toggles upgrade a direct miru command without changing its mode", () => {
+    const result = applyBenchmarkFlagToMcpEntry({ command: "miru", args: [] }, false);
+    expect(result.changed).toBe(true);
+    expect(result.entry.args).toEqual(["mcp"]);
+    expect(applyBenchmarkFlagToMcpEntry(result.entry, false).changed).toBe(false);
+
+    const arrayCommand = applyBenchmarkFlagToMcpEntry({ command: ["miru", "--ref", "main"] }, true);
+    expect(arrayCommand.entry.command).toEqual(["miru", "mcp", "--ref", "main", "--benchmark"]);
+
+    const unrelated = applyBenchmarkFlagToMcpEntry(
+      { command: "other-tool", args: ["--verbose"] },
+      false,
+    );
+    expect(unrelated.changed).toBe(false);
+    expect(unrelated.entry.args).toEqual(["--verbose"]);
   });
 
   test("applyBenchmarkFlagToMcpEntry can clear a persisted Cursor-style mcp.json payload", async () => {
@@ -109,12 +126,12 @@ describe("benchmark mode helpers", () => {
     parsed.mcpServers.miru = updated.entry;
     await Bun.write(path, `${JSON.stringify(parsed, null, 2)}\n`);
     const after = JSON.parse(await Bun.file(path).text()) as typeof parsed;
-    expect(after.mcpServers.miru.args).toEqual(["@takara-ai/miru-code"]);
+    expect(after.mcpServers.miru.args).toEqual(["@takara-ai/miru-code", "mcp"]);
     await rm(dir, { recursive: true, force: true });
   });
 
   test("withPreservedBenchmarkFlag keeps flag on canonical install entry", () => {
-    const canonical = { command: "bunx", args: ["@takara-ai/miru-code"], type: "stdio" };
+    const canonical = { command: "bunx", args: ["@takara-ai/miru-code", "mcp"], type: "stdio" };
     const existing = {
       command: "bunx",
       args: ["@takara-ai/miru-code", MCP_BENCHMARK_FLAG],
@@ -122,6 +139,7 @@ describe("benchmark mode helpers", () => {
     };
     expect(withPreservedBenchmarkFlag(canonical, existing).args).toEqual([
       "@takara-ai/miru-code",
+      "mcp",
       MCP_BENCHMARK_FLAG,
     ]);
     expect(withPreservedBenchmarkFlag(canonical, null)).toEqual(canonical);
@@ -145,10 +163,14 @@ describe("benchmark mode helpers", () => {
       (await setBenchmarkMode(true, [jsonTarget, tomlTarget])).map((result) => result.action),
     ).toEqual(["missing", "missing"]);
 
-    await Bun.write(jsonPath, '{ // comment\n "mcpServers": {"miru": {"args": ["bunx"]}}}\n');
+    await Bun.write(
+      jsonPath,
+      '{ // comment\n "mcpServers": {"miru": {"command": "bunx", "args": ["@takara-ai/miru-code"]}}}\n',
+    );
     expect((await getBenchmarkModeStatus([jsonTarget]))[0]?.action).toBe("disabled");
     expect((await setBenchmarkMode(true, [jsonTarget]))[0]?.action).toBe("updated");
     expect((await getBenchmarkModeStatus([jsonTarget]))[0]?.enabled).toBe(true);
+    expect(await Bun.file(jsonPath).text()).toContain('"mcp"');
     expect((await setBenchmarkMode(true, [jsonTarget]))[0]?.action).toBe("unchanged");
     expect((await setBenchmarkMode(false, [jsonTarget]))[0]?.action).toBe("updated");
     expect((await getBenchmarkModeStatus([jsonTarget]))[0]?.enabled).toBe(false);
@@ -167,9 +189,28 @@ describe("benchmark mode helpers", () => {
     expect((await getBenchmarkModeStatus([tomlTarget]))[0]?.action).toBe("disabled");
     expect((await setBenchmarkMode(true, [tomlTarget]))[0]?.action).toBe("updated");
     expect((await getBenchmarkModeStatus([tomlTarget]))[0]?.enabled).toBe(true);
+    expect(await Bun.file(tomlPath).text()).toContain(
+      'args = ["@takara-ai/miru-code@latest", "mcp", "--benchmark"]',
+    );
     expect((await setBenchmarkMode(true, [tomlTarget]))[0]?.action).toBe("unchanged");
     expect((await setBenchmarkMode(false, [tomlTarget]))[0]?.action).toBe("updated");
     expect(await Bun.file(tomlPath).text()).toContain("[other]");
+    expect(await Bun.file(tomlPath).text()).toContain(
+      'args = ["@takara-ai/miru-code@latest", "mcp"]',
+    );
+  });
+
+  test("Codex benchmark toggle upgrades legacy args even when mode is unchanged", async () => {
+    dir = await mkdtemp(join(tmpdir(), "miru-bench-mode-codex-upgrade-"));
+    const path = join(dir, "config.toml");
+    const codex = target("codex", path, "toml");
+    await Bun.write(
+      path,
+      '[mcp_servers.miru]\ncommand = "bunx"\nargs = ["@takara-ai/miru-code@latest"]\n',
+    );
+    expect((await setBenchmarkMode(false, [codex]))[0]?.action).toBe("updated");
+    expect(await Bun.file(path).text()).toContain('args = ["@takara-ai/miru-code@latest", "mcp"]');
+    expect((await setBenchmarkMode(false, [codex]))[0]?.action).toBe("unchanged");
   });
 
   test("treats invalid JSON structure and nonstandard formats as missing", async () => {

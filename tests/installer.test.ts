@@ -64,7 +64,7 @@ function claudeTarget(root: string): AgentTarget {
       memberKey: "miru",
       entry: {
         command: "bunx",
-        args: ["@takara-ai/miru-code@latest"],
+        args: ["@takara-ai/miru-code@latest", "mcp"],
         type: "stdio",
       },
       format: "json",
@@ -439,7 +439,7 @@ describe("installer config", () => {
     const merged = await Bun.file(path).text();
     expect(merged.includes("[mcp_servers.miru]")).toBe(true);
     expect(merged.includes("[mcp_servers.other]")).toBe(true);
-    expect(merged).toContain('args = ["@takara-ai/miru-code@latest"]');
+    expect(merged).toContain('args = ["@takara-ai/miru-code@latest", "mcp"]');
     expect(merged).toContain("startup_timeout_sec = 60");
     expect(merged.includes("TAKARA_API_KEY")).toBe(false);
     expect(await mergeTomlBlock(path)).toBe("unchanged");
@@ -459,6 +459,10 @@ command = "bunx"
 args = ["@takara-ai/miru-code@latest", "--benchmark"]
 startup_timeout_sec = 60
 `,
+    );
+    expect(await mergeTomlBlock(path)).toBe("updated");
+    expect(await Bun.file(path).text()).toContain(
+      'args = ["@takara-ai/miru-code@latest", "mcp", "--benchmark"]',
     );
     expect(await mergeTomlBlock(path)).toBe("unchanged");
 
@@ -622,7 +626,7 @@ describe("installer apply", () => {
     const miru = data.mcpServers?.miru as Record<string, unknown> | undefined;
     expect(miru).toBeDefined();
     expect(miru?.command).toBe("bunx");
-    expect(miru?.args).toEqual(["@takara-ai/miru-code@latest"]);
+    expect(miru?.args).toEqual(["@takara-ai/miru-code@latest", "mcp"]);
     expect(miru?.env).toBeUndefined();
   });
 
@@ -661,7 +665,7 @@ describe("installer apply", () => {
     };
     expect(data.mcpServers?.miru).toEqual({
       command: "bunx",
-      args: ["@takara-ai/miru-code@latest"],
+      args: ["@takara-ai/miru-code@latest", "mcp"],
       type: "stdio",
     });
     expect(data.projects["/Users/me/Code/ds1"].mcpServers.miru.args).toEqual([
@@ -680,9 +684,13 @@ describe("installer apply", () => {
     await Bun.write(mcpPath, `${JSON.stringify(data, null, 2)}\n`);
 
     const again = await applyMcp(agent, "install");
-    expect(again?.action).toBe("unchanged");
+    expect(again?.action).toBe("updated");
     const after = JSON.parse(await Bun.file(mcpPath).text()) as typeof data;
-    expect(after.mcpServers.miru.args).toEqual(["@takara-ai/miru-code@latest", "--benchmark"]);
+    expect(after.mcpServers.miru.args).toEqual([
+      "@takara-ai/miru-code@latest",
+      "mcp",
+      "--benchmark",
+    ]);
   });
 
   test("applySubagent writes template", async () => {

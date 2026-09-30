@@ -33,7 +33,8 @@ describe("help output", () => {
   test("prints main, environment, and SageMaker help", () => {
     capture();
     printMainHelp();
-    expect(output).toContain("Start MCP server");
+    expect(output).toContain("miru                         Show help in a terminal");
+    expect(output).toContain("Start MCP server (stdio)");
     capture();
     printEnvHelp();
     expect(output).toContain("TAKARA_API_KEY");
@@ -66,6 +67,13 @@ describe("help output", () => {
       printCommandHelp(command);
       expect(output.length).toBeGreaterThan(0);
     }
+  });
+
+  test("shows the explicit MCP command in its help", () => {
+    capture();
+    printCommandHelp("mcp");
+    expect(output).toContain("miru mcp [--ref BRANCH]");
+    expect(output).not.toContain("default with no subcommand");
   });
 
   test("exits after printing help for an unknown command", () => {

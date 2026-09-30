@@ -4,13 +4,13 @@ import { type InstallAction, MIRU_BUNX_PACKAGE, MIRU_END, MIRU_START } from "./a
 const CODEX_MCP_HEADER = "[mcp_servers.miru]";
 const CODEX_MCP_BLOCK = `[mcp_servers.miru]
 command = "bunx"
-args = ["${MIRU_BUNX_PACKAGE}"]
+args = ["${MIRU_BUNX_PACKAGE}", "mcp"]
 startup_timeout_sec = 60
 `;
 /** Same Codex block with `--benchmark` preserved across reinstall. */
 const CODEX_MCP_BLOCK_BENCHMARK = `[mcp_servers.miru]
 command = "bunx"
-args = ["${MIRU_BUNX_PACKAGE}", "--benchmark"]
+args = ["${MIRU_BUNX_PACKAGE}", "mcp", "--benchmark"]
 startup_timeout_sec = 60
 `;
 

@@ -81,17 +81,17 @@ const HOME = homedir();
 
 const STDIO_SERVER_CONFIG: Record<string, unknown> = {
   command: "bunx",
-  args: [MIRU_BUNX_PACKAGE],
+  args: [MIRU_BUNX_PACKAGE, "mcp"],
   type: "stdio",
 };
 
 const BARE_STDIO_SERVER_CONFIG: Record<string, unknown> = {
   command: "bunx",
-  args: [MIRU_BUNX_PACKAGE],
+  args: [MIRU_BUNX_PACKAGE, "mcp"],
 };
 
 const OPENCODE_SERVER_CONFIG: Record<string, unknown> = {
-  command: ["bunx", MIRU_BUNX_PACKAGE],
+  command: ["bunx", MIRU_BUNX_PACKAGE, "mcp"],
   type: "local",
 };
 
