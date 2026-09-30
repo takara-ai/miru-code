@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { findIndexCachePath } from "../src/cache.ts";
-import { detectLanguage } from "../src/index/files.ts";
+import { detectLanguage, getExtensions } from "../src/index/files.ts";
 import type { Chunk } from "../src/types.ts";
 import {
   computeSourceCacheKey,
@@ -99,6 +99,17 @@ describe("utils", () => {
     expect(detectLanguage("include/fmt/chrono.h")).toBe("cpp");
     expect(detectLanguage("src/main.c")).toBe("c");
     expect(detectLanguage("src/main.cpp")).toBe("cpp");
+  });
+
+  test("detectLanguage maps SQL and component-based web files", () => {
+    expect(detectLanguage("db/schema.sql")).toBe("sql");
+    expect(detectLanguage("src/pages/index.astro")).toBe("astro");
+    expect(detectLanguage("src/App.vue")).toBe("vue");
+    expect(detectLanguage("src/App.svelte")).toBe("svelte");
+    expect(detectLanguage("public/index.htm")).toBe("html");
+    expect(getExtensions(["code"])).toEqual(
+      expect.arrayContaining([".sql", ".astro", ".html", ".htm"]),
+    );
   });
 
   test("isAllowedRepoSource rejects non-http git transports for MCP", () => {

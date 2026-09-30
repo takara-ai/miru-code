@@ -225,10 +225,11 @@ MCP watches local files and updates the index incrementally. Package upgrades in
 
 Miru chunks source in tiers: **AST** (tree-sitter, default) → **structural** heuristics → **line** splits.
 
-**AST chunking** — 22 languages (syntax-aware boundaries via vendored `web-tree-sitter` grammars):
+**AST chunking** — 26 languages (syntax-aware boundaries via vendored `web-tree-sitter` grammars):
 
 | Language | Typical extensions |
 |----------|-------------------|
+| astro | `.astro` |
 | bash | `.sh`, `.bash`, `.zsh` |
 | c | `.c` |
 | cpp | `.cpp`, `.h`, `.hpp`, etc. |
@@ -239,7 +240,7 @@ Miru chunks source in tiers: **AST** (tree-sitter, default) → **structural** h
 | embeddedtemplate | ERB-style templates |
 | go | `.go` |
 | haskell | `.hs` |
-| html | `.html` |
+| html | `.html`, `.htm` |
 | java | `.java` |
 | javascript | `.js`, `.jsx`, `.mjs`, `.cjs` |
 | json | `.json` |
@@ -250,11 +251,14 @@ Miru chunks source in tiers: **AST** (tree-sitter, default) → **structural** h
 | rust | `.rs` |
 | scala | `.scala` |
 | solidity | `.sol` |
+| sql | `.sql` |
+| svelte | `.svelte` |
 | typescript | `.ts`, `.tsx`, `.mts`, `.cts` |
+| vue | `.vue` |
 
 **Structural fallback** (brace/indent heuristics when AST is unavailable): python, go, typescript, javascript, cpp, c.
 
-**Line fallback:** everything else that gets indexed (kotlin, swift, vue, sql, etc.) — still searchable, coarser chunks.
+**Line fallback:** everything else that gets indexed (kotlin, swift, etc.) — still searchable, coarser chunks.
 
 Set `MIRU_AST_CHUNKING=0` to disable AST and use structural → lines only.
 

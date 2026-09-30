@@ -2,6 +2,7 @@
   "version": 1,
   "runtime": "web-tree-sitter@^0.26.9",
   "languages": {
+    "astro": "tree-sitter-astro.wasm",
     "bash": "tree-sitter-bash.wasm",
     "c": "tree-sitter-c.wasm",
     "cpp": "tree-sitter-cpp.wasm",
@@ -23,9 +24,13 @@
     "rust": "tree-sitter-rust.wasm",
     "scala": "tree-sitter-scala.wasm",
     "solidity": "tree-sitter-solidity.wasm",
-    "typescript": "tree-sitter-typescript.wasm"
+    "sql": "tree-sitter-sql.wasm",
+    "svelte": "tree-sitter-svelte.wasm",
+    "typescript": "tree-sitter-typescript.wasm",
+    "vue": "tree-sitter-vue.wasm"
   },
   "files": [
+    "tree-sitter-astro.wasm",
     "tree-sitter-bash.wasm",
     "tree-sitter-c.wasm",
     "tree-sitter-c_sharp.wasm",
@@ -50,7 +55,10 @@
     "tree-sitter-rust.wasm",
     "tree-sitter-scala.wasm",
     "tree-sitter-solidity.wasm",
+    "tree-sitter-sql.wasm",
+    "tree-sitter-svelte.wasm",
     "tree-sitter-tsx.wasm",
-    "tree-sitter-typescript.wasm"
+    "tree-sitter-typescript.wasm",
+    "tree-sitter-vue.wasm"
   ]
 }

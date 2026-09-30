@@ -37,6 +37,41 @@ describe("vendored tree-sitter grammars", () => {
     expect(hasVendoredGrammar(null)).toBe(false);
   });
 
+  test("SQL and component-based web grammars parse real samples", async () => {
+    await ensureParserInit();
+    const samples: Array<[string, string, string]> = [
+      ["sql", "schema.sql", "CREATE TABLE users (id INT PRIMARY KEY);\nSELECT id FROM users;\n"],
+      [
+        "astro",
+        "Page.astro",
+        "---\nconst { title } = Astro.props;\n---\n<h1>{title}</h1>\n<style>h1 { color: red; }</style>\n",
+      ],
+      [
+        "vue",
+        "App.vue",
+        '<template><div>{{ msg }}</div></template>\n<script setup lang="ts">const msg = "hi";</script>\n',
+      ],
+      [
+        "svelte",
+        "App.svelte",
+        "<script>let count = 0;</script>\n<button on:click={() => count++}>{count}</button>\n",
+      ],
+    ];
+    for (const [language, file, source] of samples) {
+      expect(hasVendoredGrammar(language)).toBe(true);
+      const grammar = await getLanguageForFile(file, language);
+      expect(grammar).not.toBeNull();
+      if (grammar === null) {
+        throw new Error(`expected ${language} grammar`);
+      }
+      const parser = new Parser();
+      parser.setLanguage(grammar);
+      const tree = parser.parse(source);
+      expect(tree?.rootNode.childCount).toBeGreaterThan(0);
+      expect(tree?.rootNode.hasError).toBe(false);
+    }
+  });
+
   test("web-tree-sitter loads runtime and a vendored grammar", async () => {
     await Parser.init({ locateFile: () => webTreeSitterRuntimePath() });
     const pythonWasm = wasmPathForLanguage("python");

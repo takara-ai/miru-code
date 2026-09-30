@@ -1,12 +1,14 @@
 #!/usr/bin/env bun
 import { cpSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 /**
- * Copy prebuilt .wasm grammars from official tree-sitter-* npm packages into grammars/.
+ * Vendor .wasm grammars from tree-sitter-* devDependencies into grammars/.
  *
  * Requires grammar packages as devDependencies. Run after adding/updating them:
  *   bun run vendor-grammars
  *
- * Does not use tree-sitter-cli — only copies files already shipped in npm tarballs.
+ * Packages that ship a prebuilt .wasm are copied verbatim. Packages marked `build`
+ * ship only generated C sources, so their .wasm is built with the tree-sitter-cli
+ * devDependency (`tree-sitter build --wasm`).
  */
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -14,9 +16,17 @@ import { join } from "node:path";
 const require = createRequire(import.meta.url);
 const root = join(import.meta.dir, "..");
 const outDir = join(root, "grammars");
+const treeSitterCli = join(root, "node_modules", ".bin", "tree-sitter");
 
-/** npm package → wasm files to copy (all files listed are copied verbatim). */
-const GRAMMAR_PACKAGES: { package: string; wasms: string[] }[] = [
+/** npm package → wasm files to copy, or (with `build`) the single wasm to build from source. */
+const GRAMMAR_PACKAGES: { package: string; wasms: string[]; build?: boolean }[] = [
+  { package: "tree-sitter-astro", wasms: ["tree-sitter-astro.wasm"], build: true },
+  { package: "@derekstride/tree-sitter-sql", wasms: ["tree-sitter-sql.wasm"], build: true },
+  { package: "tree-sitter-vue", wasms: ["tree-sitter-vue.wasm"], build: true },
+  {
+    package: "@tree-sitter-grammars/tree-sitter-svelte",
+    wasms: ["tree-sitter-svelte.wasm"],
+  },
   { package: "tree-sitter-bash", wasms: ["tree-sitter-bash.wasm"] },
   { package: "tree-sitter-c", wasms: ["tree-sitter-c.wasm"] },
   { package: "tree-sitter-c-sharp", wasms: ["tree-sitter-c_sharp.wasm"] },
@@ -53,6 +63,7 @@ const GRAMMAR_PACKAGES: { package: string; wasms: string[] }[] = [
 
 /** Miru language id (from detectLanguage) → wasm basename in grammars/. */
 const LANGUAGE_TO_WASM: Record<string, string> = {
+  astro: "tree-sitter-astro.wasm",
   bash: "tree-sitter-bash.wasm",
   c: "tree-sitter-c.wasm",
   cpp: "tree-sitter-cpp.wasm",
@@ -74,7 +85,10 @@ const LANGUAGE_TO_WASM: Record<string, string> = {
   rust: "tree-sitter-rust.wasm",
   scala: "tree-sitter-scala.wasm",
   solidity: "tree-sitter-solidity.wasm",
+  sql: "tree-sitter-sql.wasm",
+  svelte: "tree-sitter-svelte.wasm",
   typescript: "tree-sitter-typescript.wasm",
+  vue: "tree-sitter-vue.wasm",
 };
 
 rmSync(outDir, { recursive: true, force: true });
@@ -83,7 +97,7 @@ mkdirSync(outDir, { recursive: true });
 const copied = new Set<string>();
 let errors = 0;
 
-for (const { package: pkg, wasms } of GRAMMAR_PACKAGES) {
+for (const { package: pkg, wasms, build } of GRAMMAR_PACKAGES) {
   let pkgDir: string;
   try {
     pkgDir = join(require.resolve(`${pkg}/package.json`), "..");
@@ -97,7 +111,17 @@ for (const { package: pkg, wasms } of GRAMMAR_PACKAGES) {
     const src = join(pkgDir, wasm);
     const dest = join(outDir, wasm);
     try {
-      cpSync(src, dest);
+      if (build) {
+        const result = Bun.spawnSync([treeSitterCli, "build", "--wasm", "--output", dest, pkgDir], {
+          stdout: "inherit",
+          stderr: "inherit",
+        });
+        if (result.exitCode !== 0) {
+          throw new Error(`tree-sitter build exited ${result.exitCode}`);
+        }
+      } else {
+        cpSync(src, dest);
+      }
       copied.add(wasm);
       console.log(`copied ${wasm}`);
     } catch {

@@ -52,6 +52,7 @@ const EXTENSION_TO_LANGUAGE: Record<string, string> = {
   ".zig": "zig",
   ".vue": "vue",
   ".svelte": "svelte",
+  ".astro": "astro",
   ".md": "markdown",
   ".mdx": "markdown",
   ".rst": "rst",
@@ -64,6 +65,7 @@ const EXTENSION_TO_LANGUAGE: Record<string, string> = {
   ".cfg": "ini",
   ".xml": "xml",
   ".html": "html",
+  ".htm": "html",
   ".css": "css",
   ".scss": "scss",
   ".less": "less",
@@ -74,7 +76,7 @@ const CODE_EXTENSIONS = new Set(
   Object.entries(EXTENSION_TO_LANGUAGE)
     .filter(
       ([, lang]) =>
-        !["markdown", "rst", "text", "json", "yaml", "toml", "ini", "xml", "html"].includes(lang),
+        !["markdown", "rst", "text", "json", "yaml", "toml", "ini", "xml"].includes(lang),
     )
     .map(([ext]) => ext),
 );

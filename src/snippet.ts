@@ -79,7 +79,7 @@ const RUBY_OR_ELIXIR_BODY_RE = /^\s*def\w*\b|^\s*defmodule\b/;
 const MAX_DECLARATION_LOOKBACK = 40;
 const INDENTED_BLOCK_LANGUAGES = new Set(["python", "haskell", "ocaml"]);
 const END_BLOCK_LANGUAGES = new Set(["ruby", "elixir"]);
-const TAG_LANGUAGES = new Set(["html", "embeddedtemplate", "xml", "vue", "svelte"]);
+const TAG_LANGUAGES = new Set(["html", "embeddedtemplate", "xml", "vue", "svelte", "astro"]);
 const BRACE_BLOCK_LANGUAGES = new Set([
   "bash",
   "c",
