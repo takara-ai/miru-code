@@ -14,11 +14,13 @@ e.g. "where is auth wired?", "what handles this behavior?", "find related code f
 
 ## Workflow
 
-1. Literal in the request? `locate(literal="<token>", repo="<project root>")` — prefer `mode="locations"`/`"count"`.
-2. Otherwise `search(query="<question>", repo="<project root>")` once.
+1. Literal in the request? `locate(literal="<token>")` — prefer `mode="locations"`/`"count"`.
+2. Otherwise `search(query="<question>")` once.
 3. `truncated: true`? `expand` with `file_path`/`anchor_line` — only if the snippet doesn't already answer.
 4. `find_related` for similar code elsewhere, not more context in the same file.
 5. Read files directly only after Miru has already located the path.
+
+`repo` is optional, set it for another repo. Reuse it on follow-up calls.
 
 ## If Miru tools report credential errors
 

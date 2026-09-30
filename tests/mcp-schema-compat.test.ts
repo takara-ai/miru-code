@@ -109,6 +109,15 @@ describe("native MCP server matches official 2025-11-25 schema", () => {
     for (const tool of tools) {
       assertMatchesOfficialMcpSchema("Tool", tool);
     }
+    for (const tool of tools as Array<{
+      name: string;
+      inputSchema: { required?: string[]; properties?: Record<string, { description?: string }> };
+    }>) {
+      if (["search", "locate", "expand", "find_related"].includes(tool.name)) {
+        expect(tool.inputSchema.required ?? []).not.toContain("repo");
+        expect(tool.inputSchema.properties?.repo?.description).toContain("`repo` is optional");
+      }
+    }
   });
 
   test("benchmark mode lists read_benchmark with schema-valid Tool", async () => {

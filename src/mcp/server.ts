@@ -44,8 +44,7 @@ import { getIndexForRepo, type IndexCache, toolText } from "./index-cache.ts";
 import { MiruMcpServer } from "./runtime.ts";
 
 const REPO_DESCRIPTION =
-  "https:// or http:// git URL (e.g. https://github.com/org/repo) or local directory path to index and search. " +
-  "Pass the project root for local workspaces. " +
+  "`repo` is optional. Set a local path or Git URL for another repo. " +
   "The index is built on the first tool call and cached for the session.";
 
 const BENCHMARK_SKIP_NOTES = {
@@ -132,6 +131,7 @@ export function createMcpServer(
     };
   },
 ): MiruMcpServer {
+  const defaultRepo = process.cwd();
   const benchmark = options?.benchmark ?? false;
   const dependencies = options?.dependencies;
   const runWithGrepFallback = dependencies?.withGrepTimeoutFallback ?? withGrepTimeoutFallback;
@@ -155,14 +155,14 @@ export function createMcpServer(
   server.registerTool(
     "search",
     {
-      description: `${MCP_SEARCH_TOOL_DESCRIPTION} Indexes \`repo\` on first call; later calls reuse the session cache.`,
+      description: `${MCP_SEARCH_TOOL_DESCRIPTION} Indexes the selected directory or URL on first call; later calls reuse the session cache.`,
       inputSchema: {
         query: z
           .string()
           .describe(
             "Natural language or code query — your default for all code search in this repo.",
           ),
-        repo: z.string().describe(REPO_DESCRIPTION),
+        repo: z.string().optional().describe(REPO_DESCRIPTION),
         include: z
           .array(z.string().min(1))
           .min(1)
@@ -185,8 +185,9 @@ export function createMcpServer(
     },
     async ({ query, repo, include, exclude, dedupe_by_file: dedupeByFile }) => {
       try {
-        const index = await getIndexForRepo(repo, cache);
-        const repoRoot = localRepoRoot(repo);
+        const source = repo ?? defaultRepo;
+        const index = await getIndexForRepo(source, cache);
+        const repoRoot = localRepoRoot(source);
         const k = SEARCH_RESULT_COUNT;
         let skip: BenchmarkSkipReason | undefined;
         if (benchmark && (include || exclude)) {
@@ -261,7 +262,7 @@ export function createMcpServer(
           .describe(
             "Alias for `literal` — accepted so a call shaped like `search(query=...)` still resolves as an exact-substring lookup.",
           ),
-        repo: z.string().describe(REPO_DESCRIPTION),
+        repo: z.string().optional().describe(REPO_DESCRIPTION),
         mode: z
           .enum(["count", "locations", "lines"])
           .optional()
@@ -307,10 +308,11 @@ export function createMcpServer(
         return toolErrorText(new Error("locate requires `literal` (exact substring to find)."));
       }
       try {
-        const index = await getIndexForRepo(repo, cache);
+        const source = repo ?? defaultRepo;
+        const index = await getIndexForRepo(source, cache);
 
         let skip: BenchmarkSkipReason | undefined;
-        const repoRoot = localRepoRoot(repo);
+        const repoRoot = localRepoRoot(source);
         if (benchmark && repoRoot && typeof lit === "string") {
           if (locateOpts.limit != null) {
             skip = "limited_locate";
@@ -359,7 +361,7 @@ export function createMcpServer(
           .number()
           .int()
           .describe("Line from the search hit (`anchor_line` when truncated, else `start_line`)."),
-        repo: z.string().describe(REPO_DESCRIPTION),
+        repo: z.string().optional().describe(REPO_DESCRIPTION),
         before: z
           .number()
           .int()
@@ -376,8 +378,9 @@ export function createMcpServer(
     },
     async ({ file_path: filePath, anchor_line: anchorLine, repo, before, after }) => {
       try {
-        const index = await getIndexForRepo(repo, cache);
-        const repoRoot = localRepoRoot(repo);
+        const source = repo ?? defaultRepo;
+        const index = await getIndexForRepo(source, cache);
+        const repoRoot = localRepoRoot(source);
         const beforeCount = before ?? DEFAULT_EXPAND_BEFORE;
         const afterCount = after ?? DEFAULT_EXPAND_AFTER;
         const { anchor, chunks: expanded } = expandChunksAtLine(
@@ -420,13 +423,14 @@ export function createMcpServer(
           .number()
           .int()
           .describe("Line from the search hit (`anchor_line` when truncated, else `start_line`)."),
-        repo: z.string().describe(REPO_DESCRIPTION),
+        repo: z.string().optional().describe(REPO_DESCRIPTION),
       },
     },
     async ({ file_path: filePath, anchor_line: anchorLine, repo }) => {
       try {
-        const index = await getIndexForRepo(repo, cache);
-        const repoRoot = localRepoRoot(repo);
+        const source = repo ?? defaultRepo;
+        const index = await getIndexForRepo(source, cache);
+        const repoRoot = localRepoRoot(source);
         const chunk = resolveChunk(index.chunks, filePath, anchorLine, repoRoot);
         if (!chunk) {
           return toolText(

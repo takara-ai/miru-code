@@ -28,15 +28,17 @@ export function buildSearchPolicyBody(native: NativeToolNames): string {
 
 ${SNIPPET_GUIDANCE}
 
+\`repo\` is optional, set it for another repo.
+
 Use Miru MCP tools:
 - \`locate\` — exact substring (env var, symbol, error code); prefer \`mode=count\` or \`locations\`
-- \`search\` — one call per conceptual question; pass project root as \`repo\`; use \`include\` / \`exclude\` Gitignore-style globs to scope files (same syntax as \`locate\`)
+- \`search\` — one call per conceptual question; use \`include\` / \`exclude\` Gitignore-style globs to scope files (same syntax as \`locate\`)
 - \`expand\` — more context in the same file when \`truncated: true\` (\`file_path\` + \`anchor_line\`)
 - \`find_related\` — similar code in other files (hits may also be snippets; use \`expand\` if truncated)
 
 Call shapes:
-- \`locate(literal="<exact substring>", repo="<project root>")\` — prefer \`mode="locations"\`/\`"count"\`
-- \`search(query="<natural language>", repo="<project root>", include=["src/auth/**"])\` — use the same \`include\` / \`exclude\` globs on \`locate\` when scoping an exact-string search
+- \`locate(literal="<exact substring>")\` — prefer \`mode="locations"\`/\`"count"\`
+- \`search(query="<natural language>", include=["src/auth/**"])\` — use the same \`include\` / \`exclude\` globs on \`locate\` when scoping an exact-string search
 
 Stop rules:
 - Literal in the request → \`locate\`, not \`search\`
@@ -54,7 +56,7 @@ ${buildSearchPolicyTable(native)}`;
 export function buildMcpWorkflow(native: NativeToolNames): string {
   return `### MCP workflow
 
-1. Call \`search\` with \`repo\` set to the project root (local path or https:// git URL).
+1. Call \`search\`; add \`repo\` only for another repo.
 2. For exact literals, call \`locate\` (prefer \`mode=count\` or \`locations\`).
 3. On \`truncated: true\`, call \`expand\` — only if the snippet doesn't already answer.
 4. Use \`find_related\` to trace similar code in other files — not for more context in the same file.
@@ -118,7 +120,7 @@ export const MCP_SERVER_INSTRUCTIONS =
   "Exact token (identifier, quoted string, env var, error code) → `locate`; everything else → `search` once, no paraphrase retries. " +
   `${SNIPPET_GUIDANCE} ` +
   "`find_related` traces similar code elsewhere, not more context in the same file. " +
-  "Always pass the project root as `repo`; local repos return `absolute_path` — use Read only to edit. " +
+  "`repo` is optional, good for multi repo workflows. " +
   "Native Grep/Glob only outside the indexed repo or for non-code tasks. " +
   "Default indexed scope is code, config, and docs; an empty result can mean out-of-scope, not nonexistent. " +
   "On credential errors, call this server's `auth` tool — not the host `mcp_auth` tool.";

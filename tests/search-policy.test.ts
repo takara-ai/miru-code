@@ -7,6 +7,7 @@ import {
   MCP_READ_BENCHMARK_TOOL_DESCRIPTION,
   MCP_SEARCH_TOOL_DESCRIPTION,
   MCP_SERVER_INSTRUCTIONS,
+  SEARCH_POLICY_BODY,
   SNIPPET_GUIDANCE,
 } from "../src/installer/search-policy.ts";
 
@@ -58,6 +59,10 @@ describe("search-policy", () => {
     expect(skill).toContain("literal");
     expect(skill).not.toContain("Do not use Miru for exact literal");
     expect(skill).toContain("truncated: true");
+    expect(skill).toContain("`repo` is optional");
+    expect(skill).toContain('locate(literal="<token>")');
+    expect(SEARCH_POLICY_BODY).toContain("`repo` is optional");
+    expect(MCP_SERVER_INSTRUCTIONS).toContain("`repo` is optional");
   });
 
   test("benchmark instructions and read_benchmark description stay compact", () => {

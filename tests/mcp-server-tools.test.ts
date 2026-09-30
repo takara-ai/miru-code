@@ -68,6 +68,53 @@ describe("MCP tools against a local index", () => {
     }
   });
 
+  test("uses the server startup directory when repo is omitted and honors an explicit repo", async () => {
+    const startupDirectory = process.cwd();
+    const sources: string[] = [];
+    const fakeIndex = {
+      root: null,
+      chunks: [sourceChunk],
+      search: async () => searchResults,
+      locateLiteral: () => ({
+        literal: "needle",
+        mode: "count",
+        n: 1,
+        files: 1,
+        truncated: false,
+        hits: [],
+      }),
+      findRelated: async () => searchResults,
+    };
+    const cache = {
+      get: async (source: string) => {
+        sources.push(source);
+        return fakeIndex;
+      },
+    } as unknown as IndexCache;
+    const transport = new MemoryTransport([
+      call(1, "search", { query: "findThing" }),
+      call(2, "locate", { literal: "needle", mode: "count" }),
+      call(3, "expand", { file_path: sourceChunk.file_path, anchor_line: 1 }),
+      call(4, "find_related", { file_path: sourceChunk.file_path, anchor_line: 1 }),
+      call(5, "search", { query: "findThing", repo: "/another/repo" }),
+    ]);
+
+    await createMcpServer(cache).connect(transport);
+
+    expect(sources).toEqual([
+      startupDirectory,
+      startupDirectory,
+      startupDirectory,
+      startupDirectory,
+      "/another/repo",
+    ]);
+    expect(payload(transport, 1)).toContain("findThing");
+    expect(payload(transport, 2)).toContain("1 match across 1 file");
+    expect(payload(transport, 3)).toContain("needle");
+    expect(payload(transport, 4)).toContain("findThing");
+    expect(payload(transport, 5)).toContain("findThing");
+  });
+
   test("returns clear messages for empty results, missing chunks, and index errors", async () => {
     const root = await mkdtemp(join(tmpdir(), "miru-mcp-empty-"));
     try {

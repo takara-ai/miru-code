@@ -184,7 +184,7 @@ bunx @takara-ai/miru-code@latest search "auth middleware" ./src
 
 ## MCP tools
 
-When wired via `miru install`, the MCP server exposes `search`, `locate`, `expand`, and `find_related`. `read_benchmark` appears only in [benchmark mode](#benchmark-mode). Pass the **project root** as `repo` for local workspaces (or an `https://` git URL). The index is built on the first call and cached for the session.
+When wired via `miru install`, the MCP server exposes `search`, `locate`, `expand`, and `find_related`. `read_benchmark` appears only in [benchmark mode](#benchmark-mode). `repo` is optional: it defaults to the server's startup directory. Set it for another repo, or if your MCP client starts elsewhere. The index is built on the first call and cached for the session.
 
 
 | Tool             | When to use                                                                             |
@@ -198,10 +198,12 @@ When wired via `miru install`, the MCP server exposes `search`, `locate`, `expan
 
 ### Workflow
 
-1. **`search`** with `query` + `repo` — returns compact snippets (~±15 lines) and relevance scores.
-2. If a hit has **`truncated: true`**, call **`expand`** with `file_path`, `anchor_line`, and `repo` — not another search or a full-file read.
-3. To trace similar patterns elsewhere, call **`find_related`** with the same `file_path`, `anchor_line`, and `repo`.
+1. **`search`** with `query` — returns compact snippets (~±15 lines) and relevance scores.
+2. If a hit has **`truncated: true`**, call **`expand`** with `file_path` and `anchor_line` — not another search or a full-file read.
+3. To trace similar patterns elsewhere, call **`find_related`** with the same `file_path` and `anchor_line`.
 4. Use your editor's **Read** on `absolute_path` only when editing or when `expand` still lacks context.
+
+Keep `repo` on follow-up calls when set.
 
 Prefer these tools over Grep, Glob, or SemanticSearch when Miru MCP is connected — hooks and instructions enforce that when enabled.
 
@@ -354,7 +356,7 @@ Override with `MIRU_BENCHMARK_HISTORY_PATH`. Append-only JSONL of compact token 
 | Param            | Required | Notes                                   |
 | ---------------- | -------- | --------------------------------------- |
 | `query`          | yes      | Natural language or code query          |
-| `repo`           | yes      | Project root or git URL                 |
+| `repo`           | no       | Startup directory by default; set for another repo |
 | `include`        | no       | Gitignore-style glob patterns; only matching files are searched (same as `locate.include`) |
 | `exclude`        | no       | Gitignore-style glob patterns; matching files are skipped (same as `locate.exclude`) |
 | `dedupe_by_file` | no       | Keep best hit per file (default `true`) |
@@ -366,7 +368,7 @@ Override with `MIRU_BENCHMARK_HISTORY_PATH`. Append-only JSONL of compact token 
 | Param         | Required | Notes                                                                               |
 | ------------- | -------- | ----------------------------------------------------------------------------------- |
 | `literal`     | yes      | Exact substring to find                                                             |
-| `repo`        | yes      | Project root or git URL                                                             |
+| `repo`        | no       | Startup directory by default; set for another repo                                |
 | `include`     | no       | Gitignore-style glob patterns; only matching files are searched                    |
 | `exclude`     | no       | Gitignore-style glob patterns; matching files are skipped                          |
 | `mode`        | no       | `count` · `locations` · `lines` (default). Prefer `count`/`locations` when possible |
@@ -381,7 +383,7 @@ Override with `MIRU_BENCHMARK_HISTORY_PATH`. Append-only JSONL of compact token 
 | ------------------ | -------- | --------------------------------------------------------------------- |
 | `file_path`        | yes      | From hit `file_path` or `absolute_path` (local repos)                 |
 | `anchor_line`      | yes      | From the search hit (`anchor_line` when truncated, else `start_line`) |
-| `repo`             | yes      | Same repo as the search                                               |
+| `repo`             | no       | Same repo as the search, if set                                        |
 | `before` / `after` | no       | Extra chunks before/after anchor (default 1 each)                     |
 
 
@@ -392,7 +394,7 @@ Override with `MIRU_BENCHMARK_HISTORY_PATH`. Append-only JSONL of compact token 
 | ------------- | -------- | -------------------------------------------- |
 | `file_path`   | yes      | From a search hit                            |
 | `anchor_line` | yes      | From the search hit                          |
-| `repo`        | yes      | Same repo as the search                      |
+| `repo`        | no       | Same repo as the search, if set              |
 
 
 `**read_benchmark**` *(benchmark mode only)*
