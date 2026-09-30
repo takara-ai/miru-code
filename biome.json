@@ -7,7 +7,7 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["**", "!tokenizer/tokenizer.json"]
+    "includes": ["**", "!tokenizer/tokenizer.json", "!.agents/plugins/marketplace.json"]
   },
   "formatter": {
     "enabled": true,
