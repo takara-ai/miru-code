@@ -13,13 +13,14 @@ import {
 } from "../src/env.ts";
 import { loadEnvFiles } from "../src/env-files.ts";
 import { searchImprovementsEnabled } from "../src/ranking/features.ts";
+import { fake } from "./helpers/fake-credentials.ts";
 
 describe("resolveEmbeddingApiKey", () => {
   test("reads TAKARA_API_KEY", () => {
     const prev = process.env.TAKARA_API_KEY;
     try {
-      process.env.TAKARA_API_KEY = "takara-token";
-      expect(resolveEmbeddingApiKey()).toBe("takara-token");
+      process.env.TAKARA_API_KEY = fake("takara-token");
+      expect(resolveEmbeddingApiKey()).toBe(fake("takara-token"));
     } finally {
       if (prev === undefined) {
         delete process.env.TAKARA_API_KEY;
@@ -67,9 +68,9 @@ describe("loadEnvFiles", () => {
     const dir = await mkdtemp(join(tmpdir(), "miru-env-"));
     try {
       await writeFile(join(dir, ".env.local"), "TAKARA_API_KEY=file-token\n", "utf-8");
-      process.env.TAKARA_API_KEY = "mcp-token";
+      process.env.TAKARA_API_KEY = fake("mcp-token");
       await loadEnvFiles({ cwd: dir, packageRoot: dir });
-      expect(process.env.TAKARA_API_KEY).toBe("mcp-token");
+      expect(process.env.TAKARA_API_KEY).toBe(fake("mcp-token"));
     } finally {
       await rm(dir, { recursive: true, force: true });
       delete process.env.TAKARA_API_KEY;

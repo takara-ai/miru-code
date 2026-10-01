@@ -13,6 +13,7 @@ import {
   saveStoredCredentials,
 } from "../src/credentials.ts";
 import { TAKARA_API_KEY_ENV } from "../src/env.ts";
+import { fake } from "./helpers/fake-credentials.ts";
 
 function snapshotTakaraApiKey(): string | undefined {
   return process.env[TAKARA_API_KEY_ENV];
@@ -132,10 +133,10 @@ describe("credentials", () => {
     clearTakaraApiKey();
 
     await saveStoredCredentials("stored-token");
-    process.env.TAKARA_API_KEY = "env-token";
+    process.env.TAKARA_API_KEY = fake("env-token");
     const loaded = await loadStoredCredentials();
     expect(loaded).toBe(false);
-    expect(process.env.TAKARA_API_KEY).toBe("env-token");
+    expect(process.env.TAKARA_API_KEY).toBe(fake("env-token"));
   });
 
   test("loadStoredCredentials does not override existing env", async () => {
@@ -144,10 +145,10 @@ describe("credentials", () => {
     clearTakaraApiKey();
 
     await saveStoredCredentials("stored-token");
-    process.env.TAKARA_API_KEY = "env-token";
+    process.env.TAKARA_API_KEY = fake("env-token");
     const loaded = await loadStoredCredentials();
     expect(loaded).toBe(false);
-    expect(process.env.TAKARA_API_KEY).toBe("env-token");
+    expect(process.env.TAKARA_API_KEY).toBe(fake("env-token"));
   });
 
   test("readStoredCredentials returns null for invalid file", async () => {
@@ -169,7 +170,7 @@ describe("credentials", () => {
     await expect(readStoredCredentials()).resolves.toEqual({
       version: CREDENTIALS_VERSION,
       kind: "api_key",
-      api_key: "legacy-token",
+      api_key: fake("legacy-token"),
     });
   });
 
@@ -200,8 +201,8 @@ describe("credentials", () => {
     clearTakaraApiKey();
     await saveStoredCredentials({
       kind: "device_code",
-      accessToken: "expired-token",
-      refreshToken: "refresh-token",
+      accessToken: fake("expired-token"),
+      refreshToken: fake("refresh-token"),
       expiresAt: new Date(Date.now() - 60_000).toISOString(),
     });
 
@@ -211,8 +212,8 @@ describe("credentials", () => {
       expect(String(init?.body)).toContain("grant_type=refresh_token");
       return new Response(
         JSON.stringify({
-          access_token: "fresh-token",
-          refresh_token: "fresh-refresh-token",
+          access_token: fake("fresh-token"),
+          refresh_token: fake("fresh-refresh-token"),
           expires_in: 3600,
           token_type: "Bearer",
         }),
@@ -222,7 +223,7 @@ describe("credentials", () => {
 
     const loaded = await loadStoredCredentials();
     expect(loaded).toBe(true);
-    expect(process.env.TAKARA_API_KEY).toBe("fresh-token");
+    expect(process.env.TAKARA_API_KEY).toBe(fake("fresh-token"));
 
     const stored = JSON.parse(await readFile(join(credDir, "credentials.json"), "utf-8")) as {
       kind: string;
@@ -230,8 +231,8 @@ describe("credentials", () => {
       refresh_token: string;
     };
     expect(stored.kind).toBe("device_code");
-    expect(stored.access_token).toBe("fresh-token");
-    expect(stored.refresh_token).toBe("fresh-refresh-token");
+    expect(stored.access_token).toBe(fake("fresh-token"));
+    expect(stored.refresh_token).toBe(fake("fresh-refresh-token"));
   });
 
   test("loadStoredCredentials surfaces refresh failures for callers to recover", async () => {
@@ -242,8 +243,8 @@ describe("credentials", () => {
     clearTakaraApiKey();
     await saveStoredCredentials({
       kind: "device_code",
-      accessToken: "expired-token",
-      refreshToken: "revoked-refresh",
+      accessToken: fake("expired-token"),
+      refreshToken: fake("revoked-refresh"),
       expiresAt: new Date(Date.now() - 60_000).toISOString(),
     });
 
@@ -271,7 +272,7 @@ describe("credentials", () => {
           version: CREDENTIALS_VERSION,
           kind: "device_code",
           access_token: "",
-          refresh_token: "orphan-refresh",
+          refresh_token: fake("orphan-refresh"),
         },
         null,
         2,
@@ -293,7 +294,7 @@ describe("credentials", () => {
           version: CREDENTIALS_VERSION,
           kind: "device_code",
           access_token: "   ",
-          refresh_token: "orphan-refresh",
+          refresh_token: fake("orphan-refresh"),
         },
         null,
         2,
@@ -327,10 +328,10 @@ describe("credentials", () => {
     clearTakaraApiKey();
 
     await saveStoredCredentials("stored-token");
-    process.env.TAKARA_API_KEY = "env-token";
+    process.env.TAKARA_API_KEY = fake("env-token");
     const result = await clearStoredCredentials();
     expect(result.cleared).toBe(true);
-    expect(process.env.TAKARA_API_KEY).toBe("env-token");
+    expect(process.env.TAKARA_API_KEY).toBe(fake("env-token"));
   });
 
   test("saving either mode clears the other from file and env", async () => {
@@ -341,8 +342,8 @@ describe("credentials", () => {
 
     const arn = "arn:aws:sagemaker:us-east-1:123456789012:endpoint/miru-test";
 
-    await saveStoredCredentials("takara-token");
-    process.env.TAKARA_API_KEY = "env-only-token";
+    await saveStoredCredentials(fake("takara-token"));
+    process.env.TAKARA_API_KEY = fake("env-only-token");
     await saveStoredCredentials({ kind: "sagemaker", endpointArn: arn, profile: "miru" });
 
     const stored = await readStoredCredentials();
@@ -362,13 +363,13 @@ describe("credentials", () => {
     await saveStoredCredentials({ kind: "sagemaker", endpointArn: arn, profile: "miru" });
     process.env.MIRU_SAGEMAKER_ENDPOINT_ARN = arn;
     process.env.AWS_PROFILE = "miru";
-    await saveStoredCredentials("takara-token");
+    await saveStoredCredentials(fake("takara-token"));
     const stored = await readStoredCredentials();
     expect(stored?.kind).toBe("api_key");
-    expect(stored).toMatchObject({ kind: "api_key", api_key: "takara-token" });
+    expect(stored).toMatchObject({ kind: "api_key", api_key: fake("takara-token") });
     expect(process.env.MIRU_SAGEMAKER_ENDPOINT_ARN).toBeUndefined();
     expect(process.env.AWS_PROFILE).toBeUndefined();
-    expect(process.env.TAKARA_API_KEY).toBe("takara-token");
+    expect(process.env.TAKARA_API_KEY).toBe(fake("takara-token"));
   });
 
   test("loadStoredCredentials follows credentials.json and drops the other mode from env", async () => {
@@ -379,18 +380,18 @@ describe("credentials", () => {
 
     const arn = "arn:aws:sagemaker:us-east-1:123456789012:endpoint/miru-test";
     await saveStoredCredentials({ kind: "sagemaker", endpointArn: arn, profile: "miru" });
-    process.env.TAKARA_API_KEY = "stale-takara";
+    process.env.TAKARA_API_KEY = fake("stale-takara");
 
     expect(await loadStoredCredentials()).toBe(true);
     expect(process.env.TAKARA_API_KEY).toBeUndefined();
     expect(process.env.MIRU_SAGEMAKER_ENDPOINT_ARN).toBe(arn);
 
-    await saveStoredCredentials("takara-token");
+    await saveStoredCredentials(fake("takara-token"));
     process.env.MIRU_SAGEMAKER_ENDPOINT_ARN = arn;
 
     expect(await loadStoredCredentials()).toBe(true);
     expect(process.env.MIRU_SAGEMAKER_ENDPOINT_ARN).toBeUndefined();
-    expect(process.env.TAKARA_API_KEY).toBe("takara-token");
+    expect(process.env.TAKARA_API_KEY).toBe(fake("takara-token"));
   });
 
   test("resolves platform-specific config directories and ignores unresolved plugin placeholders", () => {
@@ -455,7 +456,7 @@ describe("credentials", () => {
     expect(String(process.env.MIRU_SAGEMAKER_ENDPOINT_ARN)).toBe(arn);
     expect(process.env.AWS_PROFILE as string | undefined).toBe("saved-profile");
 
-    process.env.TAKARA_API_KEY = "stale-token";
+    process.env.TAKARA_API_KEY = fake("stale-token");
     await beginModeSwitch("sagemaker");
     expect(process.env.TAKARA_API_KEY).toBeUndefined();
     await beginModeSwitch("takara");
@@ -485,10 +486,10 @@ describe("credentials", () => {
     process.env.MIRU_CREDENTIALS_DIR = credDir;
     clearTakaraApiKey();
     await saveStoredCredentials("stored-token");
-    process.env.TAKARA_API_KEY = "external-token";
+    process.env.TAKARA_API_KEY = fake("external-token");
     process.env.MIRU_SAGEMAKER_ENDPOINT_ARN = "stale-endpoint";
     expect(await loadStoredCredentials()).toBe(true);
-    expect(process.env.TAKARA_API_KEY).toBe("external-token");
+    expect(process.env.TAKARA_API_KEY).toBe(fake("external-token"));
     expect(process.env.MIRU_SAGEMAKER_ENDPOINT_ARN).toBeUndefined();
   });
 
