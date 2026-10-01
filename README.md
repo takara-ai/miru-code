@@ -237,7 +237,7 @@ Miru chunks source in tiers: **AST** (tree-sitter, default) → **structural** h
 | css | `.css` |
 | dart | `.dart` |
 | elixir | `.ex`, `.exs` |
-| embeddedtemplate | ERB-style templates |
+| embeddedtemplate | `.erb`, `.ejs` |
 | go | `.go` |
 | haskell | `.hs` |
 | html | `.html`, `.htm` |

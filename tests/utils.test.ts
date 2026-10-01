@@ -107,6 +107,8 @@ describe("utils", () => {
     expect(detectLanguage("src/App.vue")).toBe("vue");
     expect(detectLanguage("src/App.svelte")).toBe("svelte");
     expect(detectLanguage("public/index.htm")).toBe("html");
+    expect(detectLanguage("app/views/users/index.html.erb")).toBe("embeddedtemplate");
+    expect(detectLanguage("views/index.ejs")).toBe("embeddedtemplate");
     expect(getExtensions(["code"])).toEqual(
       expect.arrayContaining([".sql", ".astro", ".html", ".htm"]),
     );

@@ -53,6 +53,8 @@ const EXTENSION_TO_LANGUAGE: Record<string, string> = {
   ".vue": "vue",
   ".svelte": "svelte",
   ".astro": "astro",
+  ".erb": "embeddedtemplate",
+  ".ejs": "embeddedtemplate",
   ".md": "markdown",
   ".mdx": "markdown",
   ".rst": "rst",
