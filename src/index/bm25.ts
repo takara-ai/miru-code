@@ -82,6 +82,57 @@ export class BM25Index {
     return docIndex;
   }
 
+  get size(): number {
+    return this.numDocs;
+  }
+
+  /**
+   * A new index with the given documents removed and later doc indices shifted down,
+   * equal to re-indexing the surviving docs in order. `this` is left untouched, so
+   * searches already holding it never see a half-updated index.
+   */
+  withoutDocuments(removed: ReadonlySet<number>): BM25Index {
+    const next = new BM25Index();
+    const remap = new Int32Array(this.numDocs);
+    let kept = 0;
+    let firstRemoved = this.numDocs;
+    for (let doc = 0; doc < this.numDocs; doc++) {
+      if (removed.has(doc)) {
+        remap[doc] = -1;
+        if (firstRemoved === this.numDocs) {
+          firstRemoved = doc;
+        }
+      } else {
+        remap[doc] = kept++;
+        const length = this.docLengths[doc] ?? 0;
+        next.docLengths.push(length);
+        next.totalLen += length;
+      }
+    }
+    next.numDocs = kept;
+    next.avgDocLength = kept === 0 ? 0 : next.totalLen / kept;
+
+    for (const [term, list] of this.postings) {
+      // Lists ascend by doc index, so one ending before the first removal is untouched.
+      // Copy the array (addDocument appends to it) but share the immutable tuples.
+      const untouched = (list.at(-1)?.[0] ?? 0) < firstRemoved;
+      const nextList: PostingsList = untouched ? list.slice() : [];
+      if (!untouched) {
+        for (const entry of list) {
+          const mapped = remap[entry[0]] ?? -1;
+          if (mapped !== -1) {
+            nextList.push(mapped === entry[0] ? entry : [mapped, entry[1]]);
+          }
+        }
+      }
+      if (nextList.length > 0) {
+        next.postings.set(term, nextList);
+        next.docFreq.set(term, nextList.length);
+      }
+    }
+    return next;
+  }
+
   index(tokenizedDocs: string[][]): void {
     this.numDocs = 0;
     this.docFreq.clear();

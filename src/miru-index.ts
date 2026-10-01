@@ -422,6 +422,7 @@ export class MiruIndex {
       embeddings: this.embeddings,
       chunks: this.chunksInternal,
       semanticIndex: this.semanticIndex,
+      bm25: this.bm25Index,
       relativePaths,
     });
 

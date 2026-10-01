@@ -5,7 +5,7 @@ import type { Chunk, ContentType } from "../types.ts";
 import type { BM25Index } from "./bm25.ts";
 import { detectLanguage, getExtensions, getFileStatus, readFileText } from "./files.ts";
 import type { SemanticIndex } from "./semantic-index.ts";
-import { buildBm25FromChunks } from "./sparse.ts";
+import { buildBm25FromChunks, patchBm25 } from "./sparse.ts";
 import { buildSemanticIndex } from "./vector-storage.ts";
 import { vectorAt } from "./vectors.ts";
 
@@ -65,8 +65,9 @@ async function vectorsByText(
 
 /**
  * Replace chunks for the given repo-relative paths only: remove old chunks,
- * embed only chunks whose text changed (unchanged ones reuse their vector), and rebuild
- * the BM25 + semantic indexes from the merged vector set.
+ * embed new ones, rebuild the semantic index from the merged vector set, and update
+ * BM25 by dropping the old docs and indexing only the new chunks. Pass `bm25` (the
+ * index matching `chunks`) to enable that; without it BM25 is rebuilt from scratch.
  */
 export async function applyIncrementalFileChanges(options: {
   root: string;
@@ -74,6 +75,7 @@ export async function applyIncrementalFileChanges(options: {
   embeddings: EmbeddingBackend;
   chunks: Chunk[];
   semanticIndex: SemanticIndex;
+  bm25?: BM25Index;
   relativePaths: readonly string[];
 }): Promise<{ chunks: Chunk[]; bm25: BM25Index; semantic: SemanticIndex }> {
   const root = resolve(options.root);
@@ -84,16 +86,20 @@ export async function applyIncrementalFileChanges(options: {
       .filter((p) => p.length > 0 && isIndexableRelativePath(p, extensions)),
   );
 
+  // BM25 doc i is chunk i; an index of another size can't be patched safely.
+  const baseBm25 = options.bm25?.size === options.chunks.length ? options.bm25 : undefined;
+
   if (targets.size === 0) {
     return {
       chunks: options.chunks,
-      bm25: buildBm25FromChunks(options.chunks),
+      bm25: baseBm25 ?? buildBm25FromChunks(options.chunks),
       semantic: options.semanticIndex,
     };
   }
 
   const keptChunks: Chunk[] = [];
   const keptVectors: Float32Array[] = [];
+  const removedDocs = new Set<number>();
   // An embedding is a pure function of chunk text, so a re-chunked file can reuse
   // the vector of any old chunk with byte-identical content (keyed on the exact
   // string, never a hash, so a collision can't leave a stale vector).
@@ -106,6 +112,7 @@ export async function applyIncrementalFileChanges(options: {
     }
     const rel = normalizeRelativePath(chunk.file_path);
     if (targets.has(rel)) {
+      removedDocs.add(i);
       if (!reusableVectors.has(chunk.content)) {
         reusableVectors.set(chunk.content, vectorAt(options.semanticIndex, i));
       }
@@ -140,7 +147,7 @@ export async function applyIncrementalFileChanges(options: {
 
   return {
     chunks,
-    bm25: buildBm25FromChunks(chunks),
+    bm25: baseBm25 ? patchBm25(baseBm25, removedDocs, addedChunks) : buildBm25FromChunks(chunks),
     semantic: buildSemanticIndex(vectors),
   };
 }

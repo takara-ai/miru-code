@@ -4,9 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chunkSource } from "../src/chunking/chunking.ts";
 import type { EmbeddingBackend } from "../src/embeddings/openai.ts";
+import type { BM25Index } from "../src/index/bm25.ts";
 import { VectorIndex } from "../src/index/dense.ts";
 import { detectLanguage } from "../src/index/files.ts";
 import { applyIncrementalFileChanges } from "../src/index/incremental.ts";
+import { buildBm25FromChunks } from "../src/index/sparse.ts";
 import { vectorAt } from "../src/index/vectors.ts";
 import type { Chunk } from "../src/types.ts";
 
@@ -256,13 +258,17 @@ async function indexFile(root: string, rel: string, source: string, backend: Emb
   await writeFile(join(root, rel), source, "utf-8");
   const chunks = await chunkSource(source, rel, detectLanguage(join(root, rel)));
   const vectors = await backend.embedDocuments(chunks.map((c) => c.content));
-  return { chunks, semanticIndex: new VectorIndex(vectors) };
+  return {
+    chunks,
+    semanticIndex: new VectorIndex(vectors),
+    bm25: buildBm25FromChunks(chunks),
+  };
 }
 
 async function applyEdit(
   root: string,
   rel: string,
-  state: { chunks: Chunk[]; semanticIndex: VectorIndex },
+  state: { chunks: Chunk[]; semanticIndex: VectorIndex; bm25: BM25Index },
   backend: EmbeddingBackend,
   newSource: string,
 ) {
@@ -273,6 +279,7 @@ async function applyEdit(
     embeddings: backend,
     chunks: state.chunks,
     semanticIndex: state.semanticIndex,
+    bm25: state.bm25,
     relativePaths: [rel],
   });
 }
@@ -282,10 +289,11 @@ async function expectMatchesFreshIndex(
   root: string,
   rel: string,
   newSource: string,
-  result: { chunks: Chunk[]; semantic: Parameters<typeof vectorAt>[0] },
+  result: { chunks: Chunk[]; semantic: Parameters<typeof vectorAt>[0]; bm25: BM25Index },
 ) {
   const fresh = await chunkSource(newSource, rel, detectLanguage(join(root, rel)));
   expect(result.chunks).toEqual(fresh);
+  expect(result.bm25.toJSON()).toEqual(buildBm25FromChunks(fresh).toJSON());
   result.chunks.forEach((chunk, i) => {
     expect(cosine(vectorAt(result.semantic, i), vectorFor(chunk.content))).toBeGreaterThan(0.999);
   });

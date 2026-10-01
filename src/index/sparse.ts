@@ -30,10 +30,22 @@ export function addChunkToBm25(bm25: BM25Index, chunk: Chunk): void {
   bm25.addDocument(tokenize(enrichForBm25(chunk)));
 }
 
-export function buildBm25FromChunks(chunks: readonly Chunk[]): BM25Index {
-  const bm25 = new BM25Index();
+function appendChunksToBm25(bm25: BM25Index, chunks: readonly Chunk[]): BM25Index {
   for (const chunk of chunks) {
     addChunkToBm25(bm25, chunk);
   }
   return bm25;
+}
+
+export function buildBm25FromChunks(chunks: readonly Chunk[]): BM25Index {
+  return appendChunksToBm25(new BM25Index(), chunks);
+}
+
+/** Drop docs `removedDocs` from `base` and append `added`; `base` is left untouched. */
+export function patchBm25(
+  base: BM25Index,
+  removedDocs: ReadonlySet<number>,
+  added: readonly Chunk[],
+): BM25Index {
+  return appendChunksToBm25(base.withoutDocuments(removedDocs), added);
 }
