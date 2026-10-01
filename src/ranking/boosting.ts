@@ -55,6 +55,12 @@ const STOPWORDS = new Set(
   ),
 );
 
+const MAX_EXTRA_DEFINERS = 3;
+
+function symbolDefinerLookupEnabled(): boolean {
+  return process.env.MIRU_SYMBOL_DEFINERS !== "0";
+}
+
 const definitionPatternCache = new Map<string, [RegExp, RegExp]>();
 
 function definitionPatterns(symbolName: string): [RegExp, RegExp] {
@@ -201,6 +207,7 @@ function boostSymbolDefinitions(
     }
   }
 
+  const extraDefiners: Array<[string, number]> = [];
   for (const chunk of allChunks) {
     const key = chunkKey(chunk);
     if (boosted.has(key)) {
@@ -214,6 +221,21 @@ function boostSymbolDefinitions(
       if (tier) {
         boosted.set(key, tier);
       }
+      continue;
+    }
+    // A definition outside the retrieved candidates (its file is named differently and
+    // callers dominate BM25) — cheap substring gate before the definition regex.
+    if (symbolDefinerLookupEnabled() && [...names].some((n) => chunk.content.includes(n))) {
+      const tier = definitionTier(chunk, names, boostUnit);
+      if (tier) {
+        extraDefiners.push([key, tier]);
+      }
+    }
+  }
+  // Only a name defined in a few places is specific enough to admit; common names are skipped.
+  if (extraDefiners.length <= MAX_EXTRA_DEFINERS) {
+    for (const [key, tier] of extraDefiners) {
+      boosted.set(key, tier);
     }
   }
 }
