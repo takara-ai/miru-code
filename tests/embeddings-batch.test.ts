@@ -8,6 +8,7 @@ import {
   sageMakerModelId,
   sanitizeEmbeddingInput,
 } from "../src/embeddings/openai.ts";
+import { fake } from "./helpers/fake-credentials.ts";
 
 async function withApiEnvironment(run: (credentialsDir: string) => Promise<void>): Promise<void> {
   const credentialsDir = await mkdtemp(join(tmpdir(), "miru-openai-client-"));
@@ -16,7 +17,7 @@ async function withApiEnvironment(run: (credentialsDir: string) => Promise<void>
     dir: process.env.MIRU_CREDENTIALS_DIR,
     base: process.env.MIRU_OPENAI_BASE_URL,
   };
-  process.env.TAKARA_API_KEY = "test-api-key";
+  process.env.TAKARA_API_KEY = fake("test-api-key");
   process.env.MIRU_CREDENTIALS_DIR = credentialsDir;
   process.env.MIRU_OPENAI_BASE_URL = "https://embedding.example.test/v1";
   try {

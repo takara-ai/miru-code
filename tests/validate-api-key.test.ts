@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { validateEmbeddingApiKey } from "../src/embeddings/validate.ts";
+import { fake } from "./helpers/fake-credentials.ts";
 
 describe("validateEmbeddingApiKey", () => {
   const originalFetch = globalThis.fetch;
@@ -16,7 +17,7 @@ describe("validateEmbeddingApiKey", () => {
       )) as unknown as typeof fetch;
 
     const result = await validateEmbeddingApiKey({
-      apiKey: "good-key",
+      apiKey: fake("good-key"),
       baseUrl: "https://example.test/v1",
       model: "ds1-miru-int8",
       dimensions: 256,
@@ -49,7 +50,7 @@ describe("validateEmbeddingApiKey", () => {
       })) as unknown as typeof fetch;
 
     const result = await validateEmbeddingApiKey({
-      apiKey: "good-key",
+      apiKey: fake("good-key"),
       baseUrl: "https://example.test/v1",
       model: "ds1-miru-int8",
       dimensions: 256,
@@ -74,7 +75,7 @@ describe("validateEmbeddingApiKey", () => {
 
     try {
       const result = await validateEmbeddingApiKey({
-        apiKey: "good-key",
+        apiKey: fake("good-key"),
         baseUrl: "https://example.test/v1",
         dimensions: 256,
       });

@@ -9,6 +9,7 @@ import {
   startDeviceAuthorization,
 } from "../src/auth/device.ts";
 import { CREDENTIALS_VERSION, type StoredDeviceCodeCredentials } from "../src/auth/types.ts";
+import { fake } from "./helpers/fake-credentials.ts";
 
 const CONFIG: DeviceAuthConfig = {
   baseUrl: "https://auth.dev.takara.ai",
@@ -106,26 +107,26 @@ describe("checkDeviceAuthorizationOnce", () => {
   test("returns success with normalized tokens", async () => {
     const fetchImpl = (async (_input, _init) =>
       jsonResponse(200, {
-        access_token: "access-token-value",
-        refresh_token: "refresh-token-value",
+        access_token: fake("access-token-value"),
+        refresh_token: fake("refresh-token-value"),
         expires_in: 3600,
       })) as typeof fetch;
 
     const result = await checkDeviceAuthorizationOnce(START, { config: CONFIG, fetchImpl });
     expect(result.status).toBe("success");
     if (result.status === "success") {
-      expect(result.tokens.accessToken).toBe("access-token-value");
-      expect(result.tokens.refreshToken).toBe("refresh-token-value");
+      expect(result.tokens.accessToken).toBe(fake("access-token-value"));
+      expect(result.tokens.refreshToken).toBe(fake("refresh-token-value"));
     }
   });
 
   test("accepts successful tokens without a usable expiry", async () => {
     const fetchImpl = (async () =>
-      jsonResponse(200, { access_token: "access-token-value" })) as unknown as typeof fetch;
+      jsonResponse(200, { access_token: fake("access-token-value") })) as unknown as typeof fetch;
     const result = await checkDeviceAuthorizationOnce(START, { config: CONFIG, fetchImpl });
     expect(result).toMatchObject({
       status: "success",
-      tokens: { accessToken: "access-token-value" },
+      tokens: { accessToken: fake("access-token-value") },
     });
     if (result.status === "success") expect(result.tokens.expiresAt).toBeUndefined();
   });
@@ -167,11 +168,11 @@ describe("pollDeviceAuthorization", () => {
     const fetchImpl = (async (_input: unknown, _init?: RequestInit) => {
       calls++;
       if (calls < 3) return jsonResponse(400, { error: "authorization_pending" });
-      return jsonResponse(200, { access_token: "access-token-value", expires_in: 3600 });
+      return jsonResponse(200, { access_token: fake("access-token-value"), expires_in: 3600 });
     }) as unknown as typeof fetch;
 
     const tokens = await pollDeviceAuthorization(START, { config: CONFIG, fetchImpl });
-    expect(tokens.accessToken).toBe("access-token-value");
+    expect(tokens.accessToken).toBe(fake("access-token-value"));
     expect(calls).toBe(3);
   });
 
@@ -224,22 +225,22 @@ describe("device credential refresh", () => {
   const credentials: StoredDeviceCodeCredentials = {
     version: CREDENTIALS_VERSION,
     kind: "device_code",
-    access_token: "old-access",
-    refresh_token: "old-refresh",
+    access_token: fake("old-access"),
+    refresh_token: fake("old-refresh"),
   };
 
   test("refreshes tokens and retains the old refresh token when the provider omits a replacement", async () => {
     const fetchImpl = (async (_input, init) => {
       expect(String(init?.body)).toContain("refresh_token=old-refresh");
       return jsonResponse(200, {
-        access_token: "new-access",
+        access_token: fake("new-access"),
         expires_in: 3600,
         token_type: "Bearer",
       });
     }) as typeof fetch;
     const result = await refreshDeviceAuthorization(credentials, { config: CONFIG, fetchImpl });
-    expect(result.accessToken).toBe("new-access");
-    expect(result.refreshToken).toBe("old-refresh");
+    expect(result.accessToken).toBe(fake("new-access"));
+    expect(result.refreshToken).toBe(fake("old-refresh"));
     expect(result.tokenType).toBe("Bearer");
     expect(result.expiresAt).toBeString();
   });

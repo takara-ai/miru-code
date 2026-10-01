@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { authenticateWithProvider } from "../src/auth/providers.ts";
+import { fake } from "./helpers/fake-credentials.ts";
 
 describe("authenticateWithProvider", () => {
   test("requires a mode and validates API keys when requested", async () => {
@@ -31,10 +32,10 @@ describe("authenticateWithProvider", () => {
           throw new Error("use manual key");
         },
         promptConfirm: async () => true,
-        promptHidden: async () => (++prompts === 1 ? "" : "manual-key"),
+        promptHidden: async () => (++prompts === 1 ? "" : fake("manual-key")),
       },
     );
-    expect(result).toEqual({ kind: "api_key", apiKey: "manual-key" });
+    expect(result).toEqual({ kind: "api_key", apiKey: fake("manual-key") });
     expect(prompts).toBe(2);
   });
 
@@ -81,10 +82,10 @@ describe("authenticateWithProvider", () => {
           throw new Error("device unavailable");
         },
         promptConfirm: async () => true,
-        promptHidden: async () => "fallback-key",
+        promptHidden: async () => fake("fallback-key"),
       },
     );
-    expect(result).toEqual({ kind: "api_key", apiKey: "fallback-key" });
+    expect(result).toEqual({ kind: "api_key", apiKey: fake("fallback-key") });
   });
 
   test("rethrows device auth errors when the manual fallback is declined", async () => {

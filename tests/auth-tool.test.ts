@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type BrowserOpener, registerAuthTool } from "../src/mcp/auth-tool.ts";
 import { MiruMcpServer } from "../src/mcp/runtime.ts";
+import { fake } from "./helpers/fake-credentials.ts";
 import { MemoryTransport } from "./helpers/mcp-memory-transport.ts";
 
 /** A server with only the `auth` tool — no index cache needed for these tests. */
@@ -190,8 +191,8 @@ describe("auth MCP tool", () => {
         return jsonResponse(400, { error: "authorization_pending" });
       }
       return jsonResponse(200, {
-        access_token: "access-token-value",
-        refresh_token: "refresh-token-value",
+        access_token: fake("access-token-value"),
+        refresh_token: fake("refresh-token-value"),
         expires_in: 3600,
         token_type: "Bearer",
       });
@@ -215,8 +216,8 @@ describe("auth MCP tool", () => {
       refresh_token: string;
     };
     expect(raw.kind).toBe("device_code");
-    expect(raw.access_token).toBe("access-token-value");
-    expect(raw.refresh_token).toBe("refresh-token-value");
+    expect(raw.access_token).toBe(fake("access-token-value"));
+    expect(raw.refresh_token).toBe(fake("refresh-token-value"));
 
     delete (globalThis as { __authTestCheckCount?: number }).__authTestCheckCount;
   });
@@ -240,7 +241,7 @@ describe("auth MCP tool", () => {
         return jsonResponse(400, { error: "server_error", error_description: "boom" });
       }
       return jsonResponse(200, {
-        access_token: "access-token-value",
+        access_token: fake("access-token-value"),
         expires_in: 3600,
       });
     }) as typeof fetch;

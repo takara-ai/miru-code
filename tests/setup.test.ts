@@ -17,6 +17,7 @@ import {
   runSageMakerSetup,
   runSetup,
 } from "../src/setup.ts";
+import { fake } from "./helpers/fake-credentials.ts";
 
 function snapshotKey(): string | undefined {
   return process.env[TAKARA_API_KEY_ENV];
@@ -141,8 +142,8 @@ describe("setup credentials", () => {
     process.env.MIRU_AUTH_CLIENT_ID = "miru-test";
     await saveStoredCredentials({
       kind: "device_code",
-      accessToken: "expired-token",
-      refreshToken: "revoked-token",
+      accessToken: fake("expired-token"),
+      refreshToken: fake("revoked-token"),
       expiresAt: new Date(Date.now() - 60_000).toISOString(),
     });
     globalThis.fetch = (async () =>
@@ -172,7 +173,7 @@ describe("setup credentials", () => {
   test("runSetup keeps stored credentials when an environment key is already configured", async () => {
     credDir = await mkdtemp(join(tmpdir(), "miru-setup-env-existing-"));
     process.env.MIRU_CREDENTIALS_DIR = credDir;
-    process.env.TAKARA_API_KEY = "env-token";
+    process.env.TAKARA_API_KEY = fake("env-token");
 
     const result = await runSetup();
 
@@ -208,7 +209,7 @@ describe("setup credentials", () => {
   test("runSetup reports env-only credentials without creating the credential file", async () => {
     credDir = await mkdtemp(join(tmpdir(), "miru-setup-env-only-"));
     process.env.MIRU_CREDENTIALS_DIR = credDir;
-    process.env.TAKARA_API_KEY = "env-token";
+    process.env.TAKARA_API_KEY = fake("env-token");
 
     const result = await runSetup();
 
@@ -306,16 +307,20 @@ describe("setup credentials", () => {
     credDir = await mkdtemp(join(tmpdir(), "miru-setup-explicit-"));
     process.env.MIRU_CREDENTIALS_DIR = credDir;
 
-    const result = await runSetup({ apiKey: "explicit-token", skipValidation: true, force: true });
+    const result = await runSetup({
+      apiKey: fake("explicit-token"),
+      skipValidation: true,
+      force: true,
+    });
     expect(result.newlySaved).toBe(true);
-    expect(process.env.TAKARA_API_KEY).toBe("explicit-token");
+    expect(process.env.TAKARA_API_KEY).toBe(fake("explicit-token"));
   });
 
   test("runSageMakerSetup purges a stored Takara API key", async () => {
     credDir = await mkdtemp(join(tmpdir(), "miru-setup-sm-purge-"));
     process.env.MIRU_CREDENTIALS_DIR = credDir;
-    await saveStoredCredentials("takara-token");
-    process.env.TAKARA_API_KEY = "takara-token";
+    await saveStoredCredentials(fake("takara-token"));
+    process.env.TAKARA_API_KEY = fake("takara-token");
 
     const arn = "arn:aws:sagemaker:us-east-1:123456789012:endpoint/miru-test";
     const result = await runSageMakerSetup({
@@ -344,14 +349,14 @@ describe("setup credentials", () => {
 
     const result = await runSetup({
       skipValidation: true,
-      apiKey: "new-takara-token",
+      apiKey: fake("new-takara-token"),
       force: true,
     });
 
     expect(result.newlySaved).toBe(true);
     const stored = await readStoredCredentials();
     expect(stored?.kind).toBe("api_key");
-    expect(stored).toMatchObject({ kind: "api_key", api_key: "new-takara-token" });
+    expect(stored).toMatchObject({ kind: "api_key", api_key: fake("new-takara-token") });
     expect(process.env.MIRU_SAGEMAKER_ENDPOINT_ARN).toBeUndefined();
     expect(process.env.AWS_PROFILE).toBeUndefined();
   });
@@ -366,7 +371,7 @@ describe("setup credentials", () => {
     });
     delete process.env.TAKARA_API_KEY;
 
-    const result = await runSetup({ apiKey: "next-token", skipValidation: true });
+    const result = await runSetup({ apiKey: fake("next-token"), skipValidation: true });
 
     expect(result.newlySaved).toBe(true);
     expect((await readStoredCredentials())?.kind).toBe("api_key");
@@ -379,14 +384,14 @@ describe("setup credentials", () => {
     await saveStoredCredentials({ kind: "sagemaker", endpointArn: arn, profile: "miru" });
     process.env.MIRU_SAGEMAKER_ENDPOINT_ARN = arn;
     process.env.AWS_PROFILE = "miru";
-    process.env.TAKARA_API_KEY = "env-takara-token";
+    process.env.TAKARA_API_KEY = fake("env-takara-token");
 
     const result = await runSetup({ skipValidation: true });
 
     expect(result.newlySaved).toBe(true);
     const stored = await readStoredCredentials();
     expect(stored?.kind).toBe("api_key");
-    expect(stored).toMatchObject({ kind: "api_key", api_key: "env-takara-token" });
+    expect(stored).toMatchObject({ kind: "api_key", api_key: fake("env-takara-token") });
     expect(process.env.MIRU_SAGEMAKER_ENDPOINT_ARN).toBeUndefined();
     expect(process.env.AWS_PROFILE).toBeUndefined();
   });
@@ -423,8 +428,8 @@ describe("setup credentials", () => {
       expect(String(input)).toBe("https://auth.example.test/oauth/token");
       return new Response(
         JSON.stringify({
-          access_token: "device-access-token",
-          refresh_token: "device-refresh-token",
+          access_token: fake("device-access-token"),
+          refresh_token: fake("device-refresh-token"),
           expires_in: 3600,
           token_type: "Bearer",
         }),
@@ -433,7 +438,7 @@ describe("setup credentials", () => {
     }) as typeof fetch;
 
     await ensureCredentials({ interactive: true });
-    expect(process.env.TAKARA_API_KEY).toBe("device-access-token");
+    expect(process.env.TAKARA_API_KEY).toBe(fake("device-access-token"));
   });
 
   test("ensureCredentials device bootstrap keeps human auth UI off stdout", async () => {
@@ -460,8 +465,8 @@ describe("setup credentials", () => {
       }
       return new Response(
         JSON.stringify({
-          access_token: "device-access-token",
-          refresh_token: "device-refresh-token",
+          access_token: fake("device-access-token"),
+          refresh_token: fake("device-refresh-token"),
           expires_in: 3600,
           token_type: "Bearer",
         }),
@@ -485,7 +490,7 @@ describe("setup credentials", () => {
       process.stdout.write = originalWrite;
     }
 
-    expect(process.env.TAKARA_API_KEY).toBe("device-access-token");
+    expect(process.env.TAKARA_API_KEY).toBe(fake("device-access-token"));
     expect(stdout).not.toMatch(
       /Takara credentials|device-code|Open https:\/\/verify|Saved credentials/i,
     );
@@ -498,8 +503,8 @@ describe("setup credentials", () => {
     process.env.MIRU_AUTH_CLIENT_ID = "miru-test";
     await saveStoredCredentials({
       kind: "device_code",
-      accessToken: "stale-token",
-      refreshToken: "revoked-refresh-token",
+      accessToken: fake("stale-token"),
+      refreshToken: fake("revoked-refresh-token"),
       expiresAt: new Date(Date.now() - 60_000).toISOString(),
     });
 
@@ -536,8 +541,8 @@ describe("setup credentials", () => {
       );
       return new Response(
         JSON.stringify({
-          access_token: "reauth-token",
-          refresh_token: "reauth-refresh-token",
+          access_token: fake("reauth-token"),
+          refresh_token: fake("reauth-refresh-token"),
           expires_in: 3600,
           token_type: "Bearer",
         }),
@@ -546,7 +551,7 @@ describe("setup credentials", () => {
     }) as typeof fetch;
 
     await ensureCredentials({ interactive: true });
-    expect(process.env.TAKARA_API_KEY).toBe("reauth-token");
+    expect(process.env.TAKARA_API_KEY).toBe(fake("reauth-token"));
   });
 
   test("runSetup marks saved device tokens as store-managed for later refresh in long-lived processes", async () => {
@@ -573,8 +578,8 @@ describe("setup credentials", () => {
       if (call === 2) {
         return new Response(
           JSON.stringify({
-            access_token: "initial-device-token",
-            refresh_token: "initial-refresh-token",
+            access_token: fake("initial-device-token"),
+            refresh_token: fake("initial-refresh-token"),
             expires_in: 3600,
             token_type: "Bearer",
           }),
@@ -585,8 +590,8 @@ describe("setup credentials", () => {
       expect(String(init?.body)).toContain("grant_type=refresh_token");
       return new Response(
         JSON.stringify({
-          access_token: "refreshed-device-token",
-          refresh_token: "refreshed-refresh-token",
+          access_token: fake("refreshed-device-token"),
+          refresh_token: fake("refreshed-refresh-token"),
           expires_in: 3600,
           token_type: "Bearer",
         }),
@@ -595,25 +600,25 @@ describe("setup credentials", () => {
     }) as typeof fetch;
 
     await runSetup({ device: true, force: true, interactive: true });
-    expect(process.env.TAKARA_API_KEY).toBe("initial-device-token");
+    expect(process.env.TAKARA_API_KEY).toBe(fake("initial-device-token"));
 
     await saveStoredCredentials({
       kind: "device_code",
-      accessToken: "initial-device-token",
-      refreshToken: "initial-refresh-token",
+      accessToken: fake("initial-device-token"),
+      refreshToken: fake("initial-refresh-token"),
       expiresAt: new Date(Date.now() - 60_000).toISOString(),
     });
 
     const loaded = await loadStoredCredentials();
     expect(loaded).toBe(true);
-    expect(process.env.TAKARA_API_KEY).toBe("refreshed-device-token");
+    expect(process.env.TAKARA_API_KEY).toBe(fake("refreshed-device-token"));
 
     const stored = JSON.parse(await readFile(join(credDir, "credentials.json"), "utf-8")) as {
       access_token: string;
       refresh_token: string;
     };
-    expect(stored.access_token).toBe("refreshed-device-token");
-    expect(stored.refresh_token).toBe("refreshed-refresh-token");
+    expect(stored.access_token).toBe(fake("refreshed-device-token"));
+    expect(stored.refresh_token).toBe(fake("refreshed-refresh-token"));
   });
 });
 

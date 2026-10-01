@@ -1,5 +1,0 @@
-# Config for plugin-scanner (hashgraph-online/hol-guard), auto-discovered from the repo root.
-# Test fixtures use placeholder credentials that trip HARDCODED_SECRET.
-
-[scanner]
-ignore_paths = ["tests/**"]
