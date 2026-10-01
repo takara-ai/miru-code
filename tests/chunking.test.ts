@@ -51,6 +51,37 @@ describe("chunkSource", () => {
     ).toBeNull();
   });
 
+  test("deletes the parser and tree on every path so wasm memory is released", async () => {
+    const deleted: string[] = [];
+    const parserWith = (parse: () => unknown) => () =>
+      ({
+        setLanguage: () => {},
+        parse,
+        delete: () => deleted.push("parser"),
+      }) as never;
+    const tree = {
+      rootNode: { childCount: 0, startIndex: 0, endIndex: 5, children: [] },
+      delete: () => deleted.push("tree"),
+    };
+    const run = (createParser: () => never) =>
+      chunkAst("hello", "test.ts", "typescript", 100, {
+        getLanguage: async () => ({}) as never,
+        createParser,
+      });
+
+    await run(parserWith(() => tree));
+    expect(deleted).toEqual(["tree", "parser"]);
+
+    deleted.length = 0;
+    await run(parserWith(() => null));
+    await run(
+      parserWith(() => {
+        throw new Error("parse failed");
+      }),
+    );
+    expect(deleted).toEqual(["parser", "parser"]);
+  });
+
   test("uses leaf boundaries and stops descending beyond the recursion limit", async () => {
     const leaf = { childCount: 0, startIndex: 0, endIndex: 60, children: [] };
     const leafResult = await chunkAst("x".repeat(60), "test.ts", "typescript", 10, {

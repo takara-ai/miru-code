@@ -1,4 +1,4 @@
-import type { Node } from "web-tree-sitter";
+import type { Language, Node } from "web-tree-sitter";
 import { Parser } from "web-tree-sitter";
 import { getLanguageForFile } from "./grammars.ts";
 import { type ChunkBoundary, mergeAdjacentChunks } from "./lines.ts";
@@ -89,7 +89,7 @@ export async function chunkAst(
   desiredLength: number,
   dependencies: {
     getLanguage?: typeof getLanguageForFile;
-    createParser?: () => Pick<Parser, "setLanguage" | "parse">;
+    createParser?: () => Pick<Parser, "setLanguage" | "parse"> & Partial<Pick<Parser, "delete">>;
   } = {},
 ): Promise<ChunkBoundary[] | null> {
   if (!source.trim() || !astChunkingEnabled()) {
@@ -101,7 +101,21 @@ export async function chunkAst(
     return null;
   }
 
+  // A Parser owns wasm memory the JS GC can't free, so it must be deleted explicitly.
   const parser = dependencies.createParser?.() ?? new Parser();
+  try {
+    return parseBoundaries(parser, languageObj, source, desiredLength);
+  } finally {
+    parser.delete?.();
+  }
+}
+
+function parseBoundaries(
+  parser: Pick<Parser, "setLanguage" | "parse">,
+  languageObj: Language,
+  source: string,
+  desiredLength: number,
+): ChunkBoundary[] | null {
   parser.setLanguage(languageObj);
 
   let tree: ReturnType<Parser["parse"]>;
