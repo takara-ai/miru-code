@@ -9,8 +9,12 @@ name: Release Please
 # `id-token: write` lets GitHub mint an OIDC token for npm provenance attestation.
 # `actions/setup-node@v6` with `registry-url` wires npm to OIDC trusted publishing.
 #
-# `bun pm pack` skips lifecycle scripts, so prepublishOnly steps (vendor-grammars,
-# typecheck, test) run explicitly before pack.
+# `bun pm pack` skips lifecycle scripts, so prepublishOnly steps (typecheck, test)
+# run explicitly before pack.
+#
+# Grammars are NOT rebuilt here: the committed `grammars/` directory is published
+# as-is so what is tested and released is exactly what is in git. Regenerate it
+# locally with `bun run vendor-grammars` and commit the result.
 
 on:
   push:
@@ -75,7 +79,7 @@ jobs:
         run: bun run lint
 
       - name: Prepublish checks
-        run: bun run vendor-grammars && bun run typecheck && bun test
+        run: bun run typecheck && bun test
 
       - uses: actions/setup-node@v6
         with:

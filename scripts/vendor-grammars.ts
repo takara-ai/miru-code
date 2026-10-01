@@ -6,6 +6,9 @@ import { cpSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
  * Requires grammar packages as devDependencies. Run after adding/updating them:
  *   bun run vendor-grammars
  *
+ * Run it locally and commit `grammars/`. Publishing uses the committed files as-is
+ * and does not run this script, so tested and released grammars stay identical.
+ *
  * Packages that ship a prebuilt .wasm are copied verbatim. Packages marked `build`
  * ship only generated C sources, so their .wasm is built with the tree-sitter-cli
  * devDependency (`tree-sitter build --wasm`).
