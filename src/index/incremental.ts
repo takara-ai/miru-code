@@ -40,9 +40,33 @@ function isIndexableRelativePath(relativePath: string, extensions: Set<string>):
   return extensions.has(ext);
 }
 
+/** Vector for every text: reused from `known`, otherwise embedded once (duplicates share a call). */
+async function vectorsByText(
+  embeddings: EmbeddingBackend,
+  texts: readonly string[],
+  known: ReadonlyMap<string, Float32Array>,
+): Promise<Map<string, Float32Array>> {
+  const result = new Map(known);
+  const missing = [...new Set(texts)].filter((text) => !result.has(text));
+  if (missing.length === 0) {
+    return result;
+  }
+  const embedded = await embeddings.embedDocuments(missing);
+  if (embedded.length !== missing.length) {
+    throw new Error(
+      `Vector count ${embedded.length} does not match chunk count ${missing.length}.`,
+    );
+  }
+  for (const [i, text] of missing.entries()) {
+    result.set(text, embedded[i] as Float32Array);
+  }
+  return result;
+}
+
 /**
  * Replace chunks for the given repo-relative paths only: remove old chunks,
- * embed new ones, rebuild BM25 + semantic indexes from the merged vector set.
+ * embed only chunks whose text changed (unchanged ones reuse their vector), and rebuild
+ * the BM25 + semantic indexes from the merged vector set.
  */
 export async function applyIncrementalFileChanges(options: {
   root: string;
@@ -70,6 +94,10 @@ export async function applyIncrementalFileChanges(options: {
 
   const keptChunks: Chunk[] = [];
   const keptVectors: Float32Array[] = [];
+  // An embedding is a pure function of chunk text, so a re-chunked file can reuse
+  // the vector of any old chunk with byte-identical content (keyed on the exact
+  // string, never a hash, so a collision can't leave a stale vector).
+  const reusableVectors = new Map<string, Float32Array>();
 
   for (let i = 0; i < options.chunks.length; i++) {
     const chunk = options.chunks[i];
@@ -78,6 +106,9 @@ export async function applyIncrementalFileChanges(options: {
     }
     const rel = normalizeRelativePath(chunk.file_path);
     if (targets.has(rel)) {
+      if (!reusableVectors.has(chunk.content)) {
+        reusableVectors.set(chunk.content, vectorAt(options.semanticIndex, i));
+      }
       continue;
     }
     keptChunks.push(chunk);
@@ -89,10 +120,12 @@ export async function applyIncrementalFileChanges(options: {
     addedChunks.push(...(await chunksForFile(root, rel)));
   }
 
-  let addedVectors: Float32Array[] = [];
-  if (addedChunks.length > 0) {
-    addedVectors = await options.embeddings.embedDocuments(addedChunks.map((c) => c.content));
-  }
+  const vectorFor = await vectorsByText(
+    options.embeddings,
+    addedChunks.map((c) => c.content),
+    reusableVectors,
+  );
+  const addedVectors = addedChunks.map((c) => vectorFor.get(c.content) as Float32Array);
 
   const chunks = [...keptChunks, ...addedChunks];
   const vectors = [...keptVectors, ...addedVectors];
