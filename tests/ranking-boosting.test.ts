@@ -8,10 +8,7 @@ function chunk(file_path: string, content: string, start_line = 1): Chunk {
 }
 
 const originals = new Map(
-  ["MIRU_SEARCH_V2", "MIRU_RANK_FILE_COHERENCE_BOOST", "MIRU_SYMBOL_DEFINERS"].map((key) => [
-    key,
-    process.env[key],
-  ]),
+  ["MIRU_SEARCH_V2", "MIRU_RANK_FILE_COHERENCE_BOOST"].map((key) => [key, process.env[key]]),
 );
 afterEach(() => {
   for (const [key, value] of originals) {
@@ -52,35 +49,6 @@ describe("ranking boosts", () => {
       new Map([[chunkKey(namespaced), namespaced]]),
     );
     expect(sqlScores.get(chunkKey(namespaced))).toBeGreaterThan(1);
-  });
-
-  test("admits an undiscovered definition from a differently named file", () => {
-    const definition = chunk("src/lib/request.ts", "export async function parseRequest(req) {}");
-    const caller = chunk("src/app/route.ts", "const body = await parseRequest(req);");
-    const run = (extra: Chunk[] = []) => {
-      const scores = new Map([[chunkKey(caller), 1]]);
-      const all = [definition, caller, ...extra];
-      applyQueryBoost(scores, "parseRequest", all, new Map(all.map((c) => [chunkKey(c), c])));
-      return scores;
-    };
-
-    expect(run().get(chunkKey(definition))).toBeGreaterThan(1);
-
-    process.env.MIRU_SYMBOL_DEFINERS = "0";
-    expect(run().has(chunkKey(definition))).toBe(false);
-  });
-
-  test("skips undiscovered definitions of names defined in many places", () => {
-    const definitions = Array.from({ length: 4 }, (_, i) =>
-      chunk(`src/module${i}/index.ts`, "export function parseRequest() {}", i * 10 + 1),
-    );
-    const caller = chunk("src/app/route.ts", "const body = await parseRequest(req);");
-    const scores = new Map([[chunkKey(caller), 1]]);
-    const all = [...definitions, caller];
-    applyQueryBoost(scores, "parseRequest", all, new Map(all.map((c) => [chunkKey(c), c])));
-    for (const definition of definitions) {
-      expect(scores.has(chunkKey(definition))).toBe(false);
-    }
   });
 
   test("boosts embedded symbol matches and file stem tokens", () => {
