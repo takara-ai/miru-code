@@ -8,9 +8,13 @@ import { fake } from "./helpers/fake-credentials.ts";
 import { MemoryTransport } from "./helpers/mcp-memory-transport.ts";
 
 /** A server with only the `auth` tool — no index cache needed for these tests. */
-function authServer(openBrowser?: BrowserOpener): MiruMcpServer {
+function authServer(
+  openBrowser?: BrowserOpener,
+  wait?: { waitMs: number; sleep?: (ms: number) => Promise<void> },
+): MiruMcpServer {
   const server = new MiruMcpServer({ name: "miru", version: "test" });
-  registerAuthTool(server, { openBrowser });
+  // No waiting by default so start returns immediately; wait tests opt in with a stub sleep.
+  registerAuthTool(server, { openBrowser, waitMs: wait?.waitMs ?? 0, sleep: wait?.sleep });
   return server;
 }
 
@@ -93,7 +97,176 @@ describe("auth MCP tool", () => {
     const text = toolTextOf(transport.responseFor(1));
     expect(text).toContain("ABCD-1234");
     expect(text).toContain("https://example.vercel.app/platform/device?user_code=ABCD-1234");
-    expect(text).toMatch(/action "check"/);
+    expect(text).toMatch(/call `auth` again/);
+  });
+
+  test("start waits for approval and signs in within a single call", async () => {
+    let tokenPolls = 0;
+    globalThis.fetch = (async (input, _init) => {
+      if (String(input).includes("/oauth/device/code")) {
+        return jsonResponse(200, {
+          device_code: "device-abc",
+          user_code: "ABCD-1234",
+          verification_uri: "https://auth.dev.takara.ai/device/approve",
+          expires_in: 600,
+          interval: 5,
+        });
+      }
+      tokenPolls++;
+      return tokenPolls < 3
+        ? jsonResponse(400, { error: "authorization_pending" })
+        : jsonResponse(200, { access_token: fake("access-token-value"), expires_in: 3600 });
+    }) as typeof fetch;
+
+    const sleeps: number[] = [];
+    const server = authServer(undefined, {
+      waitMs: 60_000,
+      sleep: async (ms) => {
+        sleeps.push(ms);
+      },
+    });
+    const transport = new MemoryTransport([await callAuthTool(1)]);
+    await server.connect(transport);
+
+    expect(toolTextOf(transport.responseFor(1))).toMatch(/Signed in successfully/);
+    expect(tokenPolls).toBe(3);
+    expect(sleeps).toEqual([5000, 5000, 5000]);
+    const raw = JSON.parse(await readFile(join(credDir, "credentials.json"), "utf-8")) as {
+      access_token: string;
+    };
+    expect(raw.access_token).toBe(fake("access-token-value"));
+  });
+
+  /** Device-code endpoint plus a scripted sequence of token-endpoint responses. */
+  function scriptedFetch(interval: number, tokenReplies: Array<() => Response>): void {
+    let next = 0;
+    globalThis.fetch = (async (input, _init) => {
+      if (String(input).includes("/oauth/device/code")) {
+        return jsonResponse(200, {
+          device_code: "device-abc",
+          user_code: "ABCD-1234",
+          verification_uri: "https://auth.dev.takara.ai/device/approve",
+          expires_in: 600,
+          interval,
+        });
+      }
+      const reply = tokenReplies[Math.min(next++, tokenReplies.length - 1)];
+      return (reply as () => Response)();
+    }) as typeof fetch;
+  }
+
+  test("start backs off by 5s while waiting when the server says slow_down", async () => {
+    scriptedFetch(5, [
+      () => jsonResponse(400, { error: "slow_down" }),
+      () => jsonResponse(200, { access_token: fake("access-token-value"), expires_in: 3600 }),
+    ]);
+
+    const sleeps: number[] = [];
+    const server = authServer(undefined, {
+      waitMs: 60_000,
+      sleep: async (ms) => {
+        sleeps.push(ms);
+      },
+    });
+    const transport = new MemoryTransport([await callAuthTool(1)]);
+    await server.connect(transport);
+
+    expect(toolTextOf(transport.responseFor(1))).toMatch(/Signed in successfully/);
+    expect(sleeps).toEqual([5000, 10_000]);
+  });
+
+  test("start waits on the real clock by default before polling", async () => {
+    // interval 0 is floored to 1s, so this takes one real second and covers the default sleeper.
+    scriptedFetch(0, [
+      () => jsonResponse(200, { access_token: fake("access-token-value"), expires_in: 3600 }),
+    ]);
+
+    const server = authServer(undefined, { waitMs: 1500 });
+    const transport = new MemoryTransport([await callAuthTool(1)]);
+    const startedAt = Date.now();
+    await server.connect(transport);
+
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(900);
+    expect(toolTextOf(transport.responseFor(1))).toMatch(/Signed in successfully/);
+  });
+
+  test("start never polls faster than once a second even if the server advertises interval 0", async () => {
+    scriptedFetch(0, [
+      () => jsonResponse(200, { access_token: fake("access-token-value"), expires_in: 3600 }),
+    ]);
+
+    const sleeps: number[] = [];
+    const server = authServer(undefined, {
+      waitMs: 60_000,
+      sleep: async (ms) => {
+        sleeps.push(ms);
+      },
+    });
+    const transport = new MemoryTransport([await callAuthTool(1)]);
+    await server.connect(transport);
+
+    expect(sleeps).toEqual([1000]);
+  });
+
+  test("start reports a denial that happens during the wait and clears the pending login", async () => {
+    scriptedFetch(5, [() => jsonResponse(400, { error: "access_denied" })]);
+
+    const server = authServer(undefined, { waitMs: 60_000, sleep: async () => {} });
+    const transport = new MemoryTransport([
+      await callAuthTool(1),
+      await callAuthTool(2, { action: "check" }),
+    ]);
+    await server.connect(transport);
+
+    expect(toolTextOf(transport.responseFor(1))).toMatch(/denied/i);
+    expect(toolTextOf(transport.responseFor(2))).toMatch(/No device login is pending/);
+  });
+
+  test("start keeps the pending login when a poll fails mid-wait, so a repeat call can finish", async () => {
+    scriptedFetch(5, [
+      () => jsonResponse(400, { error: "server_error", error_description: "boom" }),
+      () => jsonResponse(200, { access_token: fake("access-token-value"), expires_in: 3600 }),
+    ]);
+
+    const server = authServer(undefined, { waitMs: 60_000, sleep: async () => {} });
+    const transport = new MemoryTransport([await callAuthTool(1), await callAuthTool(2)]);
+    await server.connect(transport);
+
+    expect(toolTextOf(transport.responseFor(1))).toMatch(/server_error/);
+    expect(toolTextOf(transport.responseFor(2))).toMatch(/Signed in successfully/);
+  });
+
+  test("start returns still-waiting when the budget runs out, and a repeat call resumes without reopening", async () => {
+    process.env.MIRU_OPEN_BROWSER = "1";
+    let deviceRequests = 0;
+    globalThis.fetch = (async (_input, _init) => {
+      deviceRequests++;
+      return jsonResponse(200, {
+        device_code: "device-abc",
+        user_code: "ABCD-1234",
+        verification_uri: "https://auth.dev.takara.ai/device/approve",
+        expires_in: 600,
+        interval: 5,
+      });
+    }) as typeof fetch;
+
+    let opens = 0;
+    // waitMs 0: every call runs out of budget immediately, as an unapproved login would.
+    const server = authServer(() => {
+      opens++;
+      return true;
+    });
+    const transport = new MemoryTransport([await callAuthTool(1), await callAuthTool(2)]);
+    await server.connect(transport);
+
+    const first = toolTextOf(transport.responseFor(1));
+    expect(first).toMatch(/A browser tab is open/);
+    expect(first).toContain("ABCD-1234");
+    const second = toolTextOf(transport.responseFor(2));
+    expect(second).toMatch(/Still waiting for approval/);
+    expect(second).toContain("ABCD-1234");
+    expect(deviceRequests).toBe(1);
+    expect(opens).toBe(1);
   });
 
   test("start opens the verification page in the browser and says so", async () => {

@@ -2,6 +2,7 @@ import * as z from "zod";
 import {
   checkDeviceAuthorizationOnce,
   type DeviceAuthConfig,
+  type DeviceAuthorizationCheck,
   type DeviceAuthorizationStart,
   openBrowserForDeviceLogin,
   resolveDeviceAuthConfig,
@@ -15,23 +16,36 @@ import type { MiruMcpServer } from "./runtime.ts";
 type ToolResult = ReturnType<typeof toolText>;
 
 const CHECK_HINT =
-  'Once the user approves, call `auth` again with action "check" to finish signing in.';
+  "If the user has not approved yet, call `auth` again to keep waiting; it will not open a second tab.";
+
+/**
+ * How long one `auth` call waits for the user to approve in the browser. Kept well under
+ * typical MCP client tool timeouts; a slower login just takes another call.
+ */
+const DEFAULT_WAIT_MS = 45_000;
+const SLOW_DOWN_STEP_MS = 5_000;
+/** The server may advertise `interval: 0`; never poll the token endpoint faster than this. */
+const MIN_POLL_INTERVAL_MS = 1_000;
 
 /** Appended to credentials failures so an agent knows Miru's own recovery step. */
 const RECOVERY_HINT =
-  'Miru could not authorize its current credentials. Call the `auth` tool with action "start" ' +
-  'to open the Takara device-login page, then action "check" once the user approves. If access ' +
-  "is still denied after signing in, check the account token balance.";
+  "Miru could not authorize its current credentials. Call the `auth` tool to open the Takara " +
+  "device-login page; it waits for the user to approve. If access is still denied after " +
+  "signing in, check the account token balance.";
 
 const AUTH_TOOL_DESCRIPTION =
   "Sign in with Takara credentials via device-code login — no terminal required. " +
   "Only call this in direct response to a tool error mentioning missing, expired, rejected, or " +
   "invalid credentials — never speculatively, since it starts a real sign-in prompt for the " +
-  'user. Call with no arguments (or action "start") to begin: it opens the device-login ' +
-  `page in the user's browser and returns that URL plus a short code. ${CHECK_HINT}`;
+  "user. Call with no arguments: it opens the device-login page in the user's browser, then " +
+  "waits (up to about 45 seconds) for them to approve and returns once they have. If it " +
+  'returns "still waiting", tell the user the URL and code and call `auth` again.';
 
 /** Browser opener seam; the real one spawns a detached `open`/`xdg-open`/`start`. */
 export type BrowserOpener = (url: string) => boolean;
+
+/** Sleep seam so tests can drive the wait loop without real delays. */
+export type Sleeper = (ms: number) => Promise<void>;
 
 /** Opening is on unless MIRU_OPEN_BROWSER is set to something other than "1" (matches `miru setup`). */
 function openIfAllowed(open: BrowserOpener, url: string): boolean {
@@ -42,8 +56,14 @@ function openIfAllowed(open: BrowserOpener, url: string): boolean {
   return open(url);
 }
 
-function approvalText(link: string, userCode: string, opened: boolean): string {
-  const lead = opened ? `A browser tab is open at ${link}` : `Ask the user to open ${link}`;
+/** `opened` is null when resuming an existing login (no new tab was opened). */
+function approvalText(link: string, userCode: string, opened: boolean | null): string {
+  const lead =
+    opened === null
+      ? `Still waiting for approval at ${link}`
+      : opened
+        ? `A browser tab is open at ${link}`
+        : `Ask the user to open ${link}`;
   return `${lead}. Code: ${userCode}. ${CHECK_HINT}`;
 }
 
@@ -71,11 +91,17 @@ function isExpired(entry: PendingDeviceAuth): boolean {
 class AuthToolState {
   private pending: PendingDeviceAuth | null = null;
 
-  constructor(private readonly openBrowser: BrowserOpener) {}
+  constructor(
+    private readonly openBrowser: BrowserOpener,
+    private readonly waitMs: number,
+    private readonly sleep: Sleeper,
+  ) {}
 
   async start(): Promise<ToolResult> {
     let pending = this.pending;
+    let fresh = false;
     if (!pending || isExpired(pending)) {
+      fresh = true;
       const config = resolveDeviceAuthConfig();
       const start = await startDeviceAuthorization({ config });
       pending = { start, config, startedAtMs: Date.now() };
@@ -84,21 +110,33 @@ class AuthToolState {
 
     const { verificationUriComplete, verificationUri, userCode } = pending.start;
     const link = verificationUriComplete ?? verificationUri;
-    // Reopening on a repeat call is deliberate: the user may have closed the first tab.
-    return toolText(approvalText(link, userCode, openIfAllowed(this.openBrowser, link)));
+    // Only a new login opens a tab; a repeat call just resumes the wait.
+    const opened = fresh ? openIfAllowed(this.openBrowser, link) : null;
+
+    const settled = await this.waitForApproval(pending);
+    return settled ?? toolText(approvalText(link, userCode, opened));
   }
 
-  async check(): Promise<ToolResult> {
-    if (!this.pending) {
-      return toolText('No device login is pending. Call `auth` with action "start" first.');
+  /** Poll until approved, denied or expired, or the wait budget runs out (then null). */
+  private async waitForApproval(entry: PendingDeviceAuth): Promise<ToolResult | null> {
+    const deadline = Date.now() + this.waitMs;
+    let intervalMs = Math.max(entry.start.interval * 1000, MIN_POLL_INTERVAL_MS);
+    while (Date.now() + intervalMs <= deadline) {
+      await this.sleep(intervalMs);
+      const result = await checkDeviceAuthorizationOnce(entry.start, { config: entry.config });
+      const settled = await this.settle(result);
+      if (settled) {
+        return settled;
+      }
+      if (result.status === "slow_down") {
+        intervalMs += SLOW_DOWN_STEP_MS;
+      }
     }
+    return null;
+  }
 
-    const { start, config } = this.pending;
-    // Errors (network failure, unrecognized OAuth error code) intentionally leave
-    // `pending` intact — a transient failure shouldn't force the user to restart
-    // the whole login, just retry the check.
-    const result = await checkDeviceAuthorizationOnce(start, { config });
-
+  /** Handle a final poll result; null means the login is still pending. */
+  private async settle(result: DeviceAuthorizationCheck): Promise<ToolResult | null> {
     switch (result.status) {
       case "success": {
         this.pending = null;
@@ -114,31 +152,51 @@ class AuthToolState {
         setStoredCredentialsEnvToken(tokens.accessToken);
         return toolText("Signed in successfully. Miru tools are now ready to use.");
       }
-      case "pending":
-        return toolText(
-          'Still waiting for approval. Ask the user to confirm they clicked and approved, then call `auth` again with action "check".',
-        );
-      case "slow_down":
-        return toolText(
-          'Checking too soon — wait a bit before calling `auth` again with action "check".',
-        );
       case "denied":
         this.pending = null;
-        return toolText('Sign-in was denied. Call `auth` with action "start" to try again.');
+        return toolText("Sign-in was denied. Call `auth` again to try again.");
       case "expired":
         this.pending = null;
         return toolText(
-          'The device code expired before it was approved. Call `auth` with action "start" to try again.',
+          "The device code expired before it was approved. Call `auth` again to get a new one.",
         );
+      default:
+        return null;
     }
+  }
+
+  async check(): Promise<ToolResult> {
+    if (!this.pending) {
+      return toolText('No device login is pending. Call `auth` with action "start" first.');
+    }
+
+    const { start, config } = this.pending;
+    // Errors (network failure, unrecognized OAuth error code) intentionally leave
+    // `pending` intact — a transient failure shouldn't force the user to restart
+    // the whole login, just retry the check.
+    const result = await checkDeviceAuthorizationOnce(start, { config });
+
+    const settled = await this.settle(result);
+    if (settled) {
+      return settled;
+    }
+    return toolText(
+      result.status === "slow_down"
+        ? "Checking too soon — wait a bit before calling `auth` again."
+        : "Still waiting for approval. Ask the user to confirm they clicked and approved, then call `auth` again.",
+    );
   }
 }
 
 export function registerAuthTool(
   server: MiruMcpServer,
-  options?: { openBrowser?: BrowserOpener },
+  options?: { openBrowser?: BrowserOpener; waitMs?: number; sleep?: Sleeper },
 ): void {
-  const state = new AuthToolState(options?.openBrowser ?? openBrowserForDeviceLogin);
+  const state = new AuthToolState(
+    options?.openBrowser ?? openBrowserForDeviceLogin,
+    options?.waitMs ?? DEFAULT_WAIT_MS,
+    options?.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
+  );
 
   server.registerTool(
     "auth",
@@ -148,7 +206,9 @@ export function registerAuthTool(
         action: z
           .enum(["start", "check"])
           .optional()
-          .describe('"start" begins a device-code login (default); "check" completes it.'),
+          .describe(
+            '"start" begins or resumes a device-code login and waits for approval (default); "check" is a single non-blocking poll.',
+          ),
       },
     },
     async ({ action }) => {

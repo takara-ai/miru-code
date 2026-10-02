@@ -30,7 +30,7 @@ describe("toolErrorText", () => {
     const text = textOf(toolErrorText(new CredentialsError("Device token refresh failed")));
     expect(text).toContain("Device token refresh failed");
     expect(text).toContain("`auth`");
-    expect(text).toContain('action "start"');
+    expect(text).toContain("waits for the user to approve");
     // The host tool cannot sign in to Takara, so it must never be suggested.
     expect(text).not.toContain("mcp_auth");
   });
@@ -48,7 +48,7 @@ describe("toolErrorText", () => {
     const text = textOf(toolErrorText(new EmbeddingApiError(401, "unauthorized")));
     expect(text).toContain("Not authorized");
     expect(text).toContain("`auth`");
-    expect(text).toContain('action "start"');
+    expect(text).toContain("waits for the user to approve");
   });
 
   test("plain errors pass through unchanged", () => {
