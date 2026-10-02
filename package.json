@@ -10,7 +10,7 @@
     "type": "git",
     "url": "git+https://github.com/takara-ai/miru-code.git"
   },
-  "homepage": "https://takara.ai",
+  "homepage": "https://takara.ai/miru",
   "bugs": "https://github.com/takara-ai/miru-code/issues",
   "keywords": [
     "code-search",

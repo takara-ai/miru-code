@@ -1,12 +1,17 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "miru",
+  "displayName": "Miru",
   "version": "1.10.0",
   "description": "Semantic code search for coding agents. Find code by meaning, not grep.",
   "author": {
     "name": "Takara",
     "url": "https://github.com/takara-ai"
   },
+  "homepage": "https://takara.ai/miru",
+  "repository": "https://github.com/takara-ai/miru-code",
+  "license": "MIT",
+  "keywords": ["code-search", "semantic-search", "mcp", "agents", "takara"],
   "skills": [
     "./skills/"
   ],
