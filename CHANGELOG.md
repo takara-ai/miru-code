@@ -1,5 +1,44 @@
 # Changelog
 
+## [1.10.0](https://github.com/takara-ai/miru-code/compare/v1.9.0...v1.10.0) (2026-10-02)
+
+
+### Features
+
+* add Bun coverage badge ([f7d418b](https://github.com/takara-ai/miru-code/commit/f7d418bda9d6ec202d85d49cf8e822b2cd5e27d8))
+* **benchmark:** add --agent-view scoring to benchmark-quality ([45ff293](https://github.com/takara-ai/miru-code/commit/45ff293e1259446dfbbdb8b928ef25bbadd2439a))
+* **chunking:** add opt-in definition-aware AST chunks ([8ed7797](https://github.com/takara-ai/miru-code/commit/8ed7797550fc85189d140d222e8170ea39bd7975))
+* **languages:** add sql, astro, svelte, vue grammars and index html ([482b2b6](https://github.com/takara-ai/miru-code/commit/482b2b6363bac5319ff1f947991ee6b3d058ee35))
+* **languages:** index .erb and .ejs templates ([c40b0ab](https://github.com/takara-ai/miru-code/commit/c40b0ab95f370e10d29d776572753ef6cac02df5))
+* make repo optional ([55dd8ed](https://github.com/takara-ai/miru-code/commit/55dd8ed473bc7d0d668f88c967b19d5604d050ce))
+* **mcp:** add server.json for the MCP registry ([a26e344](https://github.com/takara-ai/miru-code/commit/a26e34458b053520797143af1191a52459856acb))
+* **mcp:** prepare for MCP registry publishing ([7f3b811](https://github.com/takara-ai/miru-code/commit/7f3b8110655f7455fc2357734cea6553c9fd4fe4))
+* **ranking:** admit undiscovered symbol definitions as candidates ([3a14b6d](https://github.com/takara-ai/miru-code/commit/3a14b6d0aefc0aea8ab275f9ad659e9c765535b1))
+* remove search guard hooks ([85fa214](https://github.com/takara-ai/miru-code/commit/85fa2142db3c995c610b943c84c4f0537f486333))
+
+
+### Bug Fixes
+
+* bun.file doesn't check directories, moved to nodeFS ([5fca87b](https://github.com/takara-ai/miru-code/commit/5fca87b8c9216bb8d9a7f08ae6efa2b251165681))
+* **chunking:** release tree-sitter parser memory after each parse ([e1304c6](https://github.com/takara-ai/miru-code/commit/e1304c6dd733c50f7d9b12c74eeb91d5af1314fb))
+* **cli:** preserve legacy MCP launches with explicit server command ([6387daf](https://github.com/takara-ai/miru-code/commit/6387daf91f3de7196cd095cecc848046d599bd50))
+* make tests platform independent ([345d159](https://github.com/takara-ai/miru-code/commit/345d159d1483f7ec948f5d2f270b1015a4b6f095))
+* **mcp:** add mcpName for MCP registry verification ([688c757](https://github.com/takara-ai/miru-code/commit/688c7573c7217b99a0549bda3fb850e6d9bf9570))
+* opencode mcp path ([e836135](https://github.com/takara-ai/miru-code/commit/e83613559444a83dafc7c27d0e1ee54a932f7742))
+* resolve latest Miru release in MCP installer configs ([6c060dc](https://github.com/takara-ai/miru-code/commit/6c060dc5ab68592883c860de2fc2d1c5178ed063))
+
+
+### Performance Improvements
+
+* **index:** patch BM25 instead of rebuilding it on incremental updates ([b43104f](https://github.com/takara-ai/miru-code/commit/b43104f9cd35b1657b261bfa93a628b9c17a9bff))
+* **index:** reuse embeddings for unchanged chunks on incremental updates ([a9e94d7](https://github.com/takara-ai/miru-code/commit/a9e94d746a2cbe42f2647e85c3e48e2d1636acfd))
+
+
+### Reverts
+
+* **chunking:** remove opt-in definition-aware AST chunks ([3147275](https://github.com/takara-ai/miru-code/commit/3147275459e72cafaf7889416cda49a6783fad9a))
+* **ranking:** remove symbol-definition candidate lookup ([37a8d7e](https://github.com/takara-ai/miru-code/commit/37a8d7e5b29db38c73d2b38c91534b6838911f46))
+
 ## [1.9.0](https://github.com/takara-ai/miru-code/compare/v1.8.2...v1.9.0) (2026-09-28)
 
 
