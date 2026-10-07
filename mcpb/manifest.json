@@ -44,16 +44,6 @@
       "required": false
     }
   },
-  "tools": [
-    { "name": "search", "description": "Hybrid semantic and keyword code search" },
-    {
-      "name": "locate",
-      "description": "Find exact substrings such as symbols, env vars, or error codes"
-    },
-    { "name": "expand", "description": "More context around a search hit in the same file" },
-    { "name": "find_related", "description": "Similar code in other files" },
-    { "name": "auth", "description": "Sign in to Takara with a device code" }
-  ],
   "compatibility": {
     "platforms": ["darwin", "linux", "win32"],
     "runtimes": { "node": ">=18.0.0" }
