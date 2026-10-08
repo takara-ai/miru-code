@@ -87,8 +87,14 @@ test("Codex, Claude, and Cursor plugin manifests point at the Miru MCP runtime",
       "mcp",
       `--benchmark=${pluginPlaceholder("user_config.benchmark")}`,
     ],
-    env: { MIRU_CREDENTIALS_DIR: pluginPlaceholder("CLAUDE_PLUGIN_DATA") },
+    env: {
+      MIRU_CREDENTIALS_DIR: pluginPlaceholder("CLAUDE_PLUGIN_DATA"),
+      MIRU_PLUGIN_SAGEMAKER_ENDPOINT_ARN: pluginPlaceholder("user_config.sagemaker_endpoint_arn"),
+      MIRU_PLUGIN_AWS_PROFILE: pluginPlaceholder("user_config.aws_profile"),
+    },
   });
+  expect(claudePlugin.userConfig.sagemaker_endpoint_arn.type).toBe("string");
+  expect(claudePlugin.userConfig.aws_profile.type).toBe("string");
 
   expect(cursorPlugin.name).toBe("miru");
   expect(cursorPlugin.skills).toBe("./skills/");

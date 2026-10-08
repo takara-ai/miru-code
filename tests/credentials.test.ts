@@ -127,6 +127,46 @@ describe("credentials", () => {
     expect(process.env.TAKARA_API_KEY).toBe("stored-token");
   });
 
+  test("plugin SageMaker config overrides stored Takara credentials", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-cred-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    const arn = "arn:aws:sagemaker:us-east-1:123456789012:endpoint/ds1-endpoint";
+    try {
+      await saveStoredCredentials("stored-token");
+      clearTakaraApiKey();
+      clearSageMakerEnv();
+      process.env.MIRU_PLUGIN_SAGEMAKER_ENDPOINT_ARN = arn;
+      process.env.MIRU_PLUGIN_AWS_PROFILE = "miru";
+
+      expect(await loadStoredCredentials()).toBe(true);
+      expect(process.env.MIRU_SAGEMAKER_ENDPOINT_ARN).toBe(arn);
+      expect(process.env.AWS_PROFILE).toBe("miru");
+      expect(process.env.TAKARA_API_KEY).toBeUndefined();
+    } finally {
+      delete process.env.MIRU_PLUGIN_SAGEMAKER_ENDPOINT_ARN;
+      delete process.env.MIRU_PLUGIN_AWS_PROFILE;
+    }
+  });
+
+  test("blank or unsubstituted plugin SageMaker config falls back to stored credentials", async () => {
+    credDir = await mkdtemp(join(tmpdir(), "miru-cred-"));
+    process.env.MIRU_CREDENTIALS_DIR = credDir;
+    try {
+      for (const value of ["", "  ", "$" + "{user_config.sagemaker_endpoint_arn}"]) {
+        await saveStoredCredentials("stored-token");
+        clearTakaraApiKey();
+        clearSageMakerEnv();
+        process.env.MIRU_PLUGIN_SAGEMAKER_ENDPOINT_ARN = value;
+
+        expect(await loadStoredCredentials()).toBe(true);
+        expect(process.env.TAKARA_API_KEY).toBe("stored-token");
+        expect(process.env.MIRU_SAGEMAKER_ENDPOINT_ARN).toBeUndefined();
+      }
+    } finally {
+      delete process.env.MIRU_PLUGIN_SAGEMAKER_ENDPOINT_ARN;
+    }
+  });
+
   test("loadStoredCredentials does not load when TAKARA_API_KEY is set", async () => {
     credDir = await mkdtemp(join(tmpdir(), "miru-cred-"));
     process.env.MIRU_CREDENTIALS_DIR = credDir;

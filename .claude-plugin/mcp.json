@@ -6,7 +6,9 @@
       "command": "bunx",
       "args": ["@takara-ai/miru-code@latest", "mcp", "--benchmark=${user_config.benchmark}"],
       "env": {
-        "MIRU_CREDENTIALS_DIR": "${CLAUDE_PLUGIN_DATA}"
+        "MIRU_CREDENTIALS_DIR": "${CLAUDE_PLUGIN_DATA}",
+        "MIRU_PLUGIN_SAGEMAKER_ENDPOINT_ARN": "${user_config.sagemaker_endpoint_arn}",
+        "MIRU_PLUGIN_AWS_PROFILE": "${user_config.aws_profile}"
       }
     }
   }
