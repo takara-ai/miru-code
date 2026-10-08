@@ -9,17 +9,7 @@ import {
   startDeviceAuthorization,
 } from "../auth/device.ts";
 import { isCredentialsError } from "../auth/errors.ts";
-import {
-  beginModeSwitch,
-  loadStoredCredentials,
-  saveStoredCredentials,
-  setStoredCredentialsEnvToken,
-} from "../credentials.ts";
-import {
-  parseSageMakerEndpointArn,
-  type SageMakerEmbeddingConfig,
-  validateSageMakerConnection,
-} from "../embeddings/sagemaker.ts";
+import { saveStoredCredentials, setStoredCredentialsEnvToken } from "../credentials.ts";
 import { toolText } from "./index-cache.ts";
 import type { MiruMcpServer } from "./runtime.ts";
 
@@ -49,10 +39,7 @@ const AUTH_TOOL_DESCRIPTION =
   "invalid credentials — never speculatively, since it starts a real sign-in prompt for the " +
   "user. Call with no arguments: it opens the device-login page in the user's browser, then " +
   "waits (up to about 45 seconds) for them to approve and returns once they have. If it " +
-  'returns "still waiting", tell the user the URL and code and call `auth` again. ' +
-  'To switch to a self-hosted AWS SageMaker endpoint instead, call with action "sagemaker" ' +
-  "plus `endpoint_arn` and `profile` — only when the user asks for it and gives you both. " +
-  "This replaces any stored Takara credentials; signing in with Takara again replaces SageMaker.";
+  'returns "still waiting", tell the user the URL and code and call `auth` again.';
 
 /** Browser opener seam; the real one spawns a detached `open`/`xdg-open`/`start`. */
 export type BrowserOpener = (url: string) => boolean;
@@ -86,17 +73,6 @@ export function toolErrorText(err: unknown): ToolResult {
   return toolText(isCredentialsError(err) ? `${message}\n\n${RECOVERY_HINT}` : message);
 }
 
-/** SageMaker connection check seam so tests need no AWS access. */
-export type SageMakerValidator = typeof validateSageMakerConnection;
-
-function restoreEnv(name: string, value: string | undefined): void {
-  if (value === undefined) {
-    delete process.env[name];
-  } else {
-    process.env[name] = value;
-  }
-}
-
 type PendingDeviceAuth = {
   start: DeviceAuthorizationStart;
   config: DeviceAuthConfig;
@@ -119,7 +95,6 @@ class AuthToolState {
     private readonly openBrowser: BrowserOpener,
     private readonly waitMs: number,
     private readonly sleep: Sleeper,
-    private readonly validateSageMaker: SageMakerValidator,
   ) {}
 
   async start(): Promise<ToolResult> {
@@ -190,56 +165,6 @@ class AuthToolState {
     }
   }
 
-  /**
-   * Switch to a self-hosted SageMaker endpoint, mirroring `miru setup --sagemaker`. Miru only
-   * inherits an AWS profile that already exists; it never creates or writes AWS credentials.
-   */
-  async sagemaker(
-    endpointArn: string | undefined,
-    profile: string | undefined,
-  ): Promise<ToolResult> {
-    const arn = endpointArn?.trim();
-    const awsProfile = profile?.trim();
-    if (!arn || !awsProfile) {
-      return toolText(
-        'The "sagemaker" action needs both `endpoint_arn` and `profile` (an AWS profile that ' +
-          "already exists in ~/.aws). Ask the user for them.",
-      );
-    }
-    const parsed = parseSageMakerEndpointArn(arn);
-
-    // Drop Takara env so validation cannot see a stale mode; a failed validation leaves the
-    // stored credentials untouched.
-    const previousArn = process.env.MIRU_SAGEMAKER_ENDPOINT_ARN;
-    const previousProfile = process.env.AWS_PROFILE;
-    await beginModeSwitch("sagemaker");
-    process.env.MIRU_SAGEMAKER_ENDPOINT_ARN = arn;
-    process.env.AWS_PROFILE = awsProfile;
-
-    const config: SageMakerEmbeddingConfig = {
-      endpointName: parsed.endpointName,
-      region: parsed.region,
-      profile: awsProfile,
-      normalize: true,
-      truncate: true,
-      truncationDirection: "Right",
-    };
-    const result = await this.validateSageMaker(config);
-    if (!result.valid) {
-      restoreEnv("MIRU_SAGEMAKER_ENDPOINT_ARN", previousArn);
-      restoreEnv("AWS_PROFILE", previousProfile);
-      await loadStoredCredentials();
-      return toolText(result.message);
-    }
-
-    await saveStoredCredentials({ kind: "sagemaker", endpointArn: arn, profile: awsProfile });
-    this.pending = null;
-    return toolText(
-      `Switched to SageMaker endpoint "${parsed.endpointName}" (${parsed.region}, profile ` +
-        `"${awsProfile}"). Stored Takara credentials were removed. Miru tools are now ready to use.`,
-    );
-  }
-
   async check(): Promise<ToolResult> {
     if (!this.pending) {
       return toolText('No device login is pending. Call `auth` with action "start" first.');
@@ -265,18 +190,12 @@ class AuthToolState {
 
 export function registerAuthTool(
   server: MiruMcpServer,
-  options?: {
-    openBrowser?: BrowserOpener;
-    waitMs?: number;
-    sleep?: Sleeper;
-    validateSageMaker?: SageMakerValidator;
-  },
+  options?: { openBrowser?: BrowserOpener; waitMs?: number; sleep?: Sleeper },
 ): void {
   const state = new AuthToolState(
     options?.openBrowser ?? openBrowserForDeviceLogin,
     options?.waitMs ?? DEFAULT_WAIT_MS,
     options?.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
-    options?.validateSageMaker ?? validateSageMakerConnection,
   );
 
   server.registerTool(
@@ -285,28 +204,15 @@ export function registerAuthTool(
       description: AUTH_TOOL_DESCRIPTION,
       inputSchema: {
         action: z
-          .enum(["start", "check", "sagemaker"])
+          .enum(["start", "check"])
           .optional()
           .describe(
-            '"start" begins or resumes a device-code login and waits for approval (default); "check" is a single non-blocking poll; "sagemaker" switches to a self-hosted SageMaker endpoint (needs `endpoint_arn` and `profile`).',
-          ),
-        endpoint_arn: z
-          .string()
-          .optional()
-          .describe('SageMaker endpoint ARN. Only for action "sagemaker".'),
-        profile: z
-          .string()
-          .optional()
-          .describe(
-            'Name of an AWS profile that already exists in ~/.aws. Only for action "sagemaker".',
+            '"start" begins or resumes a device-code login and waits for approval (default); "check" is a single non-blocking poll.',
           ),
       },
     },
-    async ({ action, endpoint_arn: endpointArn, profile }) => {
+    async ({ action }) => {
       try {
-        if (action === "sagemaker") {
-          return await state.sagemaker(endpointArn, profile);
-        }
         return action === "check" ? await state.check() : await state.start();
       } catch (err) {
         return toolText(err instanceof Error ? err.message : String(err));

@@ -176,9 +176,7 @@ If `TAKARA_API_KEY` is still set in your shell or `.env.local`, remove it there 
 
 ### Claude Code plugin
 
-The plugin has no terminal step. Do steps 1–3 first, then use either option below.
-
-**Plugin settings (recommended).** Run `/plugin`, open **miru**, and set:
+The plugin has no terminal step. Do steps 1–3 first, then set the plugin settings. Run `/plugin`, open **miru**, and set:
 
 | Setting                  | Value                                                                                  |
 | ------------------------ | ---------------------------------------------------------------------------------------- |
@@ -196,7 +194,7 @@ When the ARN is set, it **takes priority over any stored Takara sign-in** and Mi
 
 If the profile uses SSO, run `aws sso login --profile <name>` again whenever the token expires.
 
-**Ask the agent.** The `auth` tool also has a `sagemaker` action: tell the agent to switch Miru to your endpoint and give it the ARN and profile. It validates the endpoint, saves it, and **deletes the stored Takara credentials**, like `miru setup --sagemaker`. A failed check leaves your current credentials untouched. If the plugin settings above are filled in, they still win on the next restart.
+The plugin's `auth` tool only handles Takara sign-in; SageMaker is configured through these settings only.
 
 ## Switch back to Takara
 
@@ -208,7 +206,7 @@ Enter your Takara API key. Setup validates it, saves it, and **deletes any store
 
 Also unset any `MIRU_SAGEMAKER_*` variables if you set them in the environment or `.env.local`.
 
-In the Claude Code plugin, clear the **SageMaker endpoint ARN** setting and restart. If you switched with the `auth` tool, ask the agent to sign in with Takara (`auth` with no arguments) as well.
+In the Claude Code plugin, clear the **SageMaker endpoint ARN** setting and restart.
 
 ## Environment alternatives
 
