@@ -186,14 +186,12 @@ describe("MCP tools against a local index", () => {
       } as unknown as IndexCache;
       const transport = new MemoryTransport([
         call(1, "locate", { repo: root }),
-        call(2, "search", { query: "findThing", repo: root, include: ["src/**"] }),
         call(3, "find_related", { file_path: sourceChunk.file_path, anchor_line: 1, repo: root }),
         call(4, "locate", { literal: "needle", repo: "https://example.test/org/repo" }),
       ]);
       await createMcpServer(cache, { benchmark: true }).connect(transport);
 
       expect(payload(transport, 1)).toContain("locate requires");
-      expect(payload(transport, 2)).toContain('"benchmark_skipped":"filtered_search"');
       expect(payload(transport, 3)).toContain("No related chunks found");
       expect(payload(transport, 4)).toContain('"benchmark_skipped":"local_repo_only"');
 
@@ -216,6 +214,30 @@ describe("MCP tools against a local index", () => {
         },
       }).connect(benchmarkEmptyTransport);
       expect(payload(benchmarkEmptyTransport, 6)).toBe("No results found.");
+
+      const scopes: unknown[] = [];
+      const filteredTransport = new MemoryTransport([
+        call(7, "search", {
+          query: "findThing",
+          repo: root,
+          include: ["src/**"],
+          exclude: ["**/*.test.ts"],
+        }),
+      ]);
+      await createMcpServer(cache, {
+        benchmark: true,
+        dependencies: {
+          benchmarkSearchComparison: async (options: {
+            include?: string[];
+            exclude?: string[];
+          }) => {
+            scopes.push({ include: options.include, exclude: options.exclude });
+            return { results: [] } as never;
+          },
+        },
+      }).connect(filteredTransport);
+      expect(payload(filteredTransport, 7)).toBe("No results found.");
+      expect(scopes).toEqual([{ include: ["src/**"], exclude: ["**/*.test.ts"] }]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

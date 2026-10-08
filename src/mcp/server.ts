@@ -49,8 +49,6 @@ const REPO_DESCRIPTION =
 
 const BENCHMARK_SKIP_NOTES = {
   local_repo_only: "Benchmark comparisons require a local repo path; git URL repos are skipped.",
-  filtered_search:
-    "Benchmark comparisons are skipped when search is restricted by include/exclude patterns.",
   limited_locate:
     "Benchmark comparison skipped: locate.limit is global, while rg/grep limits are per file. Omit limit for a valid token and recall comparison.",
   incompatible_literal_baseline:
@@ -190,9 +188,7 @@ export function createMcpServer(
         const repoRoot = localRepoRoot(source);
         const k = SEARCH_RESULT_COUNT;
         let skip: BenchmarkSkipReason | undefined;
-        if (benchmark && (include || exclude)) {
-          skip = "filtered_search";
-        } else if (benchmark && repoRoot) {
+        if (benchmark && repoRoot) {
           const comparison = await runWithGrepFallback(() =>
             compareSearch({
               query,
@@ -200,6 +196,8 @@ export function createMcpServer(
               index,
               topK: k,
               dedupeByFile: dedupeByFile !== false,
+              include,
+              exclude,
             }),
           );
           if (comparison) {

@@ -112,6 +112,25 @@ describe("Grep benchmark baseline", () => {
     expect(findstr.hits[0]?.output).toContain("preview from findstr");
   });
 
+  test("scopes the baseline with include/exclude before applying topK", async () => {
+    const repo = "/fixture/repo";
+    const spawn = async (args: string[]) =>
+      args.includes("--count-matches")
+        ? `${repo}/docs/a.md:9\n${repo}/src/a.ts:5\n${repo}/src/a.test.ts:4\n${repo}/src/b.ts:3\n`
+        : "preview\n";
+
+    const scoped = await grepSearch(repo, "authentication", 2, {
+      tool: "rg",
+      spawn,
+      include: ["src/**"],
+      exclude: ["**/*.test.ts"],
+    });
+    expect(scoped.files).toEqual(["src/a.ts", "src/b.ts"]);
+
+    const unscoped = await grepSearch(repo, "authentication", 2, { tool: "rg", spawn });
+    expect(unscoped.files).toEqual(["docs/a.md", "src/a.ts"]);
+  });
+
   test("rejects a forced missing tool but avoids tool selection for empty keywords", async () => {
     await expect(grepSearch("/repo", "authentication", 2, { tool: null })).rejects.toThrow(
       "No search tool found in PATH",

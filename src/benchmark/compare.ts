@@ -159,17 +159,20 @@ export async function benchmarkSearchComparison(options: {
   topK: number;
   /** Keep only the best hit per file (default true). Matches MCP `dedupe_by_file`. */
   dedupeByFile?: boolean;
+  /** Gitignore-style scope applied to both Miru and the grep baseline. */
+  include?: string[];
+  exclude?: string[];
   relevant?: string[];
   dependencies?: { grepSearch?: typeof grepSearch };
 }): Promise<{ benchmark: SearchBenchmarkBlock; results: SearchResult[] }> {
-  const { query, repoPath, index, topK, relevant } = options;
+  const { query, repoPath, index, topK, relevant, include, exclude } = options;
   const dedupeByFile = options.dedupeByFile !== false;
   const searchGrep = options.dependencies?.grepSearch ?? grepSearch;
   const parallelStart = performance.now();
 
   const miruPromise = (async () => {
     const started = performance.now();
-    const raw = await index.search({ query, topK, rerank: true });
+    const raw = await index.search({ query, topK, rerank: true, include, exclude });
     const results = (dedupeByFile ? dedupeResultsByFile(raw) : raw).slice(0, topK);
     // Count the MCP tool text body (path headers + snippets), not bare chunk content.
     const searchTokens = countTokens(
@@ -187,7 +190,7 @@ export async function benchmarkSearchComparison(options: {
 
   const grepSearchPromise = (async () => {
     const started = performance.now();
-    const grep = await searchGrep(repoPath, query, topK);
+    const grep = await searchGrep(repoPath, query, topK, { include, exclude });
     return { grep, latencyMs: performance.now() - started };
   })();
 

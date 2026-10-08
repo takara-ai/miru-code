@@ -1,6 +1,7 @@
 /** Native grep baseline for Miru benchmark comparisons. */
 
 import { relative } from "node:path";
+import ignore from "ignore";
 import { envOptionalInt } from "../env.ts";
 import { countTokens } from "../token-count.ts";
 
@@ -119,6 +120,22 @@ export function queryKeywords(query: string): string[] {
   return unique.slice(0, 6);
 }
 
+function scopeRankedMatches<T extends { file: string }>(
+  rows: T[],
+  include: string[] | undefined,
+  exclude: string[] | undefined,
+): T[] {
+  const includeMatcher = include?.length ? ignore().add(include) : null;
+  const excludeMatcher = exclude?.length ? ignore().add(exclude) : null;
+  return rows.filter((row) => {
+    const path = row.file.replace(/^\/+/, "");
+    if (includeMatcher && !includeMatcher.ignores(path)) {
+      return false;
+    }
+    return !excludeMatcher?.ignores(path);
+  });
+}
+
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -178,6 +195,9 @@ export async function grepSearch(
   options: {
     tool?: BenchmarkSearchTool | null;
     spawn?: typeof spawnBenchmarkSearch;
+    /** Gitignore-style scope, same semantics as Miru search `include`/`exclude`. */
+    include?: string[];
+    exclude?: string[];
   } = {},
 ): Promise<GrepSearchResult> {
   const keywords = queryKeywords(query);
@@ -192,12 +212,18 @@ export async function grepSearch(
   }
   const spawn = options.spawn ?? spawnBenchmarkSearch;
 
-  const ranked =
+  // Scope is applied after ranking so it behaves identically for rg, grep and findstr.
+  const scoped = Boolean(options.include?.length || options.exclude?.length);
+  const rankLimit = scoped ? Number.POSITIVE_INFINITY : topK;
+  const allRanked =
     tool === "rg"
-      ? await rgRankedMatches(repoRoot, pattern, topK, spawn)
+      ? await rgRankedMatches(repoRoot, pattern, rankLimit, spawn)
       : tool === "grep"
-        ? await grepRankedMatches(repoRoot, pattern, topK, spawn)
-        : await findstrRankedMatches(repoRoot, keywords, topK, spawn);
+        ? await grepRankedMatches(repoRoot, pattern, rankLimit, spawn)
+        : await findstrRankedMatches(repoRoot, keywords, rankLimit, spawn);
+  const ranked = scoped
+    ? scopeRankedMatches(allRanked, options.include, options.exclude).slice(0, topK)
+    : allRanked;
 
   const hits: GrepFileHit[] = [];
   let tokens = 0;
