@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type BrowserOpener, registerAuthTool } from "../src/mcp/auth-tool.ts";
+import {
+  type BrowserOpener,
+  registerAuthTool,
+  type SageMakerValidator,
+} from "../src/mcp/auth-tool.ts";
 import { MiruMcpServer } from "../src/mcp/runtime.ts";
 import { fake } from "./helpers/fake-credentials.ts";
 import { MemoryTransport } from "./helpers/mcp-memory-transport.ts";
@@ -11,10 +15,16 @@ import { MemoryTransport } from "./helpers/mcp-memory-transport.ts";
 function authServer(
   openBrowser?: BrowserOpener,
   wait?: { waitMs: number; sleep?: (ms: number) => Promise<void> },
+  validateSageMaker?: SageMakerValidator,
 ): MiruMcpServer {
   const server = new MiruMcpServer({ name: "miru", version: "test" });
   // No waiting by default so start returns immediately; wait tests opt in with a stub sleep.
-  registerAuthTool(server, { openBrowser, waitMs: wait?.waitMs ?? 0, sleep: wait?.sleep });
+  registerAuthTool(server, {
+    openBrowser,
+    waitMs: wait?.waitMs ?? 0,
+    sleep: wait?.sleep,
+    validateSageMaker,
+  });
   return server;
 }
 
@@ -27,7 +37,7 @@ function jsonResponse(status: number, body: unknown): Response {
 
 async function callAuthTool(
   id: number,
-  args?: { action?: "start" | "check" },
+  args?: { action?: "start" | "check" | "sagemaker"; endpoint_arn?: string; profile?: string },
 ): Promise<{ jsonrpc: "2.0"; id: number; method: "tools/call"; params: unknown }> {
   return {
     jsonrpc: "2.0",
@@ -483,5 +493,76 @@ describe("auth MCP tool", () => {
 
     expect(toolTextOf(transport.responseFor(2))).toMatch(/denied/i);
     expect(toolTextOf(transport.responseFor(3))).toMatch(/No device login is pending/);
+  });
+
+  describe("sagemaker action", () => {
+    const ARN = "arn:aws:sagemaker:us-east-1:123456789012:endpoint/ds1-endpoint";
+    const envKeys = ["MIRU_SAGEMAKER_ENDPOINT_ARN", "AWS_PROFILE", "TAKARA_API_KEY"] as const;
+    const savedEnv = new Map<string, string | undefined>();
+
+    beforeEach(() => {
+      for (const key of envKeys) {
+        savedEnv.set(key, process.env[key]);
+        delete process.env[key];
+      }
+    });
+
+    afterEach(() => {
+      for (const key of envKeys) {
+        const value = savedEnv.get(key);
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
+    });
+
+    async function run(args: Parameters<typeof callAuthTool>[1], valid: boolean) {
+      const server = authServer(undefined, undefined, async () => ({
+        valid,
+        message: valid ? "ok" : "AWS rejected the profile",
+      }));
+      const transport = new MemoryTransport([await callAuthTool(1, args)]);
+      await server.connect(transport);
+      return toolTextOf(transport.responseFor(1));
+    }
+
+    test("validates, saves the endpoint, and replaces Takara credentials", async () => {
+      await Bun.write(
+        join(credDir, "credentials.json"),
+        JSON.stringify({ version: 1, kind: "api_key", api_key: fake("old-key") }),
+      );
+
+      const text = await run({ action: "sagemaker", endpoint_arn: ARN, profile: "miru" }, true);
+
+      expect(text).toContain("ds1-endpoint");
+      const stored = JSON.parse(await readFile(join(credDir, "credentials.json"), "utf-8"));
+      expect(stored).toMatchObject({ kind: "sagemaker", endpoint_arn: ARN, profile: "miru" });
+      expect(process.env.MIRU_SAGEMAKER_ENDPOINT_ARN).toBe(ARN);
+      expect(process.env.AWS_PROFILE).toBe("miru");
+    });
+
+    test("keeps existing credentials when validation fails", async () => {
+      const original = JSON.stringify({ version: 1, kind: "api_key", api_key: fake("old-key") });
+      await Bun.write(join(credDir, "credentials.json"), original);
+
+      const text = await run({ action: "sagemaker", endpoint_arn: ARN, profile: "miru" }, false);
+
+      expect(text).toBe("AWS rejected the profile");
+      expect(await readFile(join(credDir, "credentials.json"), "utf-8")).toBe(original);
+      expect(process.env.MIRU_SAGEMAKER_ENDPOINT_ARN).toBeUndefined();
+      expect(process.env.AWS_PROFILE).toBeUndefined();
+    });
+
+    test("asks for the missing arguments", async () => {
+      expect(await run({ action: "sagemaker", endpoint_arn: ARN }, true)).toMatch(/needs both/);
+      expect(await run({ action: "sagemaker", profile: "miru" }, true)).toMatch(/needs both/);
+    });
+
+    test("rejects a malformed ARN", async () => {
+      const text = await run({ action: "sagemaker", endpoint_arn: "nope", profile: "miru" }, true);
+      expect(text).toMatch(/Invalid SageMaker endpoint ARN/);
+    });
   });
 });
