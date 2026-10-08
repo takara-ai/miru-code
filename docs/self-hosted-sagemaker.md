@@ -174,6 +174,30 @@ After that, indexing and search embed via SageMaker — no egress to `infer.taka
 
 If `TAKARA_API_KEY` is still set in your shell or `.env.local`, remove it there too so it cannot conflict later.
 
+### Claude Code plugin
+
+The plugin has no terminal step. Do steps 1–3 first, then use either option below.
+
+**Plugin settings (recommended).** Run `/plugin`, open **miru**, and set:
+
+| Setting                  | Value                                                                                  |
+| ------------------------ | ---------------------------------------------------------------------------------------- |
+| `SageMaker endpoint ARN` | The `EndpointArn` output from step 2                                                     |
+| `AWS profile`            | The profile from step 3. It must already exist in `~/.aws`; Miru never creates one.       |
+
+Or from a shell, then restart Claude Code:
+
+```bash
+echo '{"sagemaker_endpoint_arn":"arn:aws:sagemaker:<region>:<account-id>:endpoint/<name>","aws_profile":"miru"}' \
+  | claude plugin configure miru@miru --values-stdin
+```
+
+When the ARN is set, it **takes priority over any stored Takara sign-in** and Miru does not contact `infer.takara.ai`. Nothing is deleted, so clearing the ARN returns you to Takara. Leaving the ARN blank means Takara is used. The profile is only read when an ARN is set.
+
+If the profile uses SSO, run `aws sso login --profile <name>` again whenever the token expires.
+
+**Ask the agent.** The `auth` tool also has a `sagemaker` action: tell the agent to switch Miru to your endpoint and give it the ARN and profile. It validates the endpoint, saves it, and **deletes the stored Takara credentials**, like `miru setup --sagemaker`. A failed check leaves your current credentials untouched. If the plugin settings above are filled in, they still win on the next restart.
+
 ## Switch back to Takara
 
 ```bash
@@ -183,6 +207,8 @@ miru setup
 Enter your Takara API key. Setup validates it, saves it, and **deletes any stored SageMaker endpoint**.
 
 Also unset any `MIRU_SAGEMAKER_*` variables if you set them in the environment or `.env.local`.
+
+In the Claude Code plugin, clear the **SageMaker endpoint ARN** setting and restart. If you switched with the `auth` tool, ask the agent to sign in with Takara (`auth` with no arguments) as well.
 
 ## Environment alternatives
 
