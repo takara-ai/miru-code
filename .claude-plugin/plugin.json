@@ -20,6 +20,18 @@
       "title": "Benchmark mode",
       "description": "Add a compact token-savings block to search/locate responses.",
       "default": false
+    },
+    "sagemaker_endpoint_arn": {
+      "type": "string",
+      "title": "SageMaker endpoint ARN",
+      "description": "Optional. Embed via your self-hosted SageMaker endpoint instead of Takara. Overrides any stored Takara sign-in. Leave blank to use Takara.",
+      "required": false
+    },
+    "aws_profile": {
+      "type": "string",
+      "title": "AWS profile",
+      "description": "Name of an existing AWS profile in ~/.aws used to call the SageMaker endpoint. Only used with the endpoint ARN.",
+      "required": false
     }
   }
 }

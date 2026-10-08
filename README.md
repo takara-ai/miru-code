@@ -48,6 +48,7 @@ Plugin installs don't carry full CLI parity — what each one gives you depends 
 | `miru` / Caveman / STE skills | ✅ | ✅ | ✅ |
 | Dedicated sub-agent (`miru:miru-code`) | ✅ | — | — |
 | Benchmark mode toggle (`/plugin configure`) | ✅ | — | — |
+| Self-hosted SageMaker embeddings (`/plugin configure`) | ✅ | — | — |
 | Credentials | own plugin-scoped dir | own plugin-scoped dir | n/a |
 
 `—` means the IDE's plugin schema has no equivalent mechanism to port these to (not a packaging gap we can close): Codex's and Cursor's plugin manifests have no `agents` or `userConfig` fields, so the dedicated sub-agent and the benchmark toggle are Claude-Code-only.
@@ -323,7 +324,7 @@ Miru sends **file contents** to the [Takara inference API](https://takara.ai) wh
 
 If you index proprietary code, make sure that sending snippets to Takara's endpoint fits your security and compliance requirements. `MIRU_WORKSPACE_ROOT` is an opt-in boundary for MCP local `repo` paths only, and restricts indexing to a single workspace directory when set.
 
-Enterprise self-hosted embeddings (no Takara egress): see [docs/self-hosted-sagemaker.md](docs/self-hosted-sagemaker.md).
+Enterprise self-hosted embeddings (no Takara egress): see [docs/self-hosted-sagemaker.md](docs/self-hosted-sagemaker.md), including the [Claude Code plugin settings](docs/self-hosted-sagemaker.md#claude-code-plugin).
 
 ## Benchmark mode
 

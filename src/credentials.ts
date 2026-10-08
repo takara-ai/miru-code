@@ -116,6 +116,32 @@ function clearTakaraEnv(): void {
   delete process.env.TAKARA_API_KEY;
 }
 
+/** A plugin `userConfig` value, or undefined when blank or left as an unsubstituted `${...}`. */
+function pluginConfigValue(name: string): string | undefined {
+  const value = process.env[name]?.trim();
+  return value && !isUnsubstitutedPlaceholder(value) ? value : undefined;
+}
+
+/**
+ * Plugin settings (`sagemaker_endpoint_arn` / `aws_profile` in plugin.json) arrive as
+ * MIRU_PLUGIN_* env vars. When an endpoint is configured there it is an explicit choice, so it
+ * wins over any stored credentials; Takara env is dropped because the modes are exclusive.
+ */
+function applyPluginSageMakerConfig(): boolean {
+  const arn = pluginConfigValue("MIRU_PLUGIN_SAGEMAKER_ENDPOINT_ARN");
+  if (!arn) {
+    return false;
+  }
+  process.env.MIRU_SAGEMAKER_ENDPOINT_ARN = arn;
+  const profile = pluginConfigValue("MIRU_PLUGIN_AWS_PROFILE");
+  if (profile) {
+    process.env.AWS_PROFILE = profile;
+  }
+  clearTakaraEnv();
+  activeStoredToken = null;
+  return true;
+}
+
 function hydrateSageMakerEnv(sagemaker: StoredSageMakerCredentials): void {
   process.env.MIRU_SAGEMAKER_ENDPOINT_ARN = sagemaker.endpoint_arn;
   if (sagemaker.profile && !process.env.AWS_PROFILE) {
@@ -144,6 +170,9 @@ function markLoadedToken(token: string): void {
 /** Hydrate TAKARA_API_KEY / SageMaker env vars from the credentials file when env is unset. */
 export async function loadStoredCredentials(): Promise<boolean> {
   normalizeTakaraApiKeyEnv();
+  if (applyPluginSageMakerConfig()) {
+    return true;
+  }
   const stored = await readStoredCredentials();
   if (!stored) {
     return false;
