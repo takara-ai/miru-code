@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.11.0](https://github.com/takara-ai/miru-code/compare/v1.10.1...v1.11.0) (2026-10-08)
+
+
+### Features
+
+* **mcp:** switch to SageMaker from the auth tool ([a32a41a](https://github.com/takara-ai/miru-code/commit/a32a41a14b637c5646682f40c0ec416a402cc682))
+* **plugin:** configure SageMaker from Claude Code plugin settings ([95e2d8b](https://github.com/takara-ai/miru-code/commit/95e2d8b3ee7d5f0c79426fee4b50bcc744ff8573))
+* sagemaker in plugin ([d946bb4](https://github.com/takara-ai/miru-code/commit/d946bb41635c0a8835e68b4f140d11e5c22dc2f4))
+
 ## [1.10.1](https://github.com/takara-ai/miru-code/compare/v1.10.0...v1.10.1) (2026-10-02)
 
 
