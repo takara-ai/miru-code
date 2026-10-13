@@ -324,6 +324,8 @@ export interface EmbeddingClient {
     input: string[] | string,
     model: string,
     dimensions?: number,
+    /** True for search queries; sent as a tiny `X-Q` header. Indexing sends nothing. */
+    query?: boolean,
   ): Promise<EmbeddingResponse>;
 }
 
@@ -364,6 +366,7 @@ function createClient(fetchImpl: EmbeddingFetch = fetch): EmbeddingClient {
       input: string[] | string,
       model: string,
       dimensions?: number,
+      query?: boolean,
     ): Promise<EmbeddingResponse> {
       await loadStoredCredentials();
       const apiKey = resolveEmbeddingApiKey();
@@ -376,6 +379,7 @@ function createClient(fetchImpl: EmbeddingFetch = fetch): EmbeddingClient {
         headers: {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
+          ...(query ? { "X-Q": "1" } : {}),
         },
         body: JSON.stringify(body),
       });
@@ -429,11 +433,11 @@ export class OpenAIEmbeddingBackend implements EmbeddingBackend {
   }
 
   /** Embed pre-windowed inputs; issues a single API request (may 413-split). */
-  async embedInputs(texts: string[]): Promise<Float32Array[]> {
+  async embedInputs(texts: string[], query = false): Promise<Float32Array[]> {
     if (texts.length === 0) {
       return [];
     }
-    const vectors = await this.embedBatchRawWithRetry(texts.map(sanitizeEmbeddingInput));
+    const vectors = await this.embedBatchRawWithRetry(texts.map(sanitizeEmbeddingInput), query);
     for (const vec of vectors) {
       if (this.dimensions === 0 && vec.length > 0) {
         this.dimensions = vec.length;
@@ -442,7 +446,7 @@ export class OpenAIEmbeddingBackend implements EmbeddingBackend {
     return vectors;
   }
 
-  async embedDocuments(texts: string[]): Promise<Float32Array[]> {
+  async embedDocuments(texts: string[], query = false): Promise<Float32Array[]> {
     if (texts.length === 0) {
       return [];
     }
@@ -455,7 +459,10 @@ export class OpenAIEmbeddingBackend implements EmbeddingBackend {
     const batches = batchEmbeddingWindowJobs(jobs, this.batchSize);
     const concurrency = resolveWorkerConcurrency();
     await mapPool(batches, concurrency, async (batch) => {
-      const vectors = await this.embedInputs(batch.map((job) => job.text));
+      const vectors = await this.embedInputs(
+        batch.map((job) => job.text),
+        query,
+      );
       assignEmbeddingWindowVectors(batch, vectors, buckets);
     });
 
@@ -468,7 +475,7 @@ export class OpenAIEmbeddingBackend implements EmbeddingBackend {
     return out;
   }
 
-  private async requestEmbeddings(texts: string[]): Promise<EmbeddingResponse> {
+  private async requestEmbeddings(texts: string[], query: boolean): Promise<EmbeddingResponse> {
     let lastErr: unknown;
     for (let attempt = 0; attempt <= MAX_TRANSIENT_EMBED_RETRIES; attempt++) {
       try {
@@ -477,6 +484,7 @@ export class OpenAIEmbeddingBackend implements EmbeddingBackend {
           texts,
           this.model,
           this.requestedDimensions,
+          query,
         );
         const elapsed = performance.now() - started;
         this.stats.requests += 1;
@@ -498,12 +506,13 @@ export class OpenAIEmbeddingBackend implements EmbeddingBackend {
     throw lastErr;
   }
 
-  private async embedBatchRawWithRetry(texts: string[]): Promise<Float32Array[]> {
+  private async embedBatchRawWithRetry(texts: string[], query: boolean): Promise<Float32Array[]> {
     if (texts.length === 0) {
       return [];
     }
+    const retry = (batch: string[]) => this.embedBatchRawWithRetry(batch, query);
     try {
-      const response = await this.requestEmbeddings(texts);
+      const response = await this.requestEmbeddings(texts, query);
       const vectors = vectorsFromResponse(response.data, texts.length);
       for (const vec of vectors) {
         if (this.requestedDimensions != null && vec.length !== this.requestedDimensions) {
@@ -525,8 +534,8 @@ export class OpenAIEmbeddingBackend implements EmbeddingBackend {
         this.stats.payloadTooLarge += 1;
         this.stats.retries += 1;
         const mid = Math.ceil(texts.length / 2);
-        const left = await this.embedBatchRawWithRetry(texts.slice(0, mid));
-        const right = await this.embedBatchRawWithRetry(texts.slice(mid));
+        const left = await retry(texts.slice(0, mid));
+        const right = await retry(texts.slice(mid));
         return [...left, ...right];
       }
       if (isPayloadTooLargeError(err) && texts.length === 1) {
@@ -544,8 +553,8 @@ export class OpenAIEmbeddingBackend implements EmbeddingBackend {
         const mid = Math.floor(text.length / 2);
         const leftText = text.slice(0, mid);
         const rightText = text.slice(mid);
-        const left = await this.embedBatchRawWithRetry([leftText]);
-        const right = await this.embedBatchRawWithRetry([rightText]);
+        const left = await retry([leftText]);
+        const right = await retry([rightText]);
         const parts = [left[0], right[0]].filter((vec): vec is Float32Array => vec !== undefined);
         if (parts.length === 0) {
           this.stats.errors += 1;
@@ -559,7 +568,7 @@ export class OpenAIEmbeddingBackend implements EmbeddingBackend {
   }
 
   async embedQuery(text: string): Promise<Float32Array> {
-    const [vec] = await this.embedDocuments([text]);
+    const [vec] = await this.embedDocuments([text], true);
     if (!vec) {
       throw new Error("OpenAI returned no embedding for query");
     }
