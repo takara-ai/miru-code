@@ -41,7 +41,7 @@ describe("QuantizedVectorIndex persistence", () => {
       await saveSemantic(index, dir);
       const loaded = await loadSemantic(dir);
       expect(loaded).toBeInstanceOf(QuantizedVectorIndex);
-      expect(loaded.dimensions).toBe(8);
+      expect(loaded?.dimensions).toBe(8);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

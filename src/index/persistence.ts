@@ -1,7 +1,9 @@
 import { join } from "node:path";
 import { BM25Index } from "./bm25.ts";
 import { VectorIndex } from "./dense.ts";
+import type { EmbeddingStore } from "./embedding-store-types.ts";
 import { QuantizedVectorIndex } from "./quantize.ts";
+import { ReferencedVectorIndex } from "./referenced-index.ts";
 import type { SemanticIndex } from "./semantic-index.ts";
 import { resolveSemanticStorage, semanticStorageOf } from "./vector-storage.ts";
 
@@ -48,6 +50,10 @@ export async function loadBm25(path: string): Promise<BM25Index> {
 }
 
 export async function saveSemantic(index: SemanticIndex, path: string): Promise<void> {
+  if (index instanceof ReferencedVectorIndex) {
+    await index.save(path);
+    return;
+  }
   if (index instanceof QuantizedVectorIndex) {
     await index.save(path);
     return;
@@ -59,10 +65,31 @@ export async function saveSemantic(index: SemanticIndex, path: string): Promise<
   throw new Error("Unsupported semantic index type");
 }
 
-export async function loadSemantic(path: string): Promise<SemanticIndex> {
+/** Storage kind recorded in a semantic index directory (`meta.json`). */
+export async function readSemanticStorage(path: string): Promise<string | undefined> {
   const meta = JSON.parse(await Bun.file(`${path}/meta.json`).text()) as {
     storage?: string;
   };
+  return meta.storage;
+}
+
+/**
+ * Load a semantic index. Referenced bundles need the shared `store` and resolve
+ * to `null` when any vector is missing from it (treat as a cache miss).
+ */
+export async function loadSemantic(
+  path: string,
+  store?: EmbeddingStore,
+): Promise<SemanticIndex | null> {
+  const meta = JSON.parse(await Bun.file(`${path}/meta.json`).text()) as {
+    storage?: string;
+  };
+  if (meta.storage === "referenced") {
+    if (!store) {
+      throw new Error("Referenced semantic index requires an embedding store.");
+    }
+    return ReferencedVectorIndex.load(path, store);
+  }
   if (meta.storage === "int8") {
     return QuantizedVectorIndex.load(path);
   }
@@ -83,7 +110,8 @@ export async function saveIndexBundle(options: {
     paths.metadata,
     JSON.stringify({
       ...metadata,
-      vector_storage: semanticStorageOf(semantic),
+      vector_storage:
+        semantic instanceof ReferencedVectorIndex ? "int8" : semanticStorageOf(semantic),
     }),
   );
   await Bun.write(paths.chunks, JSON.stringify(chunks));
@@ -93,6 +121,9 @@ export async function semanticIndexMatchesStorage(path: string): Promise<boolean
   const meta = JSON.parse(await Bun.file(`${path}/meta.json`).text()) as {
     storage?: string;
   };
-  const stored = meta.storage === "int8" ? "int8" : "float32";
-  return stored === resolveSemanticStorage();
+  // Int8 mode only accepts referenced bundles; older self-contained int8 bundles are rebuilt.
+  if (resolveSemanticStorage() === "int8") {
+    return meta.storage === "referenced";
+  }
+  return meta.storage !== "referenced" && meta.storage !== "int8";
 }

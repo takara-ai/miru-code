@@ -9,11 +9,14 @@
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveEmbeddingDimensions, resolveEmbeddingModel } from "./embeddings/openai.ts";
+import { openEmbeddingStore } from "./index/embedding-store.ts";
+import type { EmbeddingStore } from "./index/embedding-store-types.ts";
 import {
   loadBm25,
   loadSemantic,
   pathsExist,
   persistencePaths,
+  readSemanticStorage,
   semanticIndexMatchesStorage,
 } from "./index/persistence.ts";
 import { resolveSemanticStorage, semanticStorageFromMetadata } from "./index/vector-storage.ts";
@@ -161,17 +164,30 @@ export async function getValidatedCache(
 /** Load BM25, semantic vectors, chunks, and metadata from a validated cache path. */
 export async function loadCachedIndex(indexPath: string): Promise<{
   bm25: Awaited<ReturnType<typeof loadBm25>>;
-  semantic: Awaited<ReturnType<typeof loadSemantic>>;
+  semantic: NonNullable<Awaited<ReturnType<typeof loadSemantic>>>;
   chunks: Chunk[];
   metadata: Record<string, unknown>;
-}> {
+  store?: EmbeddingStore;
+} | null> {
   const paths = persistencePaths(indexPath);
+  const metadata = JSON.parse(await Bun.file(paths.metadata).text()) as Record<string, unknown>;
+  let store: EmbeddingStore | undefined;
+  if ((await readSemanticStorage(paths.semanticIndex)) === "referenced") {
+    store = await openEmbeddingStore({
+      model: String(metadata.embedding_model),
+      dimensions: Number(metadata.embedding_dimensions),
+    });
+    store.touch();
+  }
+  const semantic = await loadSemantic(paths.semanticIndex, store);
+  if (!semantic) {
+    // Referenced vectors were evicted from the shared store: rebuild.
+    return null;
+  }
   const bm25 = await loadBm25(paths.bm25Index);
-  const semantic = await loadSemantic(paths.semanticIndex);
   const chunkData = JSON.parse(await Bun.file(paths.chunks).text()) as Record<string, unknown>[];
   const chunks = chunkData.map(chunkFromDict);
-  const metadata = JSON.parse(await Bun.file(paths.metadata).text()) as Record<string, unknown>;
-  return { bm25, semantic, chunks, metadata };
+  return { bm25, semantic, chunks, metadata, store };
 }
 
 /** Remove the cached index bundle for a source (same key as `findIndexCachePath`). */

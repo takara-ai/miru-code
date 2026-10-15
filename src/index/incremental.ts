@@ -3,7 +3,10 @@ import { chunkSource } from "../chunking/chunking.ts";
 import type { EmbeddingBackend } from "../embeddings/openai.ts";
 import type { Chunk, ContentType } from "../types.ts";
 import type { BM25Index } from "./bm25.ts";
+import { hashText } from "./embedding-store.ts";
+import { type EmbeddingStore, HASH_BYTES, type RowRef } from "./embedding-store-types.ts";
 import { detectLanguage, getExtensions, getFileStatus, readFileText } from "./files.ts";
+import { ReferencedVectorIndex } from "./referenced-index.ts";
 import type { SemanticIndex } from "./semantic-index.ts";
 import { buildBm25FromChunks, patchBm25 } from "./sparse.ts";
 import { buildSemanticIndex } from "./vector-storage.ts";
@@ -64,6 +67,49 @@ async function vectorsByText(
 }
 
 /**
+ * Referenced-index update: kept rows are untouched; only added chunk texts that
+ * are missing from the shared store get embedded (once per distinct text).
+ */
+async function referencedAdditions(
+  store: EmbeddingStore,
+  embeddings: EmbeddingBackend,
+  addedChunks: readonly Chunk[],
+): Promise<{ hashes: Uint8Array; refs: RowRef[] }> {
+  const hashes = addedChunks.map((c) => hashText(c.content));
+  const refs: Array<RowRef | null> = store.lookup(hashes);
+  const missing = new Map<string, number>();
+  for (const [i, chunk] of addedChunks.entries()) {
+    if (!refs[i] && !missing.has(chunk.content)) {
+      missing.set(chunk.content, i);
+    }
+  }
+  if (missing.size > 0) {
+    const texts = [...missing.keys()];
+    const embedded = await embeddings.embedDocuments(texts);
+    if (embedded.length !== texts.length) {
+      throw new Error(
+        `Vector count ${embedded.length} does not match chunk count ${texts.length}.`,
+      );
+    }
+    const inserted = await store.insert(
+      texts.map((text, i) => ({
+        hash: hashes[missing.get(text) as number] as Uint8Array,
+        vector: embedded[i] as Float32Array,
+      })),
+    );
+    const refByText = new Map(texts.map((text, i) => [text, inserted[i] as RowRef]));
+    for (const [i, chunk] of addedChunks.entries()) {
+      refs[i] ??= refByText.get(chunk.content) ?? null;
+    }
+  }
+  const flat = new Uint8Array(addedChunks.length * HASH_BYTES);
+  for (const [i, hash] of hashes.entries()) {
+    flat.set(hash, i * HASH_BYTES);
+  }
+  return { hashes: flat, refs: refs as RowRef[] };
+}
+
+/**
  * Replace chunks for the given repo-relative paths only: remove old chunks,
  * embed new ones, rebuild the semantic index from the merged vector set, and update
  * BM25 by dropping the old docs and indexing only the new chunks. Pass `bm25` (the
@@ -76,6 +122,8 @@ export async function applyIncrementalFileChanges(options: {
   chunks: Chunk[];
   semanticIndex: SemanticIndex;
   bm25?: BM25Index;
+  /** Shared embedding store; used when `semanticIndex` is a ReferencedVectorIndex. */
+  store?: EmbeddingStore;
   relativePaths: readonly string[];
 }): Promise<{ chunks: Chunk[]; bm25: BM25Index; semantic: SemanticIndex }> {
   const root = resolve(options.root);
@@ -94,6 +142,32 @@ export async function applyIncrementalFileChanges(options: {
       chunks: options.chunks,
       bm25: baseBm25 ?? buildBm25FromChunks(options.chunks),
       semantic: options.semanticIndex,
+    };
+  }
+
+  if (options.semanticIndex instanceof ReferencedVectorIndex && options.store) {
+    const keptChunks: Chunk[] = [];
+    const removed = new Set<number>();
+    for (const [i, chunk] of options.chunks.entries()) {
+      if (targets.has(normalizeRelativePath(chunk.file_path))) {
+        removed.add(i);
+      } else {
+        keptChunks.push(chunk);
+      }
+    }
+    const addedChunks: Chunk[] = [];
+    for (const rel of targets) {
+      addedChunks.push(...(await chunksForFile(root, rel)));
+    }
+    const chunks = [...keptChunks, ...addedChunks];
+    if (chunks.length === 0) {
+      throw new Error(`No indexed chunks remain under ${root}.`);
+    }
+    const added = await referencedAdditions(options.store, options.embeddings, addedChunks);
+    return {
+      chunks,
+      bm25: baseBm25 ? patchBm25(baseBm25, removed, addedChunks) : buildBm25FromChunks(chunks),
+      semantic: options.semanticIndex.withChanges(removed, added),
     };
   }
 

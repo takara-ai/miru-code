@@ -16,9 +16,12 @@ import { envOptionalInt } from "../env.ts";
 import { searchImprovementsEnabled } from "../ranking/features.ts";
 import { type Chunk, type ContentType, defaultContentTypes } from "../types.ts";
 import { BM25Index } from "./bm25.ts";
+import { hashText } from "./embedding-store.ts";
+import { type EmbeddingStore, HASH_BYTES, type RowRef } from "./embedding-store-types.ts";
 import { loadRootEntryChunks } from "./entry-chunks.ts";
 import { walkFiles } from "./file-walker.ts";
 import { detectLanguage, getExtensions, getFileStatus, readFileText } from "./files.ts";
+import { ReferencedVectorIndex } from "./referenced-index.ts";
 import type { SemanticIndex } from "./semantic-index.ts";
 import { addChunkToBm25 } from "./sparse.ts";
 import { buildSemanticIndex } from "./vector-storage.ts";
@@ -44,6 +47,7 @@ export async function createIndexFromPath(
   embeddings: EmbeddingBackend,
   content: ContentType[] = defaultContentTypes(),
   displayRoot?: string,
+  store?: EmbeddingStore,
 ): Promise<{ bm25: BM25Index; semantic: SemanticIndex; chunks: Chunk[] }> {
   const profile = process.env.MIRU_PROFILE === "1";
   const started = performance.now();
@@ -71,6 +75,11 @@ export async function createIndexFromPath(
   const maxIndexFiles = resolveMaxIndexFiles();
   const emittedChunks: Chunk[] = [];
   const windowVectorsByChunk: Float32Array[][] = [];
+  // Store mode: chunks already in the shared store are never embedded, and
+  // identical texts within this build are embedded once.
+  const chunkHashes: Uint8Array[] = [];
+  const chunkRefs: Array<RowRef | null> = [];
+  const embedOwnerByText = new Map<string, number>();
   const pendingWindows: EmbeddingWindowJob[] = [];
   const embedInFlight = new Set<Promise<void>>();
   const embedPromises: Promise<void>[] = [];
@@ -114,10 +123,20 @@ export async function createIndexFromPath(
   };
 
   const enqueueChunks = (chunks: Chunk[]): void => {
-    for (const chunk of chunks) {
+    const found = store ? store.lookup(chunks.map((chunk) => hashText(chunk.content))) : undefined;
+    for (const [i, chunk] of chunks.entries()) {
       const chunkIndex = emittedChunks.length;
       emittedChunks.push(chunk);
       windowVectorsByChunk.push([]);
+      if (store) {
+        chunkHashes.push(hashText(chunk.content));
+        const ref = found?.[i] ?? null;
+        chunkRefs.push(ref);
+        if (ref || embedOwnerByText.has(chunk.content)) {
+          continue;
+        }
+        embedOwnerByText.set(chunk.content, chunkIndex);
+      }
       appendEmbeddingWindowJobs(pendingWindows, chunkIndex, chunk.content, maxEmbedChars);
     }
   };
@@ -217,11 +236,39 @@ export async function createIndexFromPath(
   }
 
   const poolStarted = performance.now();
-  const vectors = poolEmbeddingWindowBuckets(windowVectorsByChunk);
-  const poolMs = performance.now() - poolStarted;
-
-  const semanticStarted = performance.now();
-  const semantic = buildSemanticIndex(vectors);
+  let vectors: Float32Array[] = [];
+  let semantic: SemanticIndex | undefined;
+  let poolMs = 0;
+  let semanticStarted = 0;
+  if (store) {
+    const owners = [...embedOwnerByText.values()];
+    const pooled = poolEmbeddingWindowBuckets(
+      owners.map((idx) => windowVectorsByChunk[idx] as Float32Array[]),
+    );
+    poolMs = performance.now() - poolStarted;
+    semanticStarted = performance.now();
+    const inserted = await store.insert(
+      owners.map((idx, i) => ({
+        hash: chunkHashes[idx] as Uint8Array,
+        vector: pooled[i] as Float32Array,
+      })),
+    );
+    const refByText = new Map<string, RowRef>();
+    for (const [i, idx] of owners.entries()) {
+      refByText.set((chunks[idx] as Chunk).content, inserted[i] as RowRef);
+    }
+    const flat = new Uint8Array(chunks.length * HASH_BYTES);
+    const refs = chunks.map((chunk, i) => {
+      flat.set(chunkHashes[i] as Uint8Array, i * HASH_BYTES);
+      return (chunkRefs[i] ?? refByText.get(chunk.content)) as RowRef;
+    });
+    semantic = ReferencedVectorIndex.create(store, flat, refs);
+  } else {
+    vectors = poolEmbeddingWindowBuckets(windowVectorsByChunk);
+    poolMs = performance.now() - poolStarted;
+    semanticStarted = performance.now();
+    semantic = buildSemanticIndex(vectors);
+  }
   const semanticMs = performance.now() - semanticStarted;
 
   if (profile) {
@@ -243,7 +290,7 @@ export async function createIndexFromPath(
         empty_or_skipped_files: emptyFileTasks,
         file_errors: fileErrors,
         chunks: chunks.length,
-        vectors: vectors.length,
+        vectors: store ? chunks.length : vectors.length,
         pipeline: {
           file_concurrency: fileConcurrency,
           embed_batch_size: embedBatchSize,

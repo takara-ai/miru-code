@@ -54,7 +54,7 @@ describe("index cache epoch", () => {
     await mkdir(paths.semanticIndex, { recursive: true });
     await writeFile(
       join(paths.semanticIndex, "meta.json"),
-      `${JSON.stringify({ storage: "int8", dimensions: 256, count: 0 })}\n`,
+      `${JSON.stringify({ storage: "referenced", dimensions: 256, count: 0 })}\n`,
     );
     return repo;
   }

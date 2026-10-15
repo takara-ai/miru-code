@@ -10,7 +10,10 @@ import {
   resolveCacheFolder,
 } from "../src/cache.ts";
 import { BM25Index } from "../src/index/bm25.ts";
+import { hashText, openEmbeddingStore } from "../src/index/embedding-store.ts";
+import type { RowRef } from "../src/index/embedding-store-types.ts";
 import { persistencePaths, saveIndexBundle } from "../src/index/persistence.ts";
+import { ReferencedVectorIndex } from "../src/index/referenced-index.ts";
 import { buildSemanticIndex, resolveSemanticStorage } from "../src/index/vector-storage.ts";
 import { indexCacheEpoch } from "../src/version.ts";
 
@@ -42,7 +45,7 @@ async function seed(
   const paths = persistencePaths(indexPath);
   await mkdir(paths.root, { recursive: true });
   const storage = resolveSemanticStorage();
-  const semantic = buildSemanticIndex([new Float32Array(256)]);
+  const semantic = await buildSeedSemantic();
   await saveIndexBundle({
     paths,
     bm25: new BM25Index(),
@@ -61,6 +64,18 @@ async function seed(
   return { source, indexPath, paths };
 }
 
+async function buildSeedSemantic() {
+  if (resolveSemanticStorage() === "float32") {
+    return buildSemanticIndex([new Float32Array(256)]);
+  }
+  const store = await openEmbeddingStore({ model: MODEL, dimensions: 256 });
+  const vector = new Float32Array(256);
+  vector[0] = 1;
+  const hash = hashText("seed");
+  const [ref] = await store.insert([{ hash, vector }]);
+  return ReferencedVectorIndex.create(store, hash, [ref as RowRef]);
+}
+
 function currentCacheHome(): string {
   if (!cacheHome) throw new Error("cache home has not been initialized");
   return cacheHome;
@@ -77,8 +92,8 @@ describe("validated cache bundles", () => {
     expect(resolveCacheFolder()).toBe(currentCacheHome());
     expect(await getValidatedCache(source, MODEL, ["code"])).toBe(indexPath);
     const cached = await loadCachedIndex(indexPath);
-    expect(cached.chunks).toEqual([]);
-    expect(cached.metadata.embedding_model).toBe(MODEL);
+    expect(cached?.chunks).toEqual([]);
+    expect(cached?.metadata.embedding_model).toBe(MODEL);
     await clearCache(source);
     expect(await Bun.file(indexPath).exists()).toBe(false);
     await clearCache(source);

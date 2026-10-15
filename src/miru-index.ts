@@ -11,9 +11,13 @@ import { cloneGitRepository } from "./git.ts";
 import type { BM25Index } from "./index/bm25.ts";
 import { buildChunkSelector } from "./index/chunk-selector.ts";
 import { createIndexFromPath } from "./index/create.ts";
+import { openEmbeddingStore } from "./index/embedding-store.ts";
+import { gcEmbeddingStores } from "./index/embedding-store-gc.ts";
+import type { EmbeddingStore } from "./index/embedding-store-types.ts";
 import { applyIncrementalFileChanges, normalizeRelativePath } from "./index/incremental.ts";
 import { persistencePaths, saveIndexBundle } from "./index/persistence.ts";
 import type { SemanticIndex } from "./index/semantic-index.ts";
+import { resolveSemanticStorage } from "./index/vector-storage.ts";
 import {
   filterChunksByGlob,
   type LiteralLocateOptions,
@@ -35,6 +39,40 @@ interface FactoryDependencies {
   findIndexCachePath: typeof findIndexCachePath;
   loadCachedIndex: typeof loadCachedIndex;
   saveBuiltIndex: (index: MiruIndex, path: string) => Promise<void>;
+  openEmbeddingStore: typeof openEmbeddingStore;
+}
+
+let gcScheduled = false;
+
+/** Fire-and-forget store GC, at most once per process; errors are swallowed. */
+function scheduleStoreGc(): void {
+  if (gcScheduled) {
+    return;
+  }
+  gcScheduled = true;
+  gcEmbeddingStores().catch(() => {});
+}
+
+/** Shared embedding store for int8 mode; `undefined` keeps the self-contained (float) path. */
+async function openStoreForBuild(
+  deps: FactoryDependencies,
+  embeddings: EmbeddingBackend,
+  model: string,
+): Promise<EmbeddingStore | undefined> {
+  if (resolveSemanticStorage() !== "int8") {
+    return undefined;
+  }
+  const dimensions = embeddings.dimensions || resolveEmbeddingDimensions(model);
+  if (!dimensions) {
+    return undefined;
+  }
+  try {
+    const store = await deps.openEmbeddingStore({ model, dimensions });
+    store.touch();
+    return store;
+  } catch {
+    return undefined;
+  }
 }
 
 function factoryDependencies(overrides: Partial<FactoryDependencies> = {}): FactoryDependencies {
@@ -47,6 +85,7 @@ function factoryDependencies(overrides: Partial<FactoryDependencies> = {}): Fact
     findIndexCachePath,
     loadCachedIndex,
     saveBuiltIndex: (index, path) => index.save(path),
+    openEmbeddingStore,
     ...overrides,
   };
 }
@@ -105,6 +144,9 @@ export class MiruIndex {
   /** Stored file mtimes (file path → mtime_ms) for cache freshness checking. */
   private storedFileMtimes: Map<string, number>;
 
+  /** Shared embedding store backing a referenced semantic index (int8 mode). */
+  private readonly store: EmbeddingStore | undefined;
+
   /** Read-only view of indexed chunks. */
   get chunks(): Chunk[] {
     return this.chunksInternal;
@@ -144,7 +186,9 @@ export class MiruIndex {
     content?: ContentType[];
     loadedFromDisk?: boolean;
     storedFileMtimes?: Record<string, number>;
+    store?: EmbeddingStore;
   }) {
+    this.store = options.store;
     this.embeddings = options.embeddings;
     this.bm25Index = options.bm25Index;
     this.semanticIndex = options.semanticIndex;
@@ -203,17 +247,22 @@ export class MiruIndex {
     const model = embeddingModel ?? deps.resolveEmbeddingModel();
     const cached = await deps.getValidatedCache(cacheKey, model, content);
     if (cached) {
-      return MiruIndex.loadFromDisk(cached, model, deps);
+      const loaded = await MiruIndex.tryLoadFromDisk(cached, model, deps);
+      if (loaded) {
+        return loaded;
+      }
     }
 
     const cloneDir = await deps.cloneGitRepository(url, ref);
     try {
       const embeddings = deps.getEmbeddingBackend(model);
+      const store = await openStoreForBuild(deps, embeddings, model);
       const { bm25, semantic, chunks } = await deps.createIndexFromPath(
         cloneDir,
         embeddings,
         content,
         cloneDir,
+        store,
       );
       const index = new MiruIndex({
         embeddings,
@@ -224,8 +273,10 @@ export class MiruIndex {
         // No durable local root — clone is deleted; incremental updates unavailable.
         root: null,
         content,
+        store,
       });
       await deps.saveBuiltIndex(index, deps.findIndexCachePath(cacheKey));
+      scheduleStoreGc();
       return index;
     } finally {
       await rm(cloneDir, { recursive: true, force: true });
@@ -276,16 +327,22 @@ export class MiruIndex {
     const model = embeddingModel ?? deps.resolveEmbeddingModel();
     const cached = await deps.getValidatedCache(resolved, model, content);
     if (cached) {
-      return MiruIndex.loadFromDisk(cached, model, deps);
+      const loaded = await MiruIndex.tryLoadFromDisk(cached, model, deps);
+      if (loaded) {
+        return loaded;
+      }
     }
 
     const embeddings = deps.getEmbeddingBackend(model);
+    const store = await openStoreForBuild(deps, embeddings, model);
     const { bm25, semantic, chunks } = await deps.createIndexFromPath(
       resolved,
       embeddings,
       content,
       resolved,
+      store,
     );
+    scheduleStoreGc();
 
     return new MiruIndex({
       embeddings,
@@ -295,6 +352,7 @@ export class MiruIndex {
       embeddingModel: model,
       root: resolved,
       content,
+      store,
     });
   }
 
@@ -309,9 +367,30 @@ export class MiruIndex {
     embeddingModel?: string,
     dependencies?: Partial<FactoryDependencies>,
   ): Promise<MiruIndex> {
+    const loaded = await MiruIndex.tryLoadFromDisk(path, embeddingModel, dependencies);
+    if (!loaded) {
+      throw new Error(
+        `Cached index at ${path} references embeddings that are no longer available.`,
+      );
+    }
+    return loaded;
+  }
+
+  /** Like `loadFromDisk`, but `null` when referenced vectors are gone from the store (cache miss). */
+  private static async tryLoadFromDisk(
+    path: string,
+    embeddingModel?: string,
+    dependencies?: Partial<FactoryDependencies>,
+  ): Promise<MiruIndex | null> {
     const deps = factoryDependencies(dependencies);
     const model = embeddingModel ?? deps.resolveEmbeddingModel();
-    const { bm25, semantic, chunks, metadata } = await deps.loadCachedIndex(path);
+    const cachedIndex = await deps.loadCachedIndex(path);
+    if (!cachedIndex) {
+      return null;
+    }
+    const { bm25, semantic, chunks, metadata, store } = cachedIndex as typeof cachedIndex & {
+      store?: EmbeddingStore;
+    };
     const content = (metadata.content_type as ContentType[]) ?? defaultContentTypes();
     const root = metadata.root_path ? String(metadata.root_path) : null;
     const storedFileMtimes = (metadata.file_mtimes as Record<string, number>) ?? {};
@@ -326,6 +405,7 @@ export class MiruIndex {
       content,
       loadedFromDisk: true,
       storedFileMtimes,
+      store,
     });
   }
 
@@ -423,6 +503,7 @@ export class MiruIndex {
       chunks: this.chunksInternal,
       semanticIndex: this.semanticIndex,
       bm25: this.bm25Index,
+      store: this.store,
       relativePaths,
     });
 
