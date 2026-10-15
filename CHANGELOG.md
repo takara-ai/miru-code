@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.12.0](https://github.com/takara-ai/miru-code/compare/v1.11.0...v1.12.0) (2026-10-15)
+
+
+### Features
+
+* **embeddings:** send X-Q header on search queries ([345c482](https://github.com/takara-ai/miru-code/commit/345c482bff9bfc465a3e08dc39ee7a653cc5997c))
+* **locate:** match regexes, list files, and rejoin split lines ([4abd134](https://github.com/takara-ai/miru-code/commit/4abd134ffc7f703b790d18b052dd51d6e7777d11))
+* **mcp:** load Miru tools upfront and trim their definitions ([b3ece4d](https://github.com/takara-ai/miru-code/commit/b3ece4dffa9cfeca00d56b9d668df951c23a1b99))
+* **plugin:** load the Miru server upfront and widen the skill trigger ([a4be410](https://github.com/takara-ai/miru-code/commit/a4be4102a046c52aeb87b090c92ef0c14d945205))
+
+
+### Bug Fixes
+
+* **chunking:** index AST boundaries as UTF-16 and keep same-line gaps ([a3fd491](https://github.com/takara-ai/miru-code/commit/a3fd491a58b3c6d77c0058bca8b8d10103d143d4))
+
 ## [1.11.0](https://github.com/takara-ai/miru-code/compare/v1.10.1...v1.11.0) (2026-10-08)
 
 
