@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.2](https://github.com/takara-ai/miru-code/compare/v1.12.1...v1.12.2) (2026-10-15)
+
+
+### Bug Fixes
+
+* **locate:** treat every slash-wrapped literal as a regex and prefilter chunks ([b917cb7](https://github.com/takara-ai/miru-code/commit/b917cb72497a9b8f542103c96f8888377a55be08))
+
 ## [1.12.1](https://github.com/takara-ai/miru-code/compare/v1.12.0...v1.12.1) (2026-10-15)
 
 
