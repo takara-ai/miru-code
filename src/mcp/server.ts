@@ -250,7 +250,7 @@ export function createMcpServer(
           .union([z.string().min(1), z.array(z.string().min(1)).min(1)])
           .optional()
           .describe(
-            "Exact substring, or a regex in slashes like `/foo\\w+Bar/` (`/…/i` ignores case). An array ORs several. Omit and pass `include` to list files.",
+            "Exact substring, or a regex wrapped in slashes like `/foo\\w+Bar/` or `/bench/i` (ignores case). An array ORs several. Omit and pass `include` to list files.",
           ),
         query: z
           .union([z.string().min(1), z.array(z.string().min(1)).min(1)])

@@ -56,19 +56,22 @@ export interface LiteralLocateOptions {
   context_lines?: number;
 }
 
-/** A `/body/` (optionally `/body/i`) literal is a regex only if the body has regex syntax, so `/api/users/` stays a plain substring. */
-const SLASH_REGEX = /^\/(.+)\/(i?)$/s;
-const REGEX_SYNTAX = /[\\^$.*+?()[\]{}|]/;
+/**
+ * `/body/` and `/body/i` are always regexes. Anything else is plain text, so drop the outer
+ * slashes to search a path such as `api/users/` as a substring.
+ */
+const SLASH_REGEX = /^\/(?<body>.+)\/(?<flag>i?)$/s;
 /** Regex is tested per line; cap the tested prefix so a minified line cannot stall the scan. */
 const MAX_REGEX_LINE_CHARS = 4096;
 
+/** The regex a slash-wrapped literal denotes, or null for a plain-text literal. */
 function parseRegexLiteral(literal: string, ignoreCase: boolean): RegExp | null {
-  const m = SLASH_REGEX.exec(literal);
-  if (!m || !REGEX_SYNTAX.test(m[1] ?? "")) {
+  const groups = SLASH_REGEX.exec(literal)?.groups;
+  if (!groups) {
     return null;
   }
   try {
-    return new RegExp(m[1] ?? "", ignoreCase || m[2] === "i" ? "i" : "");
+    return new RegExp(groups.body ?? "", ignoreCase || groups.flag === "i" ? "i" : "");
   } catch (err) {
     throw new Error(
       `Invalid regex ${literal}: ${err instanceof Error ? err.message : String(err)}`,
@@ -100,6 +103,9 @@ function lineMatchesAny(
   needles: readonly string[],
   ignoreCase: boolean,
 ): boolean {
+  if (needles.length === 0) {
+    return false;
+  }
   const hay = ignoreCase ? haystack.toLowerCase() : haystack;
   for (const needle of needles) {
     const n = ignoreCase ? needle.toLowerCase() : needle;
@@ -156,6 +162,51 @@ function expandLiterals(literals: readonly string[], matchVariants: boolean): st
     }
   }
   return [...seen];
+}
+
+interface LiteralMatcher {
+  /** Plain substrings actually searched, after identifier-variant expansion. */
+  needles: readonly string[];
+  /** The slash-wrapped inputs, verbatim. */
+  regexLiterals: readonly string[];
+  isEmpty: boolean;
+  matchesLine(line: string): boolean;
+  /** Cheap whole-chunk test: false means no line in the chunk can match. */
+  chunkMayMatch(content: string): boolean;
+}
+
+/** Splits literals into plain substrings and regexes, and builds the line and chunk tests. */
+function compileMatcher(
+  literals: readonly string[],
+  ignoreCase: boolean,
+  matchVariants: boolean,
+): LiteralMatcher {
+  const regexes: RegExp[] = [];
+  const regexLiterals: string[] = [];
+  const plain: string[] = [];
+  for (const literal of literals) {
+    const re = parseRegexLiteral(literal, ignoreCase);
+    if (re) {
+      regexes.push(re);
+      regexLiterals.push(literal);
+    } else {
+      plain.push(literal);
+    }
+  }
+  const needles = expandLiterals(plain, matchVariants);
+  // One JIT-compiled pass per chunk rules out most chunks before any line is split or tested.
+  // Multiline anchors keep `^`/`$` line-relative, so this can only over-match, never miss.
+  const chunkRegexes = regexes.map((re) => new RegExp(re.source, `${re.flags}m`));
+
+  return {
+    needles,
+    regexLiterals,
+    isEmpty: needles.length === 0 && regexes.length === 0,
+    matchesLine: (line) =>
+      lineMatchesAny(line, needles, ignoreCase) || regexMatchesLine(line, regexes),
+    chunkMayMatch: (content) =>
+      lineMatchesAny(content, needles, ignoreCase) || chunkRegexes.some((re) => re.test(content)),
+  };
 }
 
 export function filterChunksByGlob(
@@ -242,21 +293,8 @@ export function locateLiteral(
 
   const inputLiterals = (Array.isArray(literal) ? literal : [literal]).filter((l) => l.length > 0);
   const label = inputLiterals.join(" | ");
-  const regexes: RegExp[] = [];
-  const plainLiterals: string[] = [];
-  for (const lit of inputLiterals) {
-    const re = parseRegexLiteral(lit, ignoreCase);
-    if (re) {
-      regexes.push(re);
-    } else {
-      plainLiterals.push(lit);
-    }
-  }
-  const needles = expandLiterals(plainLiterals, options.match_variants === true);
-  const matchesLine = (text: string): boolean =>
-    lineMatchesAny(text, needles, ignoreCase) || regexMatchesLine(text, regexes);
-
-  if (needles.length === 0 && regexes.length === 0) {
+  const matcher = compileMatcher(inputLiterals, ignoreCase, options.match_variants === true);
+  if (matcher.isEmpty) {
     return { literal: label, mode, n: 0, files: 0, truncated: false, hits: [] };
   }
 
@@ -270,13 +308,13 @@ export function locateLiteral(
   let n = 0;
 
   for (const chunk of scopedChunks) {
-    if (regexes.length === 0 && !lineMatchesAny(chunk.content, needles, ignoreCase)) {
+    if (!matcher.chunkMayMatch(chunk.content)) {
       continue;
     }
     const lines = chunk.content.split("\n");
     for (let i = 0; i < lines.length; i++) {
       const lineText = lines[i] ?? "";
-      if (!matchesLine(lineText)) {
+      if (!matcher.matchesLine(lineText)) {
         continue;
       }
       const line = chunk.start_line + i;
@@ -318,7 +356,7 @@ export function locateLiteral(
   if (mode === "files") {
     result.file_list = [...fileSet].sort();
   }
-  const searched = [...needles, ...inputLiterals.filter((l) => !plainLiterals.includes(l))];
+  const searched = [...matcher.needles, ...matcher.regexLiterals];
   if (searched.length > 1) {
     result.literals = searched;
   }

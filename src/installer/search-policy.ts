@@ -156,7 +156,7 @@ export const MCP_SEARCH_TOOL_DESCRIPTION =
 export const MCP_LOCATE_TOOL_DESCRIPTION =
   "Exact substring locator over the Miru index, also `/regex/` and file lists (grep for identifiers, env vars, error strings, quoted text, without the noise). " +
   'Use for known literals, not meaning-based questions (`search`), even when phrased "where is X" if X is a literal. ' +
-  "A literal in slashes (`/foo\\w+Bar/`, `/…/i`) is a regex. No literal + `include` globs lists files by name pattern; mode=files returns just matching paths. " +
+  "A literal wrapped in slashes is always a regex (`/foo\\w+Bar/`, `/bench/i`); omit the slashes for plain text. No literal + `include` globs lists files by name pattern; mode=files returns just matching paths. " +
   "Returns ALL matches by default — do NOT fall back to Grep/rg when n is large; prefer mode=count/files/locations unless you need line text. " +
   "`context_lines` (mode=lines) saves a follow-up `expand`. In benchmark mode, includes token savings vs Grep.";
 

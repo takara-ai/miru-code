@@ -268,9 +268,23 @@ describe("regex literals, files mode, and file listing", () => {
     expect(locateLiteral(chunks, "/to.o/", { mode: "count", ignore_case: true }).n).toBe(1);
   });
 
-  test("a path-like slash literal without regex syntax stays a plain substring", () => {
-    const result = locateLiteral(chunks, "/api/users/", { mode: "count" });
+  test("a slash-wrapped word is a regex, so /i works without regex syntax", () => {
+    expect(locateLiteral(chunks, "/TODO/i", { mode: "count" }).n).toBe(1);
+    expect(locateLiteral(chunks, "/todo/i", { mode: "count" }).n).toBe(1);
+    expect(locateLiteral(chunks, "/todo/", { mode: "count" }).n).toBe(0);
+  });
+
+  test("a path is a plain substring once the outer slashes are dropped", () => {
+    const result = locateLiteral(chunks, "api/users/", { mode: "count" });
     expect(result.n).toBe(1);
+  });
+
+  test("line anchors stay line-relative when a chunk is prefiltered as a whole", () => {
+    const multi = [chunk("src/m.ts", "alpha\nbeta;\n  gamma\n")];
+    expect(locateLiteral(multi, "/^beta/", { mode: "count" }).n).toBe(1);
+    expect(locateLiteral(multi, "/a;$/", { mode: "count" }).n).toBe(1);
+    expect(locateLiteral(multi, "/^gamma/", { mode: "count" }).n).toBe(0);
+    expect(locateLiteral(multi, "/alpha\\nbeta/", { mode: "count" }).n).toBe(0);
   });
 
   test("regex and plain literals can be mixed in one OR call", () => {
@@ -284,7 +298,8 @@ describe("regex literals, files mode, and file listing", () => {
 
   test("hasRegexLiteral distinguishes regex from plain literals", () => {
     expect(hasRegexLiteral("/a.*b/")).toBe(true);
-    expect(hasRegexLiteral("/api/users/")).toBe(false);
+    expect(hasRegexLiteral("/benchmark/i")).toBe(true);
+    expect(hasRegexLiteral("api/users/")).toBe(false);
     expect(hasRegexLiteral(["plain", "/x+/"])).toBe(true);
   });
 
