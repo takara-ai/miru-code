@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.1](https://github.com/takara-ai/miru-code/compare/v1.12.0...v1.12.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* **search:** name the matched symbol and its exact lines on truncated hits ([18c92ef](https://github.com/takara-ai/miru-code/commit/18c92efe70c0424f9ec87f30cce0b2dd7a284641))
+
 ## [1.12.0](https://github.com/takara-ai/miru-code/compare/v1.11.0...v1.12.0) (2026-10-15)
 
 
