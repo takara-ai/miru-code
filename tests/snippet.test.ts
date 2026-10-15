@@ -119,6 +119,38 @@ describe("trimChunkToSnippet", () => {
     expect(meta.anchor_line).toBe(20);
   });
 
+  test("reports the matched symbol and its exact range, not the source file's", () => {
+    const ranked = chunk(
+      [
+        "export function wanted() {",
+        ...Array.from({ length: 30 }, (_, i) => `  step(${i});`),
+        "  return target;",
+        "}",
+      ].join("\n"),
+      40,
+    );
+    const source = chunk(
+      [
+        ...Array.from({ length: 39 }, (_, i) => `const filler${i} = ${i};`),
+        ranked.content,
+        ...Array.from({ length: 20 }, (_, i) => `const tail${i} = ${i};`),
+      ].join("\n"),
+      1,
+    );
+    const [{ meta }] = applySnippetsToResults(
+      [{ chunk: ranked, score: 1 }],
+      "target",
+      3,
+      new Map([[ranked.file_path, source]]),
+    );
+    expect(meta.truncated).toBe(true);
+    expect(meta.full_start_line).toBe(1);
+    expect(meta.match_start_line).toBe(40);
+    expect(meta.match_end_line).toBe(ranked.end_line);
+    expect(meta.symbol).toBe("wanted");
+    expect(meta.anchor_line).toBe(ranked.end_line - 1);
+  });
+
   test("completes indentation-delimited Python functions", () => {
     const source = [
       "def configure_agents():",

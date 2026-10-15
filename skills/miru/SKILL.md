@@ -25,7 +25,7 @@ Exact token (identifier, quoted string, env var, error code) → `locate`. Other
 
 1. Literal in the request? `locate(literal="<token>")` — prefer `mode="locations"`/`"count"`.
 2. Otherwise `search(query="<question>")` once.
-3. `truncated: true`? `expand` with `file_path`/`anchor_line` — only if the snippet doesn't already answer.
+3. `truncated: true`? The header gives `path:start-end Symbol` and `anchor_line`: read exactly those lines (ranged read, `offset`/`limit`), not the whole file — only if the snippet doesn't already answer. `expand` is the fallback for neighbouring chunks.
 4. `find_related` for similar code elsewhere, not more context in the same file.
 5. Read files directly only after Miru has already located the path.
 

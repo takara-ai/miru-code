@@ -12,10 +12,19 @@ export function formatResultsText(payload: {
 
   const blocks = payload.results.map((result) => {
     const chunk = result.chunk as Record<string, unknown>;
-    const startLine = chunk.truncated ? chunk.full_start_line : chunk.start_line;
-    const endLine = chunk.truncated ? chunk.full_end_line : chunk.end_line;
-    const truncatedNote = chunk.truncated ? " [truncated: call expand for full chunk]" : "";
-    const header = `${chunk.file_path}:${startLine}-${endLine}${truncatedNote}`;
+    // A truncated hit names the matched symbol's exact range (not the source file's) so the full
+    // body is one ranged read away; `anchor_line` is the matched line for `expand`/`find_related`.
+    const startLine = chunk.truncated
+      ? (chunk.match_start_line ?? chunk.full_start_line)
+      : chunk.start_line;
+    const endLine = chunk.truncated
+      ? (chunk.match_end_line ?? chunk.full_end_line)
+      : chunk.end_line;
+    const symbol = chunk.truncated && chunk.symbol ? ` ${chunk.symbol}` : "";
+    const truncatedNote = chunk.truncated
+      ? ` [truncated: anchor_line ${chunk.anchor_line}; read lines ${startLine}-${endLine} for the full symbol, or call expand]`
+      : "";
+    const header = `${chunk.file_path}:${startLine}-${endLine}${symbol}${truncatedNote}`;
     return `${header}\n${chunk.content}`;
   });
 

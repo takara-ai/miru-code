@@ -210,6 +210,9 @@ export function formatResults(
             anchor_line: entry.meta.anchor_line,
             full_start_line: entry.meta.full_start_line,
             full_end_line: entry.meta.full_end_line,
+            match_start_line: entry.meta.match_start_line,
+            match_end_line: entry.meta.match_end_line,
+            ...(entry.meta.symbol ? { symbol: entry.meta.symbol } : {}),
           },
           score,
         };

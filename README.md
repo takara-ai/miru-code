@@ -200,9 +200,9 @@ When wired via `miru install`, the MCP server exposes `search`, `locate`, `expan
 ### Workflow
 
 1. **`search`** with `query` — returns compact snippets (~±15 lines) and relevance scores.
-2. If a hit has **`truncated: true`**, call **`expand`** with `file_path` and `anchor_line` — not another search or a full-file read.
-3. To trace similar patterns elsewhere, call **`find_related`** with the same `file_path` and `anchor_line`.
-4. Use your editor's **Read** on `absolute_path` only when editing or when `expand` still lacks context.
+2. If a hit has **`truncated: true`**, its header names the symbol and its exact lines (`path:start-end Symbol`) plus `anchor_line`. Read just those lines with a ranged **Read** (`offset`/`limit`) — not another search or a full-file read.
+3. If that range lacks context, call **`expand`** with `file_path` and `anchor_line` for neighbouring chunks. To trace similar patterns elsewhere, call **`find_related`** with the same `file_path` and `anchor_line`.
+4. Use your editor's **Read** on `absolute_path` only for a hit's line range, to see a truncated body or edit it.
 
 Keep `repo` on follow-up calls when set.
 

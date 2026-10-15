@@ -32,6 +32,38 @@ describe("MCP tools against a local index", () => {
     expect(formatResultsText({ query: "nothing", results: [] })).toBe("No results found.");
   });
 
+  test("a truncated hit header names the symbol, its exact lines and the anchor line", () => {
+    const truncated = formatResultsText({
+      query: "q",
+      results: [
+        {
+          chunk: {
+            file_path: "src/a.ts",
+            start_line: 50,
+            end_line: 60,
+            content: "  return x;",
+            truncated: true,
+            anchor_line: 55,
+            full_start_line: 1,
+            full_end_line: 165,
+            match_start_line: 40,
+            match_end_line: 80,
+            symbol: "wanted",
+          },
+        },
+      ],
+    });
+    expect(truncated.split("\n")[0]).toBe(
+      "src/a.ts:40-80 wanted [truncated: anchor_line 55; read lines 40-80 for the full symbol, or call expand]",
+    );
+
+    const whole = formatResultsText({
+      query: "q",
+      results: [{ chunk: { file_path: "src/a.ts", start_line: 1, end_line: 9, content: "x" } }],
+    });
+    expect(whole.split("\n")[0]).toBe("src/a.ts:1-9");
+  });
+
   test("searches, locates, expands, and finds related chunks", async () => {
     const root = await mkdtemp(join(tmpdir(), "miru-mcp-tools-"));
     try {

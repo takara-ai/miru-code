@@ -28,7 +28,7 @@ For exact literal lookups, use `locate` instead of `search`:
 ## Workflow
 
 1. Call `search` once with `repo` set to the project root.
-2. If a result has `truncated: true`, call `expand` with `file_path` and `anchor_line` (or `start_line`).
+2. If a result has `truncated: true`, read the lines in its header (`path:start-end Symbol`) with a ranged read; use `expand` with `file_path` and `anchor_line` for neighbouring chunks.
 3. Use `find_related` to find similar code patterns in other files (e.g. other copies of a legacy routine, parallel implementations). For callers and dependents, use `search` with the routine/interface name.
 4. For exact literal lookups (env var names, error codes, quoted strings), use `locate` with `mode=count` or `locations` rather than `search`.
 5. Read files directly only after Miru has already identified the relevant path.
@@ -36,7 +36,7 @@ For exact literal lookups, use `locate` instead of `search`:
 ## Tool preference
 
 - Prefer Miru `search` over grep/glob/bash exploration when mapping what a legacy module does.
-- Prefer Miru `expand` over rereading whole files when a hit is truncated.
+- Prefer a ranged read of the hit's `start-end` lines (or Miru `expand`) over rereading whole files when a hit is truncated.
 - Prefer Miru `find_related` over repeated search paraphrases when looking for similar code (other copies, parallel implementations) — cryptic legacy naming conventions make keyword search unreliable for this.
 - Prefer Miru `locate` over grep for exact substrings — env vars, symbols, error codes — cryptic legacy naming makes keyword search unreliable here too, and `locate` is built for exact matches, not `search`.
 

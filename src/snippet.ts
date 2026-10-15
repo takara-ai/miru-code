@@ -13,6 +13,11 @@ export interface SnippetMeta {
   anchor_line: number;
   full_start_line: number;
   full_end_line: number;
+  /** Exact lines of the matched (ranked) chunk — the symbol-sized range to read, not the source file. */
+  match_start_line: number;
+  match_end_line: number;
+  /** Name of the symbol the matched chunk declares, when one is recognizable. */
+  symbol: string | null;
 }
 
 export interface SnippetResult {
@@ -73,6 +78,24 @@ function scoreLine(line: string, terms: Set<string>): number {
 
 const DECLARATION_RE =
   /^\s*(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:function|class|interface|enum|type|struct|trait|impl|record|namespace|contract|library|object)\b|^\s*(?:export\s+)?(?:const|let|var)\s+[$\w]+\s*=\s*[{[(]|^\s*(?:async\s+)?def\s+\w+|^\s*def\s+\w+|^\s*fn\s+\w+|^\s*func\s+\w+|^\s*defmodule\b|^\s*def\w*\b|^\s*(?:(?:public|private|protected|internal|static|final|abstract|virtual|override|sealed|partial|unsafe|extern)\s+)+(?:[A-Za-z_$][\w:<>[\]?.,\s]*\s+)+[A-Za-z_$]\w*\s*\(|^\s*(?:void|bool|boolean|char|short|int|long|float|double|string|[A-Z][\w:<>[\]?.,]*)\s+[A-Za-z_$]\w*\s*\(|^\s*(?:function\s+)?[A-Za-z_]\w*\s*\(\)\s*\{/;
+const DECLARED_NAME_RE =
+  /\b(?:function\*?|class|interface|enum|type|struct|trait|impl|record|namespace|contract|library|object|def|fn|func|defmodule)\s+([A-Za-z_$][\w$]*)|\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=/;
+
+/** Name declared by the first declaration line in `content`, or null when none is recognizable. */
+export function declaredSymbol(content: string): string | null {
+  for (const line of content.split("\n").slice(0, MAX_DECLARATION_LOOKBACK)) {
+    if (!DECLARATION_RE.test(line)) {
+      continue;
+    }
+    const match = DECLARED_NAME_RE.exec(line);
+    const name = match?.[1] ?? match?.[2];
+    if (name) {
+      return name;
+    }
+  }
+  return null;
+}
+
 const BRACE_BODY_RE =
   /\b(?:function|class|interface|enum|struct|trait|impl|record|namespace|contract|library|object|fn|func)\b|=\s*[{[(]|[A-Za-z_$]\w*\s*\([^)]*\)\s*\{/;
 const RUBY_OR_ELIXIR_BODY_RE = /^\s*def\w*\b|^\s*defmodule\b/;
@@ -419,6 +442,9 @@ export function trimChunkToSnippet(
         anchor_line: chunk.start_line + anchorOffset,
         full_start_line: chunk.start_line,
         full_end_line: chunk.end_line,
+        match_start_line: chunk.start_line,
+        match_end_line: chunk.end_line,
+        symbol: declaredSymbol(chunk.content),
       },
     };
   }
@@ -436,6 +462,9 @@ export function trimChunkToSnippet(
       anchor_line: chunk.start_line + anchorOffset,
       full_start_line: chunk.start_line,
       full_end_line: chunk.end_line,
+      match_start_line: chunk.start_line,
+      match_end_line: chunk.end_line,
+      symbol: declaredSymbol(chunk.content),
     },
   };
 }
@@ -460,8 +489,20 @@ export function applySnippetsToResults(
   });
   return contextualResults.map(({ result, anchorLine }, rank) => {
     const { chunk, meta } = trimChunkToSnippet(result.chunk, query, radius, anchorLine);
+    // `result.chunk` may be the whole source file; the ranked chunk is the symbol-sized match.
+    const ranked = results[rank]?.chunk;
     const snippet = compactSupportingSnippet(
-      { chunk, meta },
+      {
+        chunk,
+        meta: ranked
+          ? {
+              ...meta,
+              match_start_line: ranked.start_line,
+              match_end_line: ranked.end_line,
+              symbol: declaredSymbol(ranked.content) ?? meta.symbol,
+            }
+          : meta,
+      },
       rank === 0 ? primaryMaxLines : supportingMaxLines,
     );
     return { result: { chunk: snippet.chunk, score: result.score }, meta: snippet.meta };

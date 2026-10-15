@@ -11,15 +11,15 @@ Reach for Miru FIRST, before opening files, whenever you don't know the exact pa
 
 **Check first:** exact token (identifier, quoted string, env var, error code) → `locate`. Otherwise → `search`.
 
-Snippets are ~±15 lines. On `truncated: true`, call `expand` with `file_path` and `anchor_line` — only if the snippet doesn't already answer.
+Snippets are ~±15 lines. A `truncated: true` hit names its symbol and exact lines (`path:start-end Symbol`) plus `anchor_line`: to see the full body, read exactly those lines with a ranged read (`offset`/`limit`), never the whole file. `expand` (`file_path` + `anchor_line`) is the fallback for neighbouring chunks — only if the snippet doesn't already answer.
 
 `repo` is optional, set it for another repo.
 
 Use Miru MCP tools:
 - `locate` — exact substring (env var, symbol, error code) or `/regex/`; no literal + `include` globs lists files; prefer `mode=count`, `files` or `locations`
 - `search` — one call per conceptual question; use `include` / `exclude` Gitignore-style globs to scope files (same syntax as `locate`)
-- `expand` — more context in the same file when `truncated: true` (`file_path` + `anchor_line`)
-- `find_related` — similar code in other files (hits may also be snippets; use `expand` if truncated)
+- `expand` — fallback: neighbouring chunks in the same file around `anchor_line` (`file_path` + `anchor_line`)
+- `find_related` — similar code in other files (hits may also be snippets; read the hit's lines if truncated)
 
 Call shapes:
 - `locate(literal="<exact substring>")` — prefer `mode="locations"`/`"count"`
@@ -28,8 +28,8 @@ Call shapes:
 Stop rules:
 - Literal in the request → `locate`, not `search`
 - One `search` per question — no paraphrase retries
-- `expand` only if the snippet doesn't already answer
-- Read only to edit a path Miru already found, not to explore
+- On `truncated: true`, Read only the hit's `start-end` lines (`offset`/`limit`); `expand` only if that doesn't answer
+- Read only a path Miru already found, to see a truncated body or edit it — never to explore, never the whole file
 
 Native tools are allowed ONLY when:
 - reading a file you already located via Miru, to edit it
@@ -42,18 +42,19 @@ Native tools are allowed ONLY when:
 | Regex over code | Miru MCP `locate` with `/regex/` (`mode=files` for paths only) | Grep |
 | List files by name pattern | Miru MCP `locate` with `include` globs and no literal | Glob |
 | How/where/what handles X? (conceptual) | Miru MCP `search` (once) | Grep, Grep, Glob, SemanticSearch, or Read |
-| Same file, more context | Miru MCP `expand` on `truncated: true` | Re-search, Read whole file |
+| Full body of a `truncated: true` hit | Read the hit's `start-end` lines (`offset`/`limit`) | Re-search, Read whole file |
+| Same file, neighbouring chunks | Miru MCP `expand` (fallback) | Re-search |
 | Similar code elsewhere | Miru MCP `find_related` | Grep chains |
 | Search docs or config | Miru `search` | Grep README paths |
-| Edit a known file:line | Read (after Miru found it) | Read-before-search |
+| Edit a known file:line | Read the hit's `start-end` lines (after Miru found it) | Read-before-search |
 
 ### MCP workflow
 
 1. Call `search`; add `repo` only for another repo.
 2. For exact literals, call `locate` (prefer `mode=count` or `locations`).
-3. On `truncated: true`, call `expand` — only if the snippet doesn't already answer.
-4. Use `find_related` to trace similar code in other files — not for more context in the same file.
-5. Read via `absolute_path` only when editing or when `expand` still lacks context.
+3. On `truncated: true`, Read the hit's `start-end` lines (`offset`/`limit`) — only if the snippet doesn't already answer.
+4. Use `expand` for neighbouring chunks if that range lacks context; `find_related` to trace similar code in other files.
+5. Read via `absolute_path` only for the hit's range, to see a truncated body or edit it.
 
 ### CLI fallback (no MCP in this session)
 

@@ -1,8 +1,9 @@
 /** Shared code-search policy text for instructions, Cursor rules, and sub-agents. */
 
 export const SNIPPET_GUIDANCE =
-  "Snippets are ~±15 lines. On `truncated: true`, call `expand` with `file_path` and " +
-  "`anchor_line` — only if the snippet doesn't already answer.";
+  "Snippets are ~±15 lines. A `truncated: true` hit names its symbol and exact lines (`path:start-end Symbol`) plus `anchor_line`: " +
+  "to see the full body, read exactly those lines with a ranged read (`offset`/`limit`), never the whole file. " +
+  "`expand` (`file_path` + `anchor_line`) is the fallback for neighbouring chunks — only if the snippet doesn't already answer.";
 
 export const WHEN_TO_REACH_FOR_MIRU =
   "Reach for Miru FIRST, before opening files, whenever you don't know the exact path: starting in unfamiliar code, " +
@@ -23,10 +24,11 @@ export function buildSearchPolicyTable(native: NativeToolNames): string {
 | Regex over code | Miru MCP \`locate\` with \`/regex/\` (\`mode=files\` for paths only) | ${native.grep} |
 | List files by name pattern | Miru MCP \`locate\` with \`include\` globs and no literal | Glob |
 | How/where/what handles X? (conceptual) | Miru MCP \`search\` (once) | ${native.grep}, ${native.explorationDenied} |
-| Same file, more context | Miru MCP \`expand\` on \`truncated: true\` | Re-search, ${native.read} whole file |
+| Full body of a \`truncated: true\` hit | ${native.read} the hit's \`start-end\` lines (\`offset\`/\`limit\`) | Re-search, ${native.read} whole file |
+| Same file, neighbouring chunks | Miru MCP \`expand\` (fallback) | Re-search |
 | Similar code elsewhere | Miru MCP \`find_related\` | ${native.grep} chains |
 | Search docs or config | Miru \`search\` | ${native.grep} README paths |
-| Edit a known file:line | ${native.read} (after Miru found it) | ${native.read}-before-search |`;
+| Edit a known file:line | ${native.read} the hit's \`start-end\` lines (after Miru found it) | ${native.read}-before-search |`;
 }
 
 export function buildSearchPolicyBody(native: NativeToolNames): string {
@@ -43,8 +45,8 @@ ${SNIPPET_GUIDANCE}
 Use Miru MCP tools:
 - \`locate\` — exact substring (env var, symbol, error code) or \`/regex/\`; no literal + \`include\` globs lists files; prefer \`mode=count\`, \`files\` or \`locations\`
 - \`search\` — one call per conceptual question; use \`include\` / \`exclude\` Gitignore-style globs to scope files (same syntax as \`locate\`)
-- \`expand\` — more context in the same file when \`truncated: true\` (\`file_path\` + \`anchor_line\`)
-- \`find_related\` — similar code in other files (hits may also be snippets; use \`expand\` if truncated)
+- \`expand\` — fallback: neighbouring chunks in the same file around \`anchor_line\` (\`file_path\` + \`anchor_line\`)
+- \`find_related\` — similar code in other files (hits may also be snippets; read the hit's lines if truncated)
 
 Call shapes:
 - \`locate(literal="<exact substring>")\` — prefer \`mode="locations"\`/\`"count"\`
@@ -53,8 +55,8 @@ Call shapes:
 Stop rules:
 - Literal in the request → \`locate\`, not \`search\`
 - One \`search\` per question — no paraphrase retries
-- \`expand\` only if the snippet doesn't already answer
-- ${native.read} only to edit a path Miru already found, not to explore
+- On \`truncated: true\`, ${native.read} only the hit's \`start-end\` lines (\`offset\`/\`limit\`); \`expand\` only if that doesn't answer
+- ${native.read} only a path Miru already found, to see a truncated body or edit it — never to explore, never the whole file
 
 Native tools are allowed ONLY when:
 - reading a file you already located via Miru, to edit it
@@ -69,9 +71,9 @@ export function buildMcpWorkflow(native: NativeToolNames): string {
 
 1. Call \`search\`; add \`repo\` only for another repo.
 2. For exact literals, call \`locate\` (prefer \`mode=count\` or \`locations\`).
-3. On \`truncated: true\`, call \`expand\` — only if the snippet doesn't already answer.
-4. Use \`find_related\` to trace similar code in other files — not for more context in the same file.
-5. ${native.read} via \`absolute_path\` only when editing or when \`expand\` still lacks context.`;
+3. On \`truncated: true\`, ${native.read} the hit's \`start-end\` lines (\`offset\`/\`limit\`) — only if the snippet doesn't already answer.
+4. Use \`expand\` for neighbouring chunks if that range lacks context; \`find_related\` to trace similar code in other files.
+5. ${native.read} via \`absolute_path\` only for the hit's range, to see a truncated body or edit it.`;
 }
 
 const CLI_FALLBACK = `### CLI fallback (no MCP in this session)
@@ -159,8 +161,8 @@ export const MCP_LOCATE_TOOL_DESCRIPTION =
   "`context_lines` (mode=lines) saves a follow-up `expand`. In benchmark mode, includes token savings vs Grep.";
 
 export const MCP_EXPAND_TOOL_DESCRIPTION =
-  "More context in the SAME file as a search hit. Pass `file_path` + `anchor_line` from the hit. " +
-  "Use only if `truncated: true` and the snippet doesn't already answer the question — not for similar code elsewhere (use find_related).";
+  "Neighbouring chunks in the SAME file as a search hit (`file_path` + `anchor_line` from the hit). " +
+  "For a `truncated: true` hit's own full body, read its `start-end` lines instead; use this only if that doesn't answer — not for similar code elsewhere (use find_related).";
 
 export const MCP_FIND_RELATED_TOOL_DESCRIPTION =
   "Find up to 5 chunks similar to a file:line in OTHER parts of the codebase. Results may be snippets; use `expand` when `truncated: true`. " +

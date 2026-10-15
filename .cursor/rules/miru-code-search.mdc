@@ -7,12 +7,12 @@ alwaysApply: true
 
 DO NOT use Grep, Glob, SemanticSearch, or broad file reads to explore how code works when Miru MCP is available.
 
-Search returns compact snippets (~±15 lines around the best match). When a hit has `truncated: true`, call `expand` with `file_path` and `anchor_line` (or `start_line`) instead of rereading the whole file.
+Search returns compact snippets (~±15 lines around the best match). When a hit has `truncated: true`, its header gives `path:start-end Symbol` and `anchor_line`: read exactly those lines (ranged read) instead of rereading the whole file, and call `expand` with `file_path` and `anchor_line` only for neighbouring chunks.
 
 Use Miru MCP tools:
 - `search` — one call per question; pass project root as `repo`
 - Add `include` and/or `exclude` Gitignore-style glob patterns when a question targets selected files (for example `include: ["src/auth/**"]`). `search` and `locate` use the same parameters and syntax.
-- `expand` — more context in the same file when `truncated: true`
+- `expand` — fallback: neighbouring chunks in the same file around `anchor_line`
 - `find_related` — similar code in other files
 
 Allowed native-tool exceptions:
