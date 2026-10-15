@@ -34,12 +34,10 @@ const RECOVERY_HINT =
   "signing in, check the account token balance.";
 
 const AUTH_TOOL_DESCRIPTION =
-  "Sign in with Takara credentials via device-code login — no terminal required. " +
-  "Only call this in direct response to a tool error mentioning missing, expired, rejected, or " +
-  "invalid credentials — never speculatively, since it starts a real sign-in prompt for the " +
-  "user. Call with no arguments: it opens the device-login page in the user's browser, then " +
-  "waits (up to about 45 seconds) for them to approve and returns once they have. If it " +
-  'returns "still waiting", tell the user the URL and code and call `auth` again.';
+  "Sign in with Takara device-code login. Only call in direct response to a tool error about " +
+  "missing, expired, rejected, or invalid credentials — never speculatively: it starts a real " +
+  "sign-in prompt. No arguments: opens the login page in the user's browser and waits up to ~45s " +
+  'for approval. If it returns "still waiting", tell the user the URL and code and call `auth` again.';
 
 /** Browser opener seam; the real one spawns a detached `open`/`xdg-open`/`start`. */
 export type BrowserOpener = (url: string) => boolean;
@@ -207,7 +205,7 @@ export function registerAuthTool(
           .enum(["start", "check"])
           .optional()
           .describe(
-            '"start" begins or resumes a device-code login and waits for approval (default); "check" is a single non-blocking poll.',
+            '"start" begins/resumes login and waits for approval (default); "check" polls once.',
           ),
       },
     },

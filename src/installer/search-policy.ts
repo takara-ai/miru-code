@@ -1,8 +1,14 @@
 /** Shared code-search policy text for instructions, Cursor rules, and sub-agents. */
 
 export const SNIPPET_GUIDANCE =
-  "Search returns compact snippets (~±15 lines). On `truncated: true`, call `expand` with " +
-  "`file_path` and `anchor_line` — only if the snippet doesn't already answer the question.";
+  "Snippets are ~±15 lines. On `truncated: true`, call `expand` with `file_path` and " +
+  "`anchor_line` — only if the snippet doesn't already answer.";
+
+export const WHEN_TO_REACH_FOR_MIRU =
+  "Reach for Miru FIRST, before opening files, whenever you don't know the exact path: starting in unfamiliar code, " +
+  "finding where to edit, how/where/why questions, tracing callers or similar code, docs/config. " +
+  "`locate` also does regex (`/re/`) and lists files by name (`include` globs, no literal). " +
+  "Grep/Glob only for files Miru does not index (lockfiles, binaries, generated or git-ignored).";
 
 export interface NativeToolNames {
   explorationDenied: string;
@@ -14,6 +20,8 @@ export function buildSearchPolicyTable(native: NativeToolNames): string {
   return `| Task | Use | Not |
 |------|-----|-----|
 | Exact literal (identifier, quoted string, env var, error code) | Miru MCP \`locate\` | Miru \`search\`, ${native.grep} |
+| Regex over code | Miru MCP \`locate\` with \`/regex/\` (\`mode=files\` for paths only) | ${native.grep} |
+| List files by name pattern | Miru MCP \`locate\` with \`include\` globs and no literal | Glob |
 | How/where/what handles X? (conceptual) | Miru MCP \`search\` (once) | ${native.grep}, ${native.explorationDenied} |
 | Same file, more context | Miru MCP \`expand\` on \`truncated: true\` | Re-search, ${native.read} whole file |
 | Similar code elsewhere | Miru MCP \`find_related\` | ${native.grep} chains |
@@ -24,6 +32,8 @@ export function buildSearchPolicyTable(native: NativeToolNames): string {
 export function buildSearchPolicyBody(native: NativeToolNames): string {
   return `DO NOT use ${native.explorationDenied} to explore how code works when Miru MCP is available.
 
+${WHEN_TO_REACH_FOR_MIRU}
+
 **Check first:** exact token (identifier, quoted string, env var, error code) → \`locate\`. Otherwise → \`search\`.
 
 ${SNIPPET_GUIDANCE}
@@ -31,7 +41,7 @@ ${SNIPPET_GUIDANCE}
 \`repo\` is optional, set it for another repo.
 
 Use Miru MCP tools:
-- \`locate\` — exact substring (env var, symbol, error code); prefer \`mode=count\` or \`locations\`
+- \`locate\` — exact substring (env var, symbol, error code) or \`/regex/\`; no literal + \`include\` globs lists files; prefer \`mode=count\`, \`files\` or \`locations\`
 - \`search\` — one call per conceptual question; use \`include\` / \`exclude\` Gitignore-style globs to scope files (same syntax as \`locate\`)
 - \`expand\` — more context in the same file when \`truncated: true\` (\`file_path\` + \`anchor_line\`)
 - \`find_related\` — similar code in other files (hits may also be snippets; use \`expand\` if truncated)
@@ -49,6 +59,7 @@ Stop rules:
 Native tools are allowed ONLY when:
 - reading a file you already located via Miru, to edit it
 - searching outside the indexed repo
+- files Miru does not index (lockfiles, binaries, generated or git-ignored files)
 
 ${buildSearchPolicyTable(native)}`;
 }
@@ -116,14 +127,14 @@ export const SUBAGENT_BODY = buildSubagentBody(DEFAULT_NATIVE_TOOLS);
 
 export const MCP_SERVER_INSTRUCTIONS =
   "Miru `search` is your default for all code search queries in indexed repos — the best, fastest, and cheapest way to find code; better than any other tool. " +
-  "DO NOT use Grep, grep_search, codebase_search, Glob, SemanticSearch, or Read to explore code when this server is available. " +
+  `${WHEN_TO_REACH_FOR_MIRU} ` +
+  "DO NOT use Grep, grep_search, codebase_search, Glob, SemanticSearch, or Read to explore code while this server is available. " +
   "Exact token (identifier, quoted string, env var, error code) → `locate`; everything else → `search` once, no paraphrase retries. " +
   `${SNIPPET_GUIDANCE} ` +
-  "`find_related` traces similar code elsewhere, not more context in the same file. " +
-  "`repo` is optional, good for multi repo workflows. " +
-  "Native Grep/Glob only outside the indexed repo or for non-code tasks. " +
-  "Default indexed scope is code, config, and docs; an empty result can mean out-of-scope, not nonexistent. " +
-  "On credential errors, call this server's `auth` tool — not the host `mcp_auth` tool.";
+  "`find_related` finds similar code elsewhere. " +
+  "`repo` is optional (other repos). " +
+  "Indexed scope is code, config, and docs; an empty result can mean out-of-scope, not nonexistent. " +
+  "On credential errors, call this server's `auth` tool, not the host `mcp_auth`.";
 
 export const MCP_BENCHMARK_SERVER_INSTRUCTIONS =
   `${MCP_SERVER_INSTRUCTIONS} ` +
@@ -135,22 +146,17 @@ export const MCP_BENCHMARK_SERVER_INSTRUCTIONS =
   "To leave benchmark mode, tell the user to run `miru benchmark off` and restart the agent.";
 
 export const MCP_SEARCH_TOOL_DESCRIPTION =
+  "Semantic codebase search: find code by meaning (where/how/what handles X, callers, related code, docs, config) instead of grepping or reading files. Use FIRST when you don't know the exact path. " +
   "Your default search for all code search queries in this indexed repo — the best, fastest, and cheapest way to find code; better than any other tool. " +
-  "Returns up to 5 compact snippets (~±15 lines). One call per question. Use `include` / `exclude` Gitignore-style globs to scope files; these work the same way on `locate`. " +
-  "Exact literal (env var, symbol, error code, quoted text)? Use `locate` instead. " +
-  "On `truncated: true`, call `expand` — only if the snippet doesn't already answer the question.";
+  "Up to 5 snippets (~±15 lines), one call per question; exact literals → `locate`. " +
+  "On `truncated: true`, `expand` only if the snippet doesn't already answer.";
 
 export const MCP_LOCATE_TOOL_DESCRIPTION =
-  "Exact substring locator over the Miru index. Use for known literals (env vars, symbols, error codes, quoted text) — not meaning-based questions (`search`), " +
-  'even ones phrased as "where is X" or "what handles X" if X is a literal. ' +
-  "Returns ALL matches by default as compact {n,files,hits} — do NOT fall back to Grep/rg when n is large. " +
-  "Prefer mode=locations (or count for totals only); use lines when you need matching line text. " +
-  "Optional `limit` only if you intentionally want a sample. " +
-  "Pass an array to `literal` for several spellings in one call. " +
-  '`match_variants: true` also matches other casings (e.g. "rateLimit" also finds "rate_limit"). ' +
-  "`include`/`exclude` (gitignore-style globs) scope to part of a monorepo; " +
-  "`context_lines` in `lines` mode gets inline context instead of a follow-up `expand`. " +
-  "In benchmark mode, includes compact token savings vs agent Grep.";
+  "Exact substring locator over the Miru index, also `/regex/` and file lists (grep for identifiers, env vars, error strings, quoted text, without the noise). " +
+  'Use for known literals, not meaning-based questions (`search`), even when phrased "where is X" if X is a literal. ' +
+  "A literal in slashes (`/foo\\w+Bar/`, `/…/i`) is a regex. No literal + `include` globs lists files by name pattern; mode=files returns just matching paths. " +
+  "Returns ALL matches by default — do NOT fall back to Grep/rg when n is large; prefer mode=count/files/locations unless you need line text. " +
+  "`context_lines` (mode=lines) saves a follow-up `expand`. In benchmark mode, includes token savings vs Grep.";
 
 export const MCP_EXPAND_TOOL_DESCRIPTION =
   "More context in the SAME file as a search hit. Pass `file_path` + `anchor_line` from the hit. " +

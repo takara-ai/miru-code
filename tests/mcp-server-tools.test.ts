@@ -68,6 +68,85 @@ describe("MCP tools against a local index", () => {
     }
   });
 
+  test("tools/list asks Claude Code to load the code-search tools upfront", async () => {
+    const transport = new MemoryTransport([
+      { jsonrpc: "2.0" as const, id: 1, method: "tools/list" },
+    ]);
+    await createMcpServer({ get: async () => ({}) } as unknown as IndexCache).connect(transport);
+    const response = transport.responseFor(1);
+    if (!response || !("result" in response)) throw new Error("missing tools/list result");
+    const tools = (response.result as { tools: Array<{ name: string; _meta?: unknown }> }).tools;
+    for (const name of ["search", "locate", "expand", "find_related"]) {
+      expect(tools.find((tool) => tool.name === name)?._meta).toEqual({
+        "anthropic/alwaysLoad": true,
+      });
+    }
+  });
+
+  test("locate lists files by include glob when no literal is given", async () => {
+    const chunks: Chunk[] = [
+      { ...sourceChunk, file_path: "src/a.test.ts" },
+      { ...sourceChunk, file_path: "src/b.ts" },
+      { ...sourceChunk, file_path: "tests/c.test.ts" },
+    ];
+    const cache = { get: async () => ({ root: null, chunks }) } as unknown as IndexCache;
+    const transport = new MemoryTransport([
+      call(1, "locate", { include: ["**/*.test.ts"] }),
+      call(2, "locate", { include: ["**/*.test.ts"], mode: "count" }),
+      call(3, "locate", {}),
+    ]);
+    await createMcpServer(cache).connect(transport);
+    expect(payload(transport, 1)).toBe("2 files\n\nsrc/a.test.ts\ntests/c.test.ts");
+    expect(payload(transport, 2)).toBe("2 files");
+    const missing = transport.responseFor(3);
+    expect(JSON.stringify(missing)).toContain("include");
+  });
+
+  test("locate runs a /regex/ literal and files mode over indexed chunks", async () => {
+    const chunks: Chunk[] = [sourceChunk, { ...sourceChunk, file_path: "src/other.ts" }];
+    const { locateLiteral } = await import("../src/literal.ts");
+    const cache = {
+      get: async () => ({
+        root: null,
+        chunks,
+        locateLiteral: (lit: string, opts: object) => locateLiteral(chunks, lit, opts),
+      }),
+    } as unknown as IndexCache;
+    const transport = new MemoryTransport([
+      call(1, "locate", { literal: "/find\\w+\\(/", mode: "files" }),
+      call(2, "locate", { literal: "/find\\w+\\(/", mode: "locations" }),
+    ]);
+    await createMcpServer(cache).connect(transport);
+    expect(payload(transport, 1)).toContain("2 files");
+    expect(payload(transport, 1)).toContain("src/\n  find.ts\n  other.ts");
+    expect(payload(transport, 2)).toContain("src/find.ts: 1");
+  });
+
+  test("benchmark mode skips the fixed-string baseline for regex and files-mode locate", async () => {
+    const root = await mkdtemp(join(tmpdir(), "miru-mcp-regex-skip-"));
+    try {
+      const { locateLiteral } = await import("../src/literal.ts");
+      const index = {
+        root,
+        chunks: [sourceChunk],
+        locateLiteral: (lit: string, opts: object) => locateLiteral([sourceChunk], lit, opts),
+      };
+      const transport = new MemoryTransport([
+        call(1, "locate", { literal: "/find\\w+/", repo: root }),
+        call(2, "locate", { literal: "needle", mode: "files", repo: root }),
+        call(3, "locate", { include: ["src/**"], repo: root }),
+      ]);
+      await createMcpServer({ get: async () => index } as unknown as IndexCache, {
+        benchmark: true,
+      }).connect(transport);
+      for (const id of [1, 2, 3]) {
+        expect(payload(transport, id)).toContain('"benchmark_skipped":"regex_or_file_list"');
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("uses the server startup directory when repo is omitted and honors an explicit repo", async () => {
     const startupDirectory = process.cwd();
     const sources: string[] = [];

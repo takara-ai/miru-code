@@ -24,6 +24,7 @@ type ToolHandler<Args> = (args: Args) => Promise<{
 
 type RegisteredTool = {
   description: string;
+  meta?: Record<string, unknown>;
   inputSchema: Record<string, z.ZodType>;
   handler: ToolHandler<Record<string, unknown>>;
 };
@@ -49,11 +50,13 @@ export class MiruMcpServer {
     config: {
       description: string;
       inputSchema: S;
+      _meta?: Record<string, unknown>;
     },
     handler: ToolHandler<z.infer<z.ZodObject<S>>>,
   ): void {
     this.tools.set(name, {
       description: config.description,
+      meta: config._meta,
       inputSchema: config.inputSchema,
       handler: handler as ToolHandler<Record<string, unknown>>,
     });
@@ -163,6 +166,7 @@ export class MiruMcpServer {
       name,
       description: tool.description,
       inputSchema: shapeToJsonSchema(tool.inputSchema),
+      ...(tool.meta ? { _meta: tool.meta } : {}),
     }));
   }
 
@@ -234,8 +238,32 @@ function isNotification(message: JsonRpcMessage): message is { jsonrpc: "2.0"; m
   return "method" in message && !("id" in message);
 }
 
+/**
+ * Trim schema noise that costs tokens on every session but tells the model nothing: zod emits
+ * Number.MAX_SAFE_INTEGER / MIN_SAFE_INTEGER bounds for every `.int()`, plus `minLength: 1` and
+ * `minItems: 1` on non-empty strings and arrays. Validation still runs in zod at call time.
+ */
+function stripImplicitIntegerBounds(node: unknown): unknown {
+  if (Array.isArray(node)) {
+    return node.map(stripImplicitIntegerBounds);
+  }
+  if (node && typeof node === "object") {
+    return Object.fromEntries(
+      Object.entries(node as Record<string, unknown>)
+        .filter(
+          ([key, value]) =>
+            !(key === "maximum" && value === Number.MAX_SAFE_INTEGER) &&
+            !(key === "minimum" && value === Number.MIN_SAFE_INTEGER) &&
+            !((key === "minLength" || key === "minItems") && value === 1),
+        )
+        .map(([key, value]) => [key, stripImplicitIntegerBounds(value)]),
+    );
+  }
+  return node;
+}
+
 function shapeToJsonSchema(shape: Record<string, z.ZodType>): Record<string, unknown> {
   const schema = z.toJSONSchema(z.object(shape)) as Record<string, unknown>;
   const { $schema: _schema, ...rest } = schema;
-  return rest;
+  return stripImplicitIntegerBounds(rest) as Record<string, unknown>;
 }

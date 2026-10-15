@@ -21,7 +21,7 @@ import {
   MCP_SEARCH_TOOL_DESCRIPTION,
   MCP_SERVER_INSTRUCTIONS,
 } from "../installer/search-policy.ts";
-import { formatLiteralLocate } from "../literal.ts";
+import { formatLiteralLocate, hasRegexLiteral, listIndexedFiles } from "../literal.ts";
 import type { Chunk, ContentType, SearchResult } from "../types.ts";
 import {
   DEFAULT_EXPAND_AFTER,
@@ -44,8 +44,7 @@ import { getIndexForRepo, type IndexCache, toolText } from "./index-cache.ts";
 import { MiruMcpServer } from "./runtime.ts";
 
 const REPO_DESCRIPTION =
-  "`repo` is optional. Set a local path or Git URL for another repo. " +
-  "The index is built on the first tool call and cached for the session.";
+  "`repo` is optional: local path or Git URL (default: the server's directory).";
 
 const BENCHMARK_SKIP_NOTES = {
   local_repo_only: "Benchmark comparisons require a local repo path; git URL repos are skipped.",
@@ -55,6 +54,8 @@ const BENCHMARK_SKIP_NOTES = {
     "Benchmark comparison skipped: locate.limit is global, while rg/grep limits are per file. Omit limit for a valid token and recall comparison.",
   incompatible_literal_baseline:
     "Benchmark comparison skipped: a comparable literal baseline requires rg or compatible grep. Windows findstr does not preserve locate scope, context, or count semantics.",
+  regex_or_file_list:
+    "Benchmark comparison skipped: regex and file-list locate calls have no equivalent fixed-string rg baseline.",
   grep_timeout:
     "Benchmark Grep baseline timed out; Miru results are still returned. " +
     "Raise MIRU_BENCHMARK_SEARCH_TIMEOUT (seconds) if needed.",
@@ -118,6 +119,9 @@ async function persistBenchmarkQuery(
   }
 }
 
+/** Claude Code defers MCP tools behind ToolSearch by default; keep Miru visible next to Grep/Glob/Read, including to subagents. */
+const LOAD_UPFRONT_META = { "anthropic/alwaysLoad": true };
+
 export function createMcpServer(
   cache: IndexCache,
   options?: {
@@ -155,32 +159,24 @@ export function createMcpServer(
   server.registerTool(
     "search",
     {
-      description: `${MCP_SEARCH_TOOL_DESCRIPTION} Indexes the selected directory or URL on first call; later calls reuse the session cache.`,
+      description: MCP_SEARCH_TOOL_DESCRIPTION,
+      _meta: LOAD_UPFRONT_META,
       inputSchema: {
-        query: z
-          .string()
-          .describe(
-            "Natural language or code query — your default for all code search in this repo.",
-          ),
+        query: z.string().describe("Natural language or code query."),
         repo: z.string().optional().describe(REPO_DESCRIPTION),
         include: z
           .array(z.string().min(1))
           .min(1)
           .optional()
           .describe(
-            'Gitignore-style glob patterns; only matching files are searched (e.g. ["src/auth/**", "docs/**/*.md"]). Same semantics as `locate.include`.',
+            'Gitignore-style globs; only matching files are searched, e.g. ["src/auth/**"]. Same as `locate.include`.',
           ),
         exclude: z
           .array(z.string().min(1))
           .min(1)
           .optional()
-          .describe(
-            "Gitignore-style glob patterns; matching files are skipped. Same semantics as `locate.exclude`.",
-          ),
-        dedupe_by_file: z
-          .boolean()
-          .optional()
-          .describe("Keep only the best hit per file (default true)."),
+          .describe("Gitignore-style globs; matching files are skipped. Same as `locate.exclude`."),
+        dedupe_by_file: z.boolean().optional().describe("One best hit per file (default true)."),
       },
     },
     async ({ query, repo, include, exclude, dedupe_by_file: dedupeByFile }) => {
@@ -248,26 +244,24 @@ export function createMcpServer(
     "locate",
     {
       description: MCP_LOCATE_TOOL_DESCRIPTION,
+      _meta: LOAD_UPFRONT_META,
       inputSchema: {
         literal: z
           .union([z.string().min(1), z.array(z.string().min(1)).min(1)])
           .optional()
           .describe(
-            "Exact substring to find (env var, symbol, error code, quoted text). " +
-              "Pass an array to OR-match several substrings (e.g. spelling/casing variants) in one call.",
+            "Exact substring, or a regex in slashes like `/foo\\w+Bar/` (`/…/i` ignores case). An array ORs several. Omit and pass `include` to list files.",
           ),
         query: z
           .union([z.string().min(1), z.array(z.string().min(1)).min(1)])
           .optional()
-          .describe(
-            "Alias for `literal` — accepted so a call shaped like `search(query=...)` still resolves as an exact-substring lookup.",
-          ),
+          .describe("Alias for `literal`."),
         repo: z.string().optional().describe(REPO_DESCRIPTION),
         mode: z
-          .enum(["count", "locations", "lines"])
+          .enum(["count", "files", "locations", "lines"])
           .optional()
           .describe(
-            "count=totals only; locations=path:line; lines=path:line+text (default). Prefer count/locations when possible.",
+            "count=totals; files=unique paths; locations=path:lines; lines=path:line+text (default).",
           ),
         limit: z
           .number()
@@ -275,46 +269,56 @@ export function createMcpServer(
           .min(1)
           .optional()
           .describe(
-            "Optional cap on returned hits. Omit to return ALL matches (recommended). Do not fall back to Grep if n is large — use mode=count or locations instead.",
+            "Cap on hits. Omit for ALL matches (recommended); if n is large use mode=count/files, not Grep.",
           ),
-        ignore_case: z.boolean().optional().describe("Case-insensitive match (default false)."),
+        ignore_case: z.boolean().optional().describe("Case-insensitive (default false)."),
         match_variants: z
           .boolean()
           .optional()
-          .describe(
-            'Also match other ways the same word might be written in code, e.g. "rateLimit" also finds "rate_limit" and "RATE_LIMIT".',
-          ),
+          .describe('Also match other casings, e.g. "rateLimit" finds "rate_limit", "RATE_LIMIT".'),
         include: z
           .array(z.string().min(1))
           .optional()
           .describe(
-            'Gitignore-style glob patterns; only matching files are searched (e.g. "apps/tldr/**/*.go").',
+            'Gitignore-style globs; only matching files are searched, e.g. ["apps/**/*.go"].',
           ),
         exclude: z
           .array(z.string().min(1))
           .optional()
-          .describe("Gitignore-style glob patterns; matching files are skipped."),
+          .describe("Gitignore-style globs; matching files are skipped."),
         context_lines: z
           .number()
           .int()
           .min(0)
           .optional()
-          .describe("Lines of context before/after each match, like `grep -C` (mode=lines only)."),
+          .describe("Context lines around each match (mode=lines only)."),
       },
     },
     async ({ literal, query, repo, ...locateOpts }) => {
       const lit = literal ?? query;
-      if (lit == null) {
-        return toolErrorText(new Error("locate requires `literal` (exact substring to find)."));
+      if (lit == null && !locateOpts.include?.length) {
+        return toolErrorText(
+          new Error(
+            "locate requires `literal` (exact substring or /regex/), or `include` globs to list files.",
+          ),
+        );
       }
       try {
         const source = repo ?? defaultRepo;
         const index = await getIndexForRepo(source, cache);
 
+        if (lit == null) {
+          const listing = listIndexedFiles(index.chunks, locateOpts);
+          const body = formatLiteralLocateText(formatLiteralLocate(listing));
+          return toolText(benchmark ? withBenchmarkSkippedNote(body, "regex_or_file_list") : body);
+        }
+
         let skip: BenchmarkSkipReason | undefined;
         const repoRoot = localRepoRoot(source);
         if (benchmark && repoRoot && typeof lit === "string") {
-          if (locateOpts.limit != null) {
+          if (locateOpts.mode === "files" || hasRegexLiteral(lit)) {
+            skip = "regex_or_file_list";
+          } else if (locateOpts.limit != null) {
             skip = "limited_locate";
           } else if (!selectLiteralBaseline()) {
             skip = "incompatible_literal_baseline";
@@ -353,27 +357,26 @@ export function createMcpServer(
     "expand",
     {
       description: MCP_EXPAND_TOOL_DESCRIPTION,
+      _meta: LOAD_UPFRONT_META,
       inputSchema: {
-        file_path: z
-          .string()
-          .describe("Path from a search hit (`file_path` or `absolute_path` for local repos)."),
+        file_path: z.string().describe("Path from a search hit."),
         anchor_line: z
           .number()
           .int()
-          .describe("Line from the search hit (`anchor_line` when truncated, else `start_line`)."),
+          .describe("Line from the hit (`anchor_line` if truncated, else `start_line`)."),
         repo: z.string().optional().describe(REPO_DESCRIPTION),
         before: z
           .number()
           .int()
           .min(0)
           .optional()
-          .describe(`Extra chunks before the anchor (default ${DEFAULT_EXPAND_BEFORE}).`),
+          .describe(`Extra chunks before (default ${DEFAULT_EXPAND_BEFORE}).`),
         after: z
           .number()
           .int()
           .min(0)
           .optional()
-          .describe(`Extra chunks after the anchor (default ${DEFAULT_EXPAND_AFTER}).`),
+          .describe(`Extra chunks after (default ${DEFAULT_EXPAND_AFTER}).`),
       },
     },
     async ({ file_path: filePath, anchor_line: anchorLine, repo, before, after }) => {
@@ -415,14 +418,13 @@ export function createMcpServer(
     "find_related",
     {
       description: MCP_FIND_RELATED_TOOL_DESCRIPTION,
+      _meta: LOAD_UPFRONT_META,
       inputSchema: {
-        file_path: z
-          .string()
-          .describe("Path from a search hit (`file_path` or `absolute_path` for local repos)."),
+        file_path: z.string().describe("Path from a search hit."),
         anchor_line: z
           .number()
           .int()
-          .describe("Line from the search hit (`anchor_line` when truncated, else `start_line`)."),
+          .describe("Line from the hit (`anchor_line` if truncated, else `start_line`)."),
         repo: z.string().optional().describe(REPO_DESCRIPTION),
       },
     },

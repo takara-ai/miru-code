@@ -1,5 +1,4 @@
 ---
 name: miru-code
-description: Code search via Miru MCP. Use search, expand, and find_related. DO NOT use Grep, Glob, or Read for exploration when Miru MCP is available.
-tools: Bash, Read
+description: Use proactively for any codebase exploration — "where is X handled", "how does Y work", "what calls Z", mapping an unfamiliar area, or finding the right file before an edit. Searches by meaning via Miru MCP instead of Grep/Glob/Read sweeps.
 ---
