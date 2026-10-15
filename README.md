@@ -376,7 +376,7 @@ Override with `MIRU_BENCHMARK_HISTORY_PATH`. Append-only JSONL of compact token 
 | `repo`        | no       | Startup directory by default; set for another repo                                |
 | `include`     | no       | Gitignore-style glob patterns; only matching files are searched                    |
 | `exclude`     | no       | Gitignore-style glob patterns; matching files are skipped                          |
-| `mode`        | no       | `count` · `locations` · `lines` (default). Prefer `count`/`locations` when possible |
+| `mode`        | no       | `count` · `files` (unique paths) · `locations` · `lines` (default). Prefer `count`/`files`/`locations` when possible |
 | `limit`       | no       | Cap returned hits. Omit to return all matches                                       |
 | `ignore_case` | no       | Case-insensitive match (default `false`)                                            |
 

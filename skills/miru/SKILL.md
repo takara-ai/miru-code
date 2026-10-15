@@ -1,6 +1,6 @@
 ---
 name: miru
-description: Use Miru Code Search when the user asks where code lives, how behavior is wired, or what related code paths exist in a repo. Prefer this for conceptual code exploration over grep, glob, or broad file reads.
+description: Use Miru Code Search before reading or grepping whenever you need to find code you can't already name by path — starting a task in unfamiliar code, locating where to make an edit, answering how/where/why something works, tracing callers or similar code, or looking up docs/config. Also for exact identifiers, env vars and error strings (`locate`). Also does regex and file-by-name listing. Prefer over Grep, Glob and broad file reads, except for files Miru does not index.
 ---
 
 # Miru Code Search
@@ -9,8 +9,17 @@ Use Miru MCP as the default code-exploration path when it is available.
 
 ## When to use it
 
-Exact token (identifier, quoted string, env var, error code) → `locate`. Otherwise → `search` —
-e.g. "where is auth wired?", "what handles this behavior?", "find related code for this file/line".
+Reach for Miru first, before opening files, whenever you don't already know the exact path:
+
+- starting a task in code you haven't seen, to find the entry points
+- finding where to make an edit ("where is auth wired?", "what handles this behavior?")
+- answering how, where or why something works
+- tracing related code ("find related code for this file/line")
+- checking docs or config
+
+Exact token (identifier, quoted string, env var, error code) → `locate`. Otherwise → `search`.
+
+`locate` also takes a regex wrapped in slashes (`locate(literal="/foo\w+Bar/")`, `/…/i` to ignore case) and, with no literal, lists files by name: `locate(include=["**/*.test.ts"])`. Use `mode="files"` to get just the matching paths. Grep/Glob are only needed for files Miru does not index (lockfiles, binaries, generated or git-ignored files).
 
 ## Workflow
 

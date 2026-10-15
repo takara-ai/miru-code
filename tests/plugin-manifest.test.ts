@@ -27,7 +27,13 @@ test("Codex, Claude, and Cursor plugin manifests point at the Miru MCP runtime",
   ) as {
     mcpServers: Record<
       string,
-      { type: string; command: string; args: string[]; env: Record<string, string> }
+      {
+        type: string;
+        alwaysLoad?: boolean;
+        command: string;
+        args: string[];
+        env: Record<string, string>;
+      }
     >;
   };
   const cursorPlugin = JSON.parse(
@@ -81,6 +87,7 @@ test("Codex, Claude, and Cursor plugin manifests point at the Miru MCP runtime",
 
   expect(claudeMcp.mcpServers.miru).toEqual({
     type: "stdio",
+    alwaysLoad: true,
     command: "bunx",
     args: [
       "@takara-ai/miru-code@latest",
