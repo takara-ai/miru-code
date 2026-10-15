@@ -3,8 +3,9 @@ import { join } from "node:path";
 import type { SearchResult } from "../src/types.ts";
 
 export const BENCH_ROOT = join(process.env.HOME ?? "", ".cache", "miru-bench");
-export const ANNOTATIONS_DIR = "/tmp/miru-research/benchmarks/annotations";
-export const REPOS_PATH = "/tmp/miru-research/benchmarks/repos.json";
+const BENCH_DATA_DIR = process.env.MIRU_BENCH_DATA_DIR ?? "/tmp/miru-research/benchmarks";
+export const ANNOTATIONS_DIR = join(BENCH_DATA_DIR, "annotations");
+export const REPOS_PATH = join(BENCH_DATA_DIR, "repos.json");
 
 export interface Target {
   path: string;
