@@ -14,53 +14,13 @@ args = ["${MIRU_BUNX_PACKAGE}", "mcp", "--benchmark"]
 startup_timeout_sec = 60
 `;
 
+/** A string literal (kept) or a comment (dropped); a string left open runs to the end of the input. */
+const STRING_OR_COMMENT =
+  /("(?:\\[\s\S]|[^"\\])*\\?(?:"|$)|'(?:\\[\s\S]|[^'\\])*\\?(?:'|$))|\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$)/g;
+
 /** Strip line and block comments so JSONC configs can be parsed. */
 export function stripJsonComments(text: string): string {
-  let out = "";
-  let i = 0;
-  let inString = false;
-  let stringQuote = '"';
-  while (i < text.length) {
-    const ch = text[i];
-    const next = text[i + 1];
-    if (inString) {
-      out += ch;
-      if (ch === "\\" && next !== undefined) {
-        out += next;
-        i += 2;
-        continue;
-      }
-      if (ch === stringQuote) {
-        inString = false;
-      }
-      i++;
-      continue;
-    }
-    if (ch === '"' || ch === "'") {
-      inString = true;
-      stringQuote = ch;
-      out += ch;
-      i++;
-      continue;
-    }
-    if (ch === "/" && next === "/") {
-      while (i < text.length && text[i] !== "\n") {
-        i++;
-      }
-      continue;
-    }
-    if (ch === "/" && next === "*") {
-      i += 2;
-      while (i < text.length && !(text[i] === "*" && text[i + 1] === "/")) {
-        i++;
-      }
-      i += 2;
-      continue;
-    }
-    out += ch;
-    i++;
-  }
-  return out;
+  return text.replace(STRING_OR_COMMENT, (_match, str?: string) => str ?? "");
 }
 
 function parseJsonObject(text: string): Record<string, unknown> | "error" {
@@ -285,34 +245,7 @@ function removeJsonMemberText(text: string, sectionKey: string, memberKey: strin
 
 /** True only when // or /* appear outside of strings (URLs like https:// must not match). */
 function hasJsoncSyntax(text: string): boolean {
-  let inString = false;
-  let quote = "";
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i] ?? "";
-    const next = text[i + 1] ?? "";
-    if (inString) {
-      if (ch === "\\") {
-        i++;
-        continue;
-      }
-      if (ch === quote) {
-        inString = false;
-      }
-      continue;
-    }
-    if (ch === '"' || ch === "'") {
-      inString = true;
-      quote = ch;
-      continue;
-    }
-    if (ch === "/" && next === "/") {
-      return true;
-    }
-    if (ch === "/" && next === "*") {
-      return true;
-    }
-  }
-  return false;
+  return stripJsonComments(text) !== text;
 }
 
 /** Locate an object section by dotted path, matching each key among direct children. */
