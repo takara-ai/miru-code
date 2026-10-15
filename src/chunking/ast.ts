@@ -68,19 +68,6 @@ function mergeNode(node: Node, desiredLength: number): ChunkBoundary[] {
   return mergeAdjacentChunks(rawChunks, desiredLength);
 }
 
-function byteBoundariesToCharBoundaries(
-  source: string,
-  byteBoundaries: ChunkBoundary[],
-): ChunkBoundary[] {
-  const sourceBytes = new TextEncoder().encode(source);
-  const decoder = new TextDecoder();
-
-  return byteBoundaries.map((boundary) => ({
-    start: decoder.decode(sourceBytes.subarray(0, boundary.start)).length,
-    end: decoder.decode(sourceBytes.subarray(0, boundary.end)).length,
-  }));
-}
-
 /** AST-aware chunk boundaries via vendored tree-sitter grammars; null to fall back. */
 export async function chunkAst(
   source: string,
@@ -129,8 +116,8 @@ function parseBoundaries(
   }
 
   try {
-    const byteBoundaries = mergeNode(tree.rootNode, desiredLength);
-    return byteBoundariesToCharBoundaries(source, byteBoundaries);
+    // web-tree-sitter reports UTF-16 string indices (not UTF-8 bytes), so boundaries slice `source` directly.
+    return mergeNode(tree.rootNode, desiredLength);
   } finally {
     tree.delete();
   }

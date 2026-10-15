@@ -3,6 +3,7 @@ import { chunkAst } from "../src/chunking/ast.ts";
 import { chunkSource } from "../src/chunking/chunking.ts";
 import { chunkLines, mergeAdjacentChunks, splitLinesKeepEnds } from "../src/chunking/lines.ts";
 import { chunkStructural, structuralTestUtils } from "../src/chunking/structural.ts";
+import { stitchSplitLines } from "../src/literal.ts";
 import { CHUNK_PARITY_FIXTURES } from "./chunk-parity-fixtures.ts";
 
 describe("chunkStructural", () => {
@@ -225,5 +226,48 @@ describe("brace structural edge cases", () => {
     expect(text).toContain("struct Item");
     expect(text).toContain("int outer");
     expect(chunkStructural("  int nested(void) { return 1; }\n", "c", 5)).toBeNull();
+  });
+});
+
+describe("chunks split inside a line", () => {
+  test("rejoining chunks that share a line restores the exact source line", async () => {
+    const statements = Array.from({ length: 80 }, (_, i) => `work${i}(alpha, beta);`).join(" ");
+    const line = `export async function big() { ${statements} }`;
+    const source = `const head = 1;\n${line}\nconst tail = 2;\n`;
+    const chunks = await chunkSource(source, "x.ts", "typescript");
+    const onLine2 = chunks.filter((c) => c.start_line <= 2 && c.end_line >= 2);
+    expect(onLine2.length).toBeGreaterThan(1);
+    const stitched = stitchSplitLines(chunks);
+    const holder = stitched.find((c) => c.start_line <= 2 && c.end_line >= 2);
+    expect(holder?.content.split("\n")[2 - (holder?.start_line ?? 0)]).toBe(line);
+  });
+});
+
+describe("chunkAst with non-ASCII source", () => {
+  const body = Array.from(
+    { length: 60 },
+    (_, i) =>
+      `export async function fn${i}(a: string, b: number): Promise<string> { return a + b; }\n`,
+  ).join("");
+
+  test("boundaries index the UTF-16 string, so chunks start on clean boundaries", async () => {
+    for (const prefix of ["// dash\n", "// — é ü 日本 😀\n"]) {
+      const source = prefix + body;
+      const bounds = (await chunkAst(source, "x.ts", "typescript", 400)) ?? [];
+      expect(bounds.length).toBeGreaterThan(5);
+      for (const b of bounds) {
+        expect(b.start === 0 || /\s/.test(source[b.start - 1] ?? "")).toBe(true);
+        expect(source.slice(b.start, b.end).startsWith("export") || b.start === 0).toBe(true);
+      }
+    }
+  });
+
+  test("chunkSource keeps every source line intact for a file with multibyte characters", async () => {
+    const source = `// — note\n${body}`;
+    const chunks = await chunkSource(source, "x.ts", "typescript");
+    const rebuilt = new Set(chunks.flatMap((c) => c.content.split("\n")));
+    for (const line of body.trimEnd().split("\n")) {
+      expect(rebuilt.has(line)).toBe(true);
+    }
   });
 });
