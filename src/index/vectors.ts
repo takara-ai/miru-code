@@ -1,5 +1,6 @@
 import { VectorIndex } from "./dense.ts";
 import { QuantizedVectorIndex } from "./quantize.ts";
+import { ReferencedVectorIndex } from "./referenced-index.ts";
 import type { SemanticIndex } from "./semantic-index.ts";
 
 /** Recover a float embedding for incremental re-indexing (unchanged chunks). */
@@ -11,7 +12,7 @@ export function vectorAt(index: SemanticIndex, docIndex: number): Float32Array {
     }
     return vec;
   }
-  if (index instanceof QuantizedVectorIndex) {
+  if (index instanceof QuantizedVectorIndex || index instanceof ReferencedVectorIndex) {
     return index.vectorAt(docIndex);
   }
   throw new Error("Unsupported semantic index type");
