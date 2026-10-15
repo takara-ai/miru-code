@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { formatLiteralLocate, locateLiteral } from "../src/literal.ts";
+import {
+  formatLiteralLocate,
+  hasRegexLiteral,
+  listIndexedFiles,
+  locateLiteral,
+  stitchSplitLines,
+} from "../src/literal.ts";
+import { formatLiteralLocateText } from "../src/mcp/format-text.ts";
 import type { Chunk } from "../src/types.ts";
 
 const chunks: Chunk[] = [
@@ -228,5 +235,136 @@ describe("locateLiteral", () => {
     const hits = payload.hits as Array<{ ctx?: string[]; ctx_l?: number }>;
     expect(hits[0]?.ctx).toEqual(["const FOO = 1;", "export const BAR = FOO;", "// end"]);
     expect(hits[0]?.ctx_l).toBe(10);
+  });
+});
+
+describe("regex literals, files mode, and file listing", () => {
+  const chunk = (file_path: string, content: string, start_line = 1): Chunk => ({
+    content,
+    file_path,
+    start_line,
+    end_line: start_line + content.split("\n").length - 1,
+    language: "typescript",
+  });
+  const chunks = [
+    chunk("src/a.ts", "export const MCP_ONE = 1;\nconst x = 2;\nexport const MCP_TWO = 3;"),
+    chunk("src/b.test.ts", "// TODO fix\nexport async function run() {}"),
+    chunk("docs/api.md", "see /api/users/ for details"),
+  ];
+
+  test("a slash-wrapped literal with regex syntax matches per line", () => {
+    const result = locateLiteral(chunks, "/export const MCP_[A-Z]+ =/", { mode: "locations" });
+    expect(result.n).toBe(2);
+    expect(result.hits.map((h) => `${h.file_path}:${h.line}`)).toEqual([
+      "src/a.ts:1",
+      "src/a.ts:3",
+    ]);
+  });
+
+  test("regex supports alternation, anchors, /i, and ignore_case", () => {
+    expect(locateLiteral(chunks, "/todo|FIXME/i", { mode: "count" }).n).toBe(1);
+    expect(locateLiteral(chunks, "/todo|FIXME/", { mode: "count" }).n).toBe(0);
+    expect(locateLiteral(chunks, "/^const x/", { mode: "count" }).n).toBe(1);
+    expect(locateLiteral(chunks, "/to.o/", { mode: "count", ignore_case: true }).n).toBe(1);
+  });
+
+  test("a path-like slash literal without regex syntax stays a plain substring", () => {
+    const result = locateLiteral(chunks, "/api/users/", { mode: "count" });
+    expect(result.n).toBe(1);
+  });
+
+  test("regex and plain literals can be mixed in one OR call", () => {
+    const result = locateLiteral(chunks, ["/MCP_[A-Z]+ =/", "TODO"], { mode: "count" });
+    expect(result.n).toBe(3);
+  });
+
+  test("an invalid regex reports a clear error", () => {
+    expect(() => locateLiteral(chunks, "/foo(/", {})).toThrow(/Invalid regex \/foo\(\//);
+  });
+
+  test("hasRegexLiteral distinguishes regex from plain literals", () => {
+    expect(hasRegexLiteral("/a.*b/")).toBe(true);
+    expect(hasRegexLiteral("/api/users/")).toBe(false);
+    expect(hasRegexLiteral(["plain", "/x+/"])).toBe(true);
+  });
+
+  test("files mode returns sorted unique paths and no hits", () => {
+    const result = locateLiteral(chunks, "/MCP_[A-Z]+/", { mode: "files" });
+    expect(result.file_list).toEqual(["src/a.ts"]);
+    expect(result.hits).toEqual([]);
+    expect(result.files).toBe(1);
+    expect(formatLiteralLocate(result).paths).toEqual(["src/a.ts"]);
+  });
+
+  test("listIndexedFiles scopes by include/exclude and supports count", () => {
+    const listed = listIndexedFiles(chunks, { include: ["**/*.test.ts"] });
+    expect(listed.file_list).toEqual(["src/b.test.ts"]);
+    expect(
+      listIndexedFiles(chunks, { include: ["src/**"], exclude: ["*.test.ts"] }).file_list,
+    ).toEqual(["src/a.ts"]);
+    const counted = listIndexedFiles(chunks, { include: ["src/**"], mode: "count" });
+    expect(counted.n).toBe(2);
+    expect(counted.file_list).toBeUndefined();
+  });
+});
+
+describe("split-line stitching", () => {
+  const frag = (content: string, start_line: number, end_line: number): Chunk => ({
+    content,
+    file_path: "src/x.ts",
+    start_line,
+    end_line,
+    language: "typescript",
+  });
+
+  test("rejoins a line the chunker split across two chunks", () => {
+    const split = [frag("a\nexpo", 1, 2), frag("rt async function f() {}\nb", 2, 3)];
+    expect(stitchSplitLines(split)).toHaveLength(1);
+    expect(locateLiteral(split, "export async function f", { mode: "locations" }).hits).toEqual([
+      { file_path: "src/x.ts", line: 2 },
+    ]);
+    expect(locateLiteral(split, "/^export (async )?function /", { mode: "count" }).n).toBe(1);
+  });
+
+  test("leaves chunks that do not share a line alone", () => {
+    const apart = [frag("a", 1, 1), frag("b", 2, 2), frag("c", 5, 6)];
+    expect(stitchSplitLines(apart)).toHaveLength(3);
+  });
+});
+
+describe("locate text format", () => {
+  const chunk = (file_path: string, content: string): Chunk => ({
+    content,
+    file_path,
+    start_line: 1,
+    end_line: content.split("\n").length,
+    language: "typescript",
+  });
+  const chunks = [
+    chunk("a.ts", "hit one\nmiss\nhit two"),
+    chunk("src/b.ts", "only hit here"),
+    chunk("src/c.ts", "hit ".padEnd(600, "x")),
+  ];
+  const text = (mode: "lines" | "locations") =>
+    formatLiteralLocateText(formatLiteralLocate(locateLiteral(chunks, "hit", { mode })));
+
+  test("lines mode prints each path once, inlines single hits, and clips long lines", () => {
+    const out = text("lines");
+    expect(out).toContain("a.ts\n  1: hit one\n  3: hit two");
+    expect(out).toContain("src/b.ts:1: only hit here");
+    expect(out).toMatch(/src\/c\.ts:1: hit x+… \[\+\d+ chars\]/);
+  });
+
+  test("locations mode lists line numbers per file", () => {
+    expect(text("locations")).toContain("a.ts: 1, 3");
+    expect(text("locations")).toContain("src/b.ts: 1");
+  });
+
+  test("a regex header omits the echoed pattern, a plain literal keeps it", () => {
+    const regexOut = formatLiteralLocateText(
+      formatLiteralLocate(locateLiteral(chunks, "/hit.+/", { mode: "count" })),
+    );
+    expect(regexOut).toBe("4 matches across 3 files");
+    expect(text("locations")).toContain('"hit": 4 matches across 3 files');
   });
 });

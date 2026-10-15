@@ -3,7 +3,7 @@
 import ignore from "ignore";
 import type { Chunk } from "./types.ts";
 
-export type LiteralMode = "count" | "locations" | "lines";
+export type LiteralMode = "count" | "files" | "locations" | "lines";
 
 export const DEFAULT_LITERAL_MODE: LiteralMode = "lines";
 
@@ -31,6 +31,8 @@ export interface LiteralLocateResult {
   /** True only when an explicit `limit` cut the hit list short. */
   truncated: boolean;
   hits: LiteralHit[];
+  /** Sorted unique repo-relative paths. Present only in `files` mode and for file listings. */
+  file_list?: string[];
 }
 
 export interface LiteralLocateOptions {
@@ -54,11 +56,43 @@ export interface LiteralLocateOptions {
   context_lines?: number;
 }
 
+/** A `/body/` (optionally `/body/i`) literal is a regex only if the body has regex syntax, so `/api/users/` stays a plain substring. */
+const SLASH_REGEX = /^\/(.+)\/(i?)$/s;
+const REGEX_SYNTAX = /[\\^$.*+?()[\]{}|]/;
+/** Regex is tested per line; cap the tested prefix so a minified line cannot stall the scan. */
+const MAX_REGEX_LINE_CHARS = 4096;
+
+function parseRegexLiteral(literal: string, ignoreCase: boolean): RegExp | null {
+  const m = SLASH_REGEX.exec(literal);
+  if (!m || !REGEX_SYNTAX.test(m[1] ?? "")) {
+    return null;
+  }
+  try {
+    return new RegExp(m[1] ?? "", ignoreCase || m[2] === "i" ? "i" : "");
+  } catch (err) {
+    throw new Error(
+      `Invalid regex ${literal}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
 function resolveLimit(limit: number | undefined): number | null {
   if (limit == null || !Number.isFinite(limit)) {
     return null;
   }
   return Math.max(1, Math.floor(limit));
+}
+
+/** True when any literal would be treated as a regex (so fixed-string baselines are not comparable). */
+export function hasRegexLiteral(literal: string | readonly string[]): boolean {
+  return (Array.isArray(literal) ? literal : [literal]).some(
+    (lit) => parseRegexLiteral(lit, false) !== null,
+  );
+}
+
+function regexMatchesLine(line: string, regexes: readonly RegExp[]): boolean {
+  const tested = line.length > MAX_REGEX_LINE_CHARS ? line.slice(0, MAX_REGEX_LINE_CHARS) : line;
+  return regexes.some((re) => re.test(tested));
 }
 
 function lineMatchesAny(
@@ -148,6 +182,46 @@ export function filterChunksByGlob(
 }
 
 /**
+ * The AST chunker can split one source line across two adjacent chunks (it divides large
+ * declarations on token boundaries), so neither fragment alone contains the full line. Rejoin
+ * chunks that share a boundary line before scanning, or matches spanning the split are lost.
+ */
+export function stitchSplitLines(chunks: readonly Chunk[]): readonly Chunk[] {
+  const byFile = new Map<string, Chunk[]>();
+  for (const chunk of chunks) {
+    const list = byFile.get(chunk.file_path);
+    if (list) {
+      list.push(chunk);
+    } else {
+      byFile.set(chunk.file_path, [chunk]);
+    }
+  }
+  const stitched: Chunk[] = [];
+  for (const list of byFile.values()) {
+    list.sort((a, b) => a.start_line - b.start_line || a.end_line - b.end_line);
+    let current = list[0];
+    if (!current) {
+      continue;
+    }
+    for (let i = 1; i < list.length; i++) {
+      const next = list[i] as Chunk;
+      if (next.start_line === current.end_line && next.end_line > current.start_line) {
+        current = {
+          ...current,
+          content: current.content + next.content,
+          end_line: Math.max(current.end_line, next.end_line),
+        };
+      } else {
+        stitched.push(current);
+        current = next;
+      }
+    }
+    stitched.push(current);
+  }
+  return stitched;
+}
+
+/**
  * Scan indexed chunks for an exact substring (or, with an array `literal`/`match_variants`,
  * any of several OR-matched substrings). Dedupes by file:line when chunks overlap.
  * Only covers indexed content (same corpus as `search` / `expand`).
@@ -168,13 +242,27 @@ export function locateLiteral(
 
   const inputLiterals = (Array.isArray(literal) ? literal : [literal]).filter((l) => l.length > 0);
   const label = inputLiterals.join(" | ");
-  const needles = expandLiterals(inputLiterals, options.match_variants === true);
+  const regexes: RegExp[] = [];
+  const plainLiterals: string[] = [];
+  for (const lit of inputLiterals) {
+    const re = parseRegexLiteral(lit, ignoreCase);
+    if (re) {
+      regexes.push(re);
+    } else {
+      plainLiterals.push(lit);
+    }
+  }
+  const needles = expandLiterals(plainLiterals, options.match_variants === true);
+  const matchesLine = (text: string): boolean =>
+    lineMatchesAny(text, needles, ignoreCase) || regexMatchesLine(text, regexes);
 
-  if (needles.length === 0) {
+  if (needles.length === 0 && regexes.length === 0) {
     return { literal: label, mode, n: 0, files: 0, truncated: false, hits: [] };
   }
 
-  const scopedChunks = filterChunksByGlob(chunks, options.include, options.exclude);
+  const scopedChunks = stitchSplitLines(
+    filterChunksByGlob(chunks, options.include, options.exclude),
+  );
 
   const seen = new Set<string>();
   const fileSet = new Set<string>();
@@ -182,13 +270,13 @@ export function locateLiteral(
   let n = 0;
 
   for (const chunk of scopedChunks) {
-    if (!lineMatchesAny(chunk.content, needles, ignoreCase)) {
+    if (regexes.length === 0 && !lineMatchesAny(chunk.content, needles, ignoreCase)) {
       continue;
     }
     const lines = chunk.content.split("\n");
     for (let i = 0; i < lines.length; i++) {
       const lineText = lines[i] ?? "";
-      if (!lineMatchesAny(lineText, needles, ignoreCase)) {
+      if (!matchesLine(lineText)) {
         continue;
       }
       const line = chunk.start_line + i;
@@ -199,7 +287,7 @@ export function locateLiteral(
       seen.add(key);
       fileSet.add(chunk.file_path);
       n += 1;
-      if (mode === "count") {
+      if (mode === "count" || mode === "files") {
         continue;
       }
       if (limit != null && hits.length >= limit) {
@@ -224,13 +312,42 @@ export function locateLiteral(
     mode,
     n,
     files: fileSet.size,
-    truncated: mode !== "count" && limit != null && n > hits.length,
-    hits: mode === "count" ? [] : hits,
+    truncated: mode !== "count" && mode !== "files" && limit != null && n > hits.length,
+    hits: mode === "count" || mode === "files" ? [] : hits,
   };
-  if (needles.length > 1) {
-    result.literals = needles;
+  if (mode === "files") {
+    result.file_list = [...fileSet].sort();
+  }
+  const searched = [...needles, ...inputLiterals.filter((l) => !plainLiterals.includes(l))];
+  if (searched.length > 1) {
+    result.literals = searched;
   }
   return result;
+}
+
+/**
+ * List indexed files, optionally scoped by gitignore-style `include`/`exclude` globs
+ * (the `locate` answer when no literal is given). Only indexed files appear.
+ */
+export function listIndexedFiles(
+  chunks: readonly Chunk[],
+  options: Pick<LiteralLocateOptions, "include" | "exclude" | "mode"> = {},
+): LiteralLocateResult {
+  const mode = options.mode === "count" ? "count" : "files";
+  const files = [
+    ...new Set(
+      filterChunksByGlob(chunks, options.include, options.exclude).map((c) => c.file_path),
+    ),
+  ].sort();
+  return {
+    literal: "",
+    mode,
+    n: files.length,
+    files: files.length,
+    truncated: false,
+    hits: [],
+    ...(mode === "files" ? { file_list: files } : {}),
+  };
 }
 
 /** Compact agent-facing JSON (minimal keys). */
@@ -246,6 +363,11 @@ export function formatLiteralLocate(result: LiteralLocateResult): Record<string,
   }
 
   if (result.mode === "count") {
+    return base;
+  }
+
+  if (result.mode === "files") {
+    base.paths = result.file_list ?? [];
     return base;
   }
 

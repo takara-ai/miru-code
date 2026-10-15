@@ -541,8 +541,8 @@ async function runCli(argv: string[]): Promise<void> {
       const arg = contentRest[i];
       if (arg === "--mode" && contentRest[i + 1]) {
         const value = contentRest[++i];
-        if (value !== "count" && value !== "locations" && value !== "lines") {
-          fail(`Unknown locate mode "${value}". Use count, locations, or lines.`);
+        if (value !== "count" && value !== "files" && value !== "locations" && value !== "lines") {
+          fail(`Unknown locate mode "${value}". Use count, files, locations, or lines.`);
           process.exit(1);
         }
         options.mode = value as LiteralMode;
