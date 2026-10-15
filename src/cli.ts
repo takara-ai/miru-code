@@ -2,6 +2,15 @@
 import { type AgentId, writeAgentFile } from "./agents.ts";
 import { clearBenchmarkHistory, resolveBenchmarkHistoryPath } from "./benchmark/history.ts";
 import { clearCache } from "./cache.ts";
+import {
+  parseContentArgv,
+  parseExpandArgs,
+  parseFlagArgv,
+  parseInitArgs,
+  parseLocateArgs,
+  parseMcpArgs,
+  UsageError,
+} from "./cli-args.ts";
 import { shouldRunMcp } from "./cli-mode.ts";
 import {
   fail,
@@ -29,12 +38,7 @@ import {
 import { getBenchmarkModeStatus, setBenchmarkMode } from "./installer/benchmark-mode.ts";
 import { runInstaller } from "./installer/installer.ts";
 import { promptConfirm } from "./installer/prompt.ts";
-import {
-  DEFAULT_LITERAL_MODE,
-  formatLiteralLocate,
-  type LiteralLocateOptions,
-  type LiteralMode,
-} from "./literal.ts";
+import { DEFAULT_LITERAL_MODE, formatLiteralLocate, type LiteralLocateOptions } from "./literal.ts";
 import { serveMcp } from "./mcp/serve.ts";
 import { MiruIndex } from "./miru-index.ts";
 import {
@@ -43,18 +47,16 @@ import {
   parseSetupCliArgs,
   runClearCredentials,
   runSetup,
+  type SetupCliArgError,
 } from "./setup.ts";
 import { withSpinner } from "./spinner.ts";
 import type { ContentType, SearchResult } from "./types.ts";
 import {
-  DEFAULT_EXPAND_AFTER,
-  DEFAULT_EXPAND_BEFORE,
   expandChunksAtLine,
   formatExpandResults,
   formatResults,
   localRepoRoot,
   resolveChunk,
-  resolveContent,
   resolveSearchPath,
   SEARCH_RESULT_COUNT,
 } from "./utils.ts";
@@ -73,44 +75,6 @@ try {
 }
 
 const AGENTS = new Set<AgentId>(AGENT_IDS);
-
-function parseFlagArgv(argv: string[], flag: string): { present: boolean; rest: string[] } {
-  const rest: string[] = [];
-  let present = false;
-  for (const arg of argv) {
-    if (arg === flag) {
-      present = true;
-      continue;
-    }
-    rest.push(arg);
-  }
-  return { present, rest };
-}
-
-function parseContentArgv(argv: string[]): { content: ContentType[]; rest: string[] } {
-  const rest: string[] = [];
-  const content: string[] = [];
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === "--content") {
-      i++;
-      while (i < argv.length) {
-        const value = argv[i];
-        if (value === undefined || value.startsWith("-")) {
-          i--;
-          break;
-        }
-        content.push(value);
-        i++;
-      }
-      continue;
-    }
-    if (arg !== undefined) {
-      rest.push(arg);
-    }
-  }
-  return { content: resolveContent(content), rest };
-}
 
 function emitSearchOutput(
   query: string,
@@ -363,309 +327,150 @@ async function runBenchmarkCommand(rest: string[]): Promise<void> {
     return;
   }
 
-  fail(`Unknown benchmark action "${action}". Use on, off, status, or clear.`);
-  printCommandHelp("benchmark");
-  process.exit(1);
+  throw new UsageError(
+    `Unknown benchmark action "${action}". Use on, off, status, or clear.`,
+    "benchmark",
+  );
 }
+
+interface QueryContext {
+  content: ContentType[];
+  json: boolean;
+}
+
+type Handler = (rest: string[]) => Promise<void>;
+
+/** Wrap a search-style command: strips `--json` / `--content` and hands over the remaining positionals. */
+function queryCommand(run: (args: string[], ctx: QueryContext) => Promise<void>): Handler {
+  return async (rest) => {
+    const { present: json, rest: withoutJson } = parseFlagArgv(rest, "--json");
+    const { content, rest: args } = parseContentArgv(withoutJson);
+    await run(args, { content, json });
+  };
+}
+
+function rejectTopK(args: string[]): void {
+  if (args.some((arg) => arg === "-k" || arg === "--top-k")) {
+    throw new UsageError(
+      "The -k/--top-k option has been removed; Miru returns a fixed number of results.",
+    );
+  }
+}
+
+/** Positional `FILE LINE [PATH]` shared by `expand` and `find-related`. */
+function parseFileLine(topic: string, args: string[]) {
+  const [filePath, lineRaw, pathArg] = args;
+  if (!filePath || !lineRaw) throw new UsageError("", topic);
+  return { filePath, line: Number(lineRaw), path: resolveSearchPath(pathArg ?? process.cwd()) };
+}
+
+const SETUP_CONFLICTS: Record<SetupCliArgError, string> = {
+  clear_with_key: "miru setup --clear cannot be combined with --key, --device, or --sagemaker.",
+  sagemaker_with_key: "miru setup --sagemaker cannot be combined with --key.",
+  device_with_key: "miru setup accepts either --device or --key TOKEN, not both.",
+  device_with_sagemaker: "miru setup --device cannot be combined with --sagemaker.",
+};
+
+async function runSetupCommand(rest: string[]): Promise<void> {
+  const { args, error } = parseSetupCliArgs(rest);
+  if (error) throw new UsageError(SETUP_CONFLICTS[error]);
+
+  if (args.clear) {
+    await runClearCredentials();
+    return;
+  }
+
+  const { newlySaved } = await runSetup({
+    apiKey: args.apiKey,
+    device: args.device,
+    force: args.force,
+    sagemaker: args.sagemaker,
+    sagemakerArn: args.sagemakerArn,
+    profile: args.profile,
+  });
+  if (!newlySaved) return;
+
+  const offerInstall = canPromptForCredentials() && !args.apiKey && !args.device && !args.force;
+  if (offerInstall && (await promptConfirm("Configure Miru in your coding agent now?"))) {
+    await runInstaller("install");
+    return;
+  }
+  hint("To add Miru to your IDE, run `miru install`.");
+}
+
+async function runInitCommand(rest: string[]): Promise<void> {
+  const { agent, force } = parseInitArgs(rest);
+  if (!agent) throw new UsageError("miru init requires --agent.", "init");
+  if (!AGENTS.has(agent as AgentId)) throw new UsageError(formatUnknownAgent(agent));
+  await runInit(agent as AgentId, force);
+}
+
+const COMMANDS: Record<string, Handler> = {
+  install: () => runInstaller("install"),
+  uninstall: () => runInstaller("uninstall"),
+  benchmark: runBenchmarkCommand,
+  init: runInitCommand,
+  setup: runSetupCommand,
+  clear: ([path]) => runClear(resolveSearchPath(path ?? process.cwd())),
+
+  search: queryCommand(async (args, { content, json }) => {
+    rejectTopK(args);
+    const [query, pathArg] = args;
+    if (!query) throw new UsageError("", "search");
+    await runSearch(resolveSearchPath(pathArg ?? process.cwd()), query, content, json);
+  }),
+
+  locate: queryCommand(async ([literal, ...flags], { content, json }) => {
+    if (!literal) throw new UsageError("", "locate");
+    const { options, pathArg } = parseLocateArgs(flags);
+    await runLocate(resolveSearchPath(pathArg ?? process.cwd()), literal, content, json, options);
+  }),
+
+  expand: queryCommand(async (args, { content, json }) => {
+    const { filePath, line, path } = parseFileLine("expand", args);
+    const { before, after } = parseExpandArgs(args.slice(3));
+    await runExpand(path, filePath, line, before, after, content, json);
+  }),
+
+  "find-related": queryCommand(async (args, { content, json }) => {
+    rejectTopK(args);
+    const { filePath, line, path } = parseFileLine("find-related", args);
+    await runFindRelated(path, filePath, line, content, json);
+  }),
+};
+
+const isHelpFlag = (arg: string | undefined) => arg === "-h" || arg === "--help";
 
 async function runCli(argv: string[]): Promise<void> {
   const [command, ...rest] = argv;
 
-  if (command === undefined || command === "-h" || command === "--help") {
-    printMainHelp();
-    return;
-  }
+  if (command === undefined || isHelpFlag(command)) return printMainHelp();
 
   if (command === "help") {
     const topic = rest[0];
-    if (!topic || topic === "-h" || topic === "--help") {
-      printMainHelp();
-      return;
-    }
-    printCommandHelp(topic);
-    return;
+    return !topic || isHelpFlag(topic) ? printMainHelp() : printCommandHelp(topic);
   }
 
-  if (command === "setup" && (rest.includes("-h") || rest.includes("--help"))) {
-    if (rest.includes("--sagemaker")) {
-      printSageMakerHelp();
-    } else {
-      printCommandHelp("setup");
-    }
-    return;
+  if (command === "env" || command === "environment") return printEnvironmentHelp();
+
+  if (command === "setup" && rest.some(isHelpFlag) && rest.includes("--sagemaker")) {
+    return printSageMakerHelp();
+  }
+  if (isHelpFlag(rest[0]) || (command === "setup" && rest.some(isHelpFlag))) {
+    return printCommandHelp(command);
   }
 
-  if (command === "env" || command === "environment") {
-    printEnvironmentHelp();
-    return;
-  }
-
-  if (rest[0] === "-h" || rest[0] === "--help") {
-    printCommandHelp(command);
-    return;
-  }
-
-  if (command === "install" || command === "uninstall") {
-    await runInstaller(command);
-    return;
-  }
-
-  if (command === "benchmark") {
-    await runBenchmarkCommand(rest);
-    return;
-  }
-
-  if (command === "init") {
-    let agent: AgentId | undefined;
-    let force = false;
-    for (let i = 0; i < rest.length; i++) {
-      const arg = rest[i];
-      if (arg === "--force") {
-        force = true;
-      } else if (arg === "--agent" || arg === "-a") {
-        const value = rest[++i];
-        if (!value) {
-          fail("Missing value for --agent.");
-          printCommandHelp("init");
-          process.exit(1);
-        }
-        if (!AGENTS.has(value as AgentId)) {
-          fail(formatUnknownAgent(value));
-          process.exit(1);
-        }
-        agent = value as AgentId;
-      }
-    }
-    if (!agent) {
-      fail("miru init requires --agent.");
-      printCommandHelp("init");
-      process.exit(1);
-    }
-    await runInit(agent, force);
-    return;
-  }
-
-  if (command === "setup") {
-    const { args, error } = parseSetupCliArgs(rest);
-    if (error === "clear_with_key") {
-      fail("miru setup --clear cannot be combined with --key, --device, or --sagemaker.");
-      process.exit(1);
-    }
-    if (error === "sagemaker_with_key") {
-      fail("miru setup --sagemaker cannot be combined with --key.");
-      process.exit(1);
-    }
-    if (error === "device_with_key") {
-      fail("miru setup accepts either --device or --key TOKEN, not both.");
-      process.exit(1);
-    }
-    if (error === "device_with_sagemaker") {
-      fail("miru setup --device cannot be combined with --sagemaker.");
-      process.exit(1);
-    }
-    if (args.clear) {
-      await runClearCredentials();
-      return;
-    }
-    const { newlySaved } = await runSetup({
-      apiKey: args.apiKey,
-      device: args.device,
-      force: args.force,
-      sagemaker: args.sagemaker,
-      sagemakerArn: args.sagemakerArn,
-      profile: args.profile,
-    });
-    if (newlySaved) {
-      const offerInstall = canPromptForCredentials() && !args.apiKey && !args.device && !args.force;
-      if (offerInstall) {
-        const install = await promptConfirm("Configure Miru in your coding agent now?");
-        if (install) {
-          await runInstaller("install");
-          return;
-        }
-      }
-      hint("To add Miru to your IDE, run `miru install`.");
-    }
-    return;
-  }
-
-  if (command === "clear") {
-    const path = resolveSearchPath(rest[0] ?? process.cwd());
-    await runClear(path);
-    return;
-  }
-
-  const { present: jsonFlag, rest: jsonRest } = parseFlagArgv(rest, "--json");
-  const { content, rest: contentRest } = parseContentArgv(jsonRest);
-
-  if (
-    (command === "search" || command === "find-related") &&
-    contentRest.some((arg) => arg === "-k" || arg === "--top-k")
-  ) {
-    fail("The -k/--top-k option has been removed; Miru returns a fixed number of results.");
+  const handler = Object.hasOwn(COMMANDS, command) ? COMMANDS[command] : undefined;
+  if (!handler) {
+    fail(`Unknown command: ${command}`);
+    printMainHelp();
     process.exit(1);
   }
-
-  if (command === "search") {
-    const query = contentRest[0];
-    if (!query) {
-      printCommandHelp("search");
-      process.exit(1);
-    }
-    const path = resolveSearchPath(contentRest[1] ?? process.cwd());
-    await runSearch(path, query, content, jsonFlag);
-    return;
-  }
-
-  if (command === "locate") {
-    const literal = contentRest[0];
-    if (!literal) {
-      printCommandHelp("locate");
-      process.exit(1);
-    }
-    const options: LiteralLocateOptions = {};
-    const include: string[] = [];
-    const exclude: string[] = [];
-    const pathArgs: string[] = [];
-    const positiveInt = (flag: string, raw: string | undefined, min: number): number => {
-      const n = Number(raw);
-      if (!Number.isFinite(n) || n < min) {
-        fail(
-          `locate ${flag} must be a${min === 0 ? " non-negative" : ""} integer${min > 0 ? ` ≥ ${min}` : ""}.`,
-        );
-        process.exit(1);
-      }
-      return Math.floor(n);
-    };
-    for (let i = 1; i < contentRest.length; i++) {
-      const arg = contentRest[i];
-      if (arg === "--mode" && contentRest[i + 1]) {
-        const value = contentRest[++i];
-        if (value !== "count" && value !== "files" && value !== "locations" && value !== "lines") {
-          fail(`Unknown locate mode "${value}". Use count, files, locations, or lines.`);
-          process.exit(1);
-        }
-        options.mode = value as LiteralMode;
-        continue;
-      }
-      if (arg === "--limit" && contentRest[i + 1]) {
-        options.limit = positiveInt("--limit", contentRest[++i], 1);
-        continue;
-      }
-      if (arg === "--ignore-case") {
-        options.ignore_case = true;
-        continue;
-      }
-      if (arg === "--match-variants") {
-        options.match_variants = true;
-        continue;
-      }
-      if (arg === "--include" && contentRest[i + 1]) {
-        include.push(contentRest[++i] as string);
-        continue;
-      }
-      if (arg === "--exclude" && contentRest[i + 1]) {
-        exclude.push(contentRest[++i] as string);
-        continue;
-      }
-      if (arg === "--context" && contentRest[i + 1]) {
-        options.context_lines = positiveInt("--context", contentRest[++i], 0);
-        continue;
-      }
-      if (arg !== undefined) {
-        pathArgs.push(arg);
-      }
-    }
-    if (include.length > 0) {
-      options.include = include;
-    }
-    if (exclude.length > 0) {
-      options.exclude = exclude;
-    }
-    const path = resolveSearchPath(pathArgs[0] ?? process.cwd());
-    await runLocate(path, literal, content, jsonFlag, options);
-    return;
-  }
-
-  if (command === "expand") {
-    const filePath = contentRest[0];
-    const lineRaw = contentRest[1];
-    if (!filePath || !lineRaw) {
-      printCommandHelp("expand");
-      process.exit(1);
-    }
-    const line = Number(lineRaw);
-    const path = resolveSearchPath(contentRest[2] ?? process.cwd());
-    let before = DEFAULT_EXPAND_BEFORE;
-    let after = DEFAULT_EXPAND_AFTER;
-    for (let i = 3; i < contentRest.length; i++) {
-      const arg = contentRest[i];
-      if (arg === "--before" && contentRest[i + 1]) {
-        before = Number(contentRest[++i]);
-      } else if (arg === "--after" && contentRest[i + 1]) {
-        after = Number(contentRest[++i]);
-      }
-    }
-    await runExpand(path, filePath, line, before, after, content, jsonFlag);
-    return;
-  }
-
-  if (command === "find-related") {
-    const filePath = contentRest[0];
-    const lineRaw = contentRest[1];
-    if (!filePath || !lineRaw) {
-      printCommandHelp("find-related");
-      process.exit(1);
-    }
-    const line = Number(lineRaw);
-    const path = resolveSearchPath(contentRest[2] ?? process.cwd());
-    await runFindRelated(path, filePath, line, content, jsonFlag);
-    return;
-  }
-
-  fail(`Unknown command: ${command}`);
-  printMainHelp();
-  process.exit(1);
+  await handler(rest);
 }
 
 async function runMcp(argv: string[]): Promise<void> {
-  let ref: string | null = null;
-  let benchmark = false;
-  const contentTokens: string[] = [];
-
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === "--benchmark") {
-      benchmark = true;
-      continue;
-    }
-    if (arg === "--benchmark=true" || arg === "--benchmark=false") {
-      benchmark = arg === "--benchmark=true";
-      continue;
-    }
-    if (arg === "--ref" && argv[i + 1]) {
-      ref = argv[++i] ?? null;
-      continue;
-    }
-    if (arg === "--content") {
-      i++;
-      while (i < argv.length) {
-        const value = argv[i];
-        if (value === undefined || value.startsWith("-")) {
-          i--;
-          break;
-        }
-        contentTokens.push(value);
-        i++;
-      }
-    }
-  }
-
-  await serveMcp({
-    ref,
-    content: resolveContent(contentTokens),
-    benchmark,
-  });
+  await serveMcp(parseMcpArgs(argv));
 }
 
 async function runMcpWithCredentials(argv: string[]): Promise<void> {
@@ -711,6 +516,11 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  fail(err instanceof Error ? err.message : String(err));
+  if (err instanceof UsageError) {
+    if (err.message) fail(err.message);
+    if (err.helpTopic) printCommandHelp(err.helpTopic);
+  } else {
+    fail(err instanceof Error ? err.message : String(err));
+  }
   process.exit(1);
 });
