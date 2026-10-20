@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.13.0](https://github.com/takara-ai/miru-code/compare/v1.12.2...v1.13.0) (2026-10-20)
+
+
+### Features
+
+* support SageMaker switching in Codex plugin ([5210f0c](https://github.com/takara-ai/miru-code/commit/5210f0cd9e682603d201166e6dbda8e9a768035b))
+
+
+### Bug Fixes
+
+* **deps:** patch fast-uri security vulnerabilities ([aa694c3](https://github.com/takara-ai/miru-code/commit/aa694c3cc24d970ca27ed336df40ecb7f07ef9d8))
+* update CDK example dependencies to resolve security alerts ([2c603d8](https://github.com/takara-ai/miru-code/commit/2c603d852c2ba408e92ab282f51b372268178962))
+
 ## [1.12.2](https://github.com/takara-ai/miru-code/compare/v1.12.1...v1.12.2) (2026-10-15)
 
 
