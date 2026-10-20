@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.1](https://github.com/takara-ai/miru-code/compare/v1.13.0...v1.13.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* **auth:** fold SageMaker configuration into auth tool ([3598000](https://github.com/takara-ai/miru-code/commit/3598000158caa704ea0a5c32c21b8143daf093c3))
+
 ## [1.13.0](https://github.com/takara-ai/miru-code/compare/v1.12.2...v1.13.0) (2026-10-20)
 
 
