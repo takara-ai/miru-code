@@ -60,7 +60,14 @@ test("stdio MCP runtime handles initialize, tools/list, and tools/call", async (
   const toolNames = ((tools.result as { tools: Array<{ name: string }> }).tools ?? []).map(
     (tool) => tool.name,
   );
-  expect(toolNames).toEqual(["auth", "search", "locate", "expand", "find_related"]);
+  expect(toolNames).toEqual([
+    "auth",
+    "configure_sagemaker",
+    "search",
+    "locate",
+    "expand",
+    "find_related",
+  ]);
 
   const call = transport.responseFor(3);
   expect(call).toBeDefined();
@@ -137,6 +144,7 @@ test("benchmark MCP mode exposes read_benchmark and mentions rollup in instructi
     );
     expect(toolNames).toEqual([
       "auth",
+      "configure_sagemaker",
       "search",
       "locate",
       "expand",

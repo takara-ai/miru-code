@@ -26,6 +26,28 @@ Miru stores **either** a Takara API key **or** a SageMaker endpoint — never bo
 
 You do not need `--clear` when switching; the other mode is purged automatically.
 
+### Codex plugin
+
+After installing the plugin, ask Codex:
+
+```text
+Switch Miru to SageMaker endpoint
+arn:aws:sagemaker:eu-west-2:123456789012:endpoint/miru
+using my existing AWS profile miru-team.
+```
+
+Codex can call `configure_sagemaker` with `endpoint_arn` and `aws_profile`. The tool checks the
+ARN and invokes the endpoint to validate access before replacing stored credentials. If validation
+fails, the current configuration stays active. AWS credentials must already be available to the
+local MCP process; for an SSO profile, sign in with `aws sso login --profile <name>` first.
+
+The configuration is saved in the installed plugin's data directory, so it survives MCP restarts.
+Running `miru setup --sagemaker` in a separate terminal normally uses the CLI's global credentials
+directory instead; it does not change a plugin with its own data directory.
+
+The next search reloads the index for the configured endpoint. No AWS resources or profiles are
+created. Claude Code also offers endpoint ARN and AWS profile fields in its plugin settings.
+
 ## 1. Subscribe on AWS Marketplace
 
 1. Open the [Marketplace listing](https://aws.amazon.com/marketplace/pp/prodview-la5olwsicr6ue)

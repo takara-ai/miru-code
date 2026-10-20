@@ -42,6 +42,7 @@ import {
 } from "./format-text.ts";
 import { getIndexForRepo, type IndexCache, toolText } from "./index-cache.ts";
 import { MiruMcpServer } from "./runtime.ts";
+import { registerSageMakerTool } from "./sagemaker-tool.ts";
 
 const REPO_DESCRIPTION =
   "`repo` is optional: local path or Git URL (default: the server's directory).";
@@ -154,7 +155,8 @@ export function createMcpServer(
     },
   );
 
-  registerAuthTool(server);
+  registerAuthTool(server, { onAuthenticated: () => cache.close() });
+  registerSageMakerTool(server, { onConfigured: () => cache.close() });
 
   server.registerTool(
     "search",

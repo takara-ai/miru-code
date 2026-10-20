@@ -476,6 +476,13 @@ describe("benchmark MCP end-to-end", () => {
     const names = ((list.result as { tools: Array<{ name: string }> }).tools ?? []).map(
       (tool) => tool.name,
     );
-    expect(names).toEqual(["auth", "search", "locate", "expand", "find_related"]);
+    expect(names).toEqual([
+      "auth",
+      "configure_sagemaker",
+      "search",
+      "locate",
+      "expand",
+      "find_related",
+    ]);
   });
 });

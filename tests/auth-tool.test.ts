@@ -10,11 +10,16 @@ import { MemoryTransport } from "./helpers/mcp-memory-transport.ts";
 /** A server with only the `auth` tool — no index cache needed for these tests. */
 function authServer(
   openBrowser?: BrowserOpener,
-  wait?: { waitMs: number; sleep?: (ms: number) => Promise<void> },
+  wait?: { waitMs: number; sleep?: (ms: number) => Promise<void>; onAuthenticated?: () => void },
 ): MiruMcpServer {
   const server = new MiruMcpServer({ name: "miru", version: "test" });
   // No waiting by default so start returns immediately; wait tests opt in with a stub sleep.
-  registerAuthTool(server, { openBrowser, waitMs: wait?.waitMs ?? 0, sleep: wait?.sleep });
+  registerAuthTool(server, {
+    openBrowser,
+    waitMs: wait?.waitMs ?? 0,
+    sleep: wait?.sleep,
+    onAuthenticated: wait?.onAuthenticated,
+  });
   return server;
 }
 
@@ -119,8 +124,12 @@ describe("auth MCP tool", () => {
     }) as typeof fetch;
 
     const sleeps: number[] = [];
+    let invalidations = 0;
     const server = authServer(undefined, {
       waitMs: 60_000,
+      onAuthenticated: () => {
+        invalidations++;
+      },
       sleep: async (ms) => {
         sleeps.push(ms);
       },
@@ -130,6 +139,7 @@ describe("auth MCP tool", () => {
 
     expect(toolTextOf(transport.responseFor(1))).toMatch(/Signed in successfully/);
     expect(tokenPolls).toBe(3);
+    expect(invalidations).toBe(1);
     expect(sleeps).toEqual([5000, 5000, 5000]);
     const raw = JSON.parse(await readFile(join(credDir, "credentials.json"), "utf-8")) as {
       access_token: string;

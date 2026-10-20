@@ -93,6 +93,7 @@ class AuthToolState {
     private readonly openBrowser: BrowserOpener,
     private readonly waitMs: number,
     private readonly sleep: Sleeper,
+    private readonly onAuthenticated?: () => void,
   ) {}
 
   async start(): Promise<ToolResult> {
@@ -148,6 +149,7 @@ class AuthToolState {
           scope: tokens.scope,
         });
         setStoredCredentialsEnvToken(tokens.accessToken);
+        this.onAuthenticated?.();
         return toolText("Signed in successfully. Miru tools are now ready to use.");
       }
       case "denied":
@@ -188,12 +190,18 @@ class AuthToolState {
 
 export function registerAuthTool(
   server: MiruMcpServer,
-  options?: { openBrowser?: BrowserOpener; waitMs?: number; sleep?: Sleeper },
+  options?: {
+    openBrowser?: BrowserOpener;
+    waitMs?: number;
+    sleep?: Sleeper;
+    onAuthenticated?: () => void;
+  },
 ): void {
   const state = new AuthToolState(
     options?.openBrowser ?? openBrowserForDeviceLogin,
     options?.waitMs ?? DEFAULT_WAIT_MS,
     options?.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
+    options?.onAuthenticated,
   );
 
   server.registerTool(
