@@ -10,6 +10,7 @@ import {
 } from "../auth/device.ts";
 import { isCredentialsError } from "../auth/errors.ts";
 import { saveStoredCredentials, setStoredCredentialsEnvToken } from "../credentials.ts";
+import { parseSageMakerEndpointArn, validateSageMakerConnection } from "../embeddings/sagemaker.ts";
 import { toolText } from "./index-cache.ts";
 import type { MiruMcpServer } from "./runtime.ts";
 
@@ -34,7 +35,9 @@ const RECOVERY_HINT =
   "signing in, check the account token balance.";
 
 const AUTH_TOOL_DESCRIPTION =
-  "Sign in with Takara device-code login. Only call in direct response to a tool error about " +
+  'Configure Miru authentication. On explicit user request, use action "sagemaker" with ' +
+  "endpoint_arn and aws_profile to validate and save a SageMaker endpoint, replacing stored credentials. " +
+  "Otherwise, sign in with Takara device-code login. Only start device login in direct response to a tool error about " +
   "missing, expired, rejected, or invalid credentials — never speculatively: it starts a real " +
   "sign-in prompt. No arguments: opens the login page in the user's browser and waits up to ~45s " +
   'for approval. If it returns "still waiting", tell the user the URL and code and call `auth` again.';
@@ -94,7 +97,38 @@ class AuthToolState {
     private readonly waitMs: number,
     private readonly sleep: Sleeper,
     private readonly onAuthenticated?: () => void,
+    private readonly validateConnection = validateSageMakerConnection,
   ) {}
+
+  async configureSageMaker(endpointArn: string, profile: string) {
+    const pluginArn = process.env.MIRU_PLUGIN_SAGEMAKER_ENDPOINT_ARN?.trim();
+    if (pluginArn && !(pluginArn.startsWith("${") && pluginArn.endsWith("}"))) {
+      throw new Error(
+        "SageMaker is controlled by this host's plugin settings. " +
+          "Change or clear the endpoint ARN and AWS profile there first.",
+      );
+    }
+    const { endpointName, region } = parseSageMakerEndpointArn(endpointArn);
+    const result = await this.validateConnection({
+      endpointName,
+      region,
+      profile,
+      normalize: true,
+      truncate: true,
+      truncationDirection: "Right",
+    });
+    if (!result.valid) {
+      return { ...toolText(result.message), isError: true };
+    }
+    await saveStoredCredentials({ kind: "sagemaker", endpointArn, profile });
+    this.pending = null;
+    this.onAuthenticated?.();
+    return toolText(
+      `Miru now embeds via SageMaker endpoint ${endpointName} in ${region} ` +
+        `(AWS profile: ${profile}). Configuration saved for this plugin. ` +
+        "The index will reload on the next search.",
+    );
+  }
 
   async start(): Promise<ToolResult> {
     let pending = this.pending;
@@ -195,6 +229,7 @@ export function registerAuthTool(
     waitMs?: number;
     sleep?: Sleeper;
     onAuthenticated?: () => void;
+    validateConnection?: typeof validateSageMakerConnection;
   },
 ): void {
   const state = new AuthToolState(
@@ -202,6 +237,7 @@ export function registerAuthTool(
     options?.waitMs ?? DEFAULT_WAIT_MS,
     options?.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
     options?.onAuthenticated,
+    options?.validateConnection,
   );
 
   server.registerTool(
@@ -210,18 +246,39 @@ export function registerAuthTool(
       description: AUTH_TOOL_DESCRIPTION,
       inputSchema: {
         action: z
-          .enum(["start", "check"])
+          .enum(["start", "check", "sagemaker"])
           .optional()
           .describe(
-            '"start" begins/resumes login and waits for approval (default); "check" polls once.',
+            '"start" begins/resumes login and waits for approval (default); "check" polls once; "sagemaker" validates and saves endpoint_arn and aws_profile.',
           ),
+        endpoint_arn: z
+          .string()
+          .trim()
+          .min(1)
+          .optional()
+          .describe("Required for action sagemaker."),
+        aws_profile: z
+          .string()
+          .trim()
+          .min(1)
+          .optional()
+          .describe("Existing AWS profile; required for action sagemaker."),
       },
     },
-    async ({ action }) => {
+    async ({ action, endpoint_arn, aws_profile }) => {
       try {
+        if (action === "sagemaker") {
+          if (!endpoint_arn || !aws_profile) {
+            throw new Error('Action "sagemaker" requires endpoint_arn and aws_profile.');
+          }
+          return await state.configureSageMaker(endpoint_arn, aws_profile);
+        }
+        if (endpoint_arn !== undefined || aws_profile !== undefined) {
+          throw new Error('Use action "sagemaker" with endpoint_arn and aws_profile.');
+        }
         return action === "check" ? await state.check() : await state.start();
       } catch (err) {
-        return toolText(err instanceof Error ? err.message : String(err));
+        return { ...toolText(err instanceof Error ? err.message : String(err)), isError: true };
       }
     },
   );

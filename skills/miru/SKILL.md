@@ -33,8 +33,12 @@ Exact token (identifier, quoted string, env var, error code) → `locate`. Other
 
 ## If Miru tools report credential errors
 
-Only call `auth` in direct response to a tool error saying credentials are missing, expired,
+Only start Takara device login with `auth` in direct response to a tool error saying credentials are missing, expired,
 rejected, invalid, or unauthorized — never speculatively, since it starts a real sign-in prompt.
 `auth` with no arguments starts a login and returns a URL and a short code — show both to the
 user. Once they confirm, call `auth` again with `{"action": "check"}`. If still pending, wait
 for the user to confirm again before re-checking — don't poll in a tight loop.
+
+On explicit user request, configure SageMaker through `auth` with `action: "sagemaker"`,
+`endpoint_arn`, and `aws_profile` (an existing AWS profile). This validates the endpoint before
+replacing stored credentials and does not open a browser login.

@@ -8,8 +8,8 @@ import {
   saveStoredCredentials,
 } from "../src/credentials.ts";
 import type { validateSageMakerConnection } from "../src/embeddings/sagemaker.ts";
+import { registerAuthTool } from "../src/mcp/auth-tool.ts";
 import { MiruMcpServer } from "../src/mcp/runtime.ts";
-import { registerSageMakerTool } from "../src/mcp/sagemaker-tool.ts";
 import { fake } from "./helpers/fake-credentials.ts";
 import { MemoryTransport } from "./helpers/mcp-memory-transport.ts";
 
@@ -37,9 +37,9 @@ async function configure(
 ) {
   let invalidations = 0;
   const server = new MiruMcpServer({ name: "miru", version: "test" });
-  registerSageMakerTool(server, {
+  registerAuthTool(server, {
     validateConnection,
-    onConfigured: () => {
+    onAuthenticated: () => {
       invalidations++;
     },
   });
@@ -48,7 +48,7 @@ async function configure(
       jsonrpc: "2.0",
       id: 1,
       method: "tools/call",
-      params: { name: "configure_sagemaker", arguments: args },
+      params: { name: "auth", arguments: { action: "sagemaker", ...args } },
     },
   ]);
   await server.connect(transport);
@@ -59,6 +59,92 @@ async function configure(
     },
     invalidations,
   };
+}
+
+for (const args of [{}, { endpoint_arn: endpointArn }, { aws_profile: "miru-team" }]) {
+  test(`requires both SageMaker fields: ${JSON.stringify(args)}`, async () => {
+    const before = await readStoredCredentials();
+    const { response, invalidations } = await configure(async () => {
+      throw new Error("should not contact AWS");
+    }, args);
+    expect(response.result?.isError).toBe(true);
+    expect(response.result?.content[0]?.text).toContain("requires endpoint_arn and aws_profile");
+    expect(await readStoredCredentials()).toEqual(before);
+    expect(invalidations).toBe(0);
+  });
+}
+
+for (const action of [undefined, "start", "check"]) {
+  test(`rejects SageMaker fields without the SageMaker action: ${action}`, async () => {
+    const { response, invalidations } = await configure(
+      async () => {
+        throw new Error("should not contact AWS");
+      },
+      { action, endpoint_arn: endpointArn, aws_profile: "miru-team" },
+    );
+    expect(response.result?.isError).toBe(true);
+    expect(response.result?.content[0]?.text).toContain('Use action "sagemaker"');
+    expect(invalidations).toBe(0);
+  });
+}
+
+for (const valid of [true, false]) {
+  test(`${valid ? "clears" : "preserves"} a pending device login after SageMaker validation ${valid ? "succeeds" : "fails"}`, async () => {
+    const originalFetch = globalThis.fetch;
+    process.env.MIRU_OPEN_BROWSER = "0";
+    globalThis.fetch = (async (_input, _init) =>
+      new Response(
+        JSON.stringify({
+          device_code: "pending-device",
+          user_code: "TEST-1234",
+          verification_uri: "https://example.com/approve",
+          expires_in: 600,
+          interval: 5,
+        }),
+        { headers: { "Content-Type": "application/json" } },
+      )) as typeof fetch;
+    try {
+      const server = new MiruMcpServer({ name: "miru", version: "test" });
+      registerAuthTool(server, {
+        waitMs: 0,
+        validateConnection: async () => ({ valid, message: "validation result" }),
+      });
+      const transport = new MemoryTransport([
+        { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "auth", arguments: {} } },
+        {
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/call",
+          params: {
+            name: "auth",
+            arguments: { action: "sagemaker", endpoint_arn: endpointArn, aws_profile: "miru-team" },
+          },
+        },
+      ]);
+      await server.connect(transport);
+      globalThis.fetch = (async (_input, _init) =>
+        new Response(JSON.stringify({ error: "authorization_pending" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        })) as typeof fetch;
+      const check = new MemoryTransport([
+        {
+          jsonrpc: "2.0",
+          id: 3,
+          method: "tools/call",
+          params: { name: "auth", arguments: { action: "check" } },
+        },
+      ]);
+      await server.connect(check);
+      const response = check.responseFor(3) as { result: { content: Array<{ text: string }> } };
+      expect(response.result.content[0]?.text).toContain(
+        valid ? "No device login is pending" : "Still waiting for approval",
+      );
+      expect((await readStoredCredentials())?.kind).toBe(valid ? "sagemaker" : "api_key");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 }
 
 test("switches the running plugin and persists SageMaker in its own credentials directory", async () => {

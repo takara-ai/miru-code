@@ -36,7 +36,7 @@ arn:aws:sagemaker:eu-west-2:123456789012:endpoint/miru
 using my existing AWS profile miru-team.
 ```
 
-Codex can call `configure_sagemaker` with `endpoint_arn` and `aws_profile`. The tool checks the
+Codex can call `auth` with `action: "sagemaker"`, `endpoint_arn`, and `aws_profile`. The tool checks the
 ARN and invokes the endpoint to validate access before replacing stored credentials. If validation
 fails, the current configuration stays active. AWS credentials must already be available to the
 local MCP process; for an SSO profile, sign in with `aws sso login --profile <name>` first.

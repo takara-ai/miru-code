@@ -127,7 +127,7 @@ miru uninstall   # remove miru config
 - Cursor: `plugin.json` and `.cursor/rules/miru-code-search.mdc`
 
 To switch the Codex plugin to self-hosted embeddings, ask Miru to use your SageMaker endpoint ARN
-and an existing AWS profile. The `configure_sagemaker` MCP tool validates the endpoint, then saves
+and an existing AWS profile. The `auth` MCP tool with `action: "sagemaker"` validates the endpoint, then saves
 the configuration in the installed plugin's data directory and reloads the index on the next search.
 It replaces that plugin's stored Takara credentials. See [SageMaker setup](docs/self-hosted-sagemaker.md#codex-plugin).
 
@@ -199,7 +199,7 @@ When wired via `miru install`, the MCP server exposes `search`, `locate`, `expan
 | `locate`         | Exact substrings (env vars, symbols, error codes) — prefer over Grep.                   |
 | `expand`         | More context in the **same file** when a hit has `truncated: true`.                     |
 | `find_related`   | Similar code in **other files** from a `file_path` + `anchor_line`.                     |
-| `configure_sagemaker` | Switch to a SageMaker endpoint using an existing AWS profile, when requested.     |
+| `auth`           | Sign in to Takara, or use `action: "sagemaker"` with an endpoint ARN and existing AWS profile when requested. |
 | `read_benchmark` | Cumulative token-savings rollup *(benchmark mode only)*.                                |
 
 
