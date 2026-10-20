@@ -163,9 +163,9 @@ describe("OpenAIEmbeddingBackend batching", () => {
       expect(vector?.[0]).toBe(1);
       expect(requests[0]?.url).toBe("https://embedding.example.test/v1/embeddings");
       expect(requests[0]?.init?.method).toBe("POST");
-      expect((requests[0]?.init?.headers as Record<string, string>).Authorization).toBe(
-        "Bearer test-api-key",
-      );
+      expect(
+        (requests[0]?.init?.headers as Record<string, string> | undefined)?.Authorization,
+      ).toBe("Bearer test-api-key");
       expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({
         model: "test-http-model",
         input: ["hello"],
