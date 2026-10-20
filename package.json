@@ -78,8 +78,8 @@
     "benchmark:embedding-latency": "bun run scripts/embedding-latency-ab.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-sagemaker-runtime": "^3.1090.0",
-    "@aws-sdk/credential-provider-node": "^3.972.70",
+    "@aws-sdk/client-sagemaker-runtime": "^3.1153.0",
+    "@aws-sdk/credential-provider-node": "^3.972.87",
     "ignore": "^7.0.5",
     "web-tree-sitter": "^0.26.9",
     "zod": "^4.4.3"
