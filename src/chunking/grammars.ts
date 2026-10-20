@@ -53,7 +53,7 @@ export function wasmPathForFile(
   return wasmPathForLanguage(language);
 }
 
-/** Absolute path to web-tree-sitter's runtime wasm (0.26.x). */
+/** Absolute path to web-tree-sitter's runtime wasm. */
 export function webTreeSitterRuntimePath(): string {
   const pkgDir = dirname(require.resolve("web-tree-sitter/package.json"));
   return join(pkgDir, "web-tree-sitter.wasm");

@@ -136,7 +136,7 @@ for (const { package: pkg, wasms, build } of GRAMMAR_PACKAGES) {
 
 const manifest = {
   version: 1,
-  runtime: "web-tree-sitter@^0.26.9",
+  runtime: "web-tree-sitter@^0.27.1",
   languages: Object.fromEntries(
     Object.entries(LANGUAGE_TO_WASM).filter(([, wasm]) => copied.has(wasm)),
   ),

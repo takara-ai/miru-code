@@ -8,7 +8,7 @@
         "@aws-sdk/client-sagemaker-runtime": "^3.1153.0",
         "@aws-sdk/credential-provider-node": "^3.972.87",
         "ignore": "^7.0.13",
-        "web-tree-sitter": "^0.26.9",
+        "web-tree-sitter": "^0.27.1",
         "zod": "^4.6.7",
       },
       "devDependencies": {
@@ -23,7 +23,7 @@
         "tree-sitter-bash": "^0.25.1",
         "tree-sitter-c": "^0.24.1",
         "tree-sitter-c-sharp": "^0.23.5",
-        "tree-sitter-cli": "^0.27.0",
+        "tree-sitter-cli": "^0.27.1",
         "tree-sitter-cpp": "^0.23.4",
         "tree-sitter-css": "^0.25.0",
         "tree-sitter-dart": "^1.0.0",
@@ -155,7 +155,7 @@
 
     "tree-sitter-c-sharp": ["tree-sitter-c-sharp@0.23.5", "", { "dependencies": { "node-addon-api": "^8.2.2", "node-gyp-build": "^4.8.4" }, "peerDependencies": { "tree-sitter": "^0.25.0" }, "optionalPeers": ["tree-sitter"] }, "sha512-xJGOeXPMmld0nES5+080N/06yY6LQi+KWGWV4LfZaZe6srJPtUtfhIbRSN7EZN6IaauzW28v6W4QHFwmeUW6HQ=="],
 
-    "tree-sitter-cli": ["tree-sitter-cli@0.27.0", "", { "bin": { "tree-sitter": "cli.js" } }, "sha512-E42kR0og1mFlZBxPj7K4fBXCTjxPTGe19U9RXGWNq0FQKzXOxIp8bhCYFMKhddiVZUsJwW35MYGU9Q1oVYtpbA=="],
+    "tree-sitter-cli": ["tree-sitter-cli@0.27.1", "", { "bin": { "tree-sitter": "cli.js" } }, "sha512-WFPEjxwscCjZP9uYj0rxT2TyGBkDcXUkGTthrMpxZFGvzXEYsbC3J0633Ps8dd2mMsdsbU8oVwmQ148lLHI7Xw=="],
 
     "tree-sitter-cpp": ["tree-sitter-cpp@0.23.4", "", { "dependencies": { "node-addon-api": "^8.2.1", "node-gyp-build": "^4.8.2", "tree-sitter-c": "^0.23.1" }, "peerDependencies": { "tree-sitter": "^0.21.1" }, "optionalPeers": ["tree-sitter"] }, "sha512-qR5qUDyhZ5jJ6V8/umiBxokRbe89bCGmcq/dk94wI4kN86qfdV8k0GHIUEKaqWgcu42wKal5E97LKpLeVW8sKw=="],
 
@@ -203,7 +203,7 @@
 
     "undici-types": ["undici-types@7.24.6", "", {}, "sha512-WRNW+sJgj5OBN4/0JpHFqtqzhpbnV0GuB+OozA9gCL7a993SmU+1JBZCzLNxYsbMfIeDL+lTsphD5jN5N+n0zg=="],
 
-    "web-tree-sitter": ["web-tree-sitter@0.26.9", "", {}, "sha512-YJwSHANl6XFgeEjB8nitgj0qZYt5gkIesJ4w2srS2wcLB4GUa4xcOkM0YaMsU6WNR53YVIkDSY7Ej4pf3IXtCA=="],
+    "web-tree-sitter": ["web-tree-sitter@0.27.1", "", {}, "sha512-qtx0VyUyNRHtL3ze7+v0hCKB/sLcAmY7ZAVp/ZK/bCj0yED8ptvNrr7Vd7DwDyKDWN9baqcUx4uaD2r2ql+6IA=="],
 
     "yarn": ["yarn@1.22.22", "", { "bin": { "yarn": "bin/yarn.js", "yarnpkg": "bin/yarn.js" } }, "sha512-prL3kGtyG7o9Z9Sv8IPfBNrWTDmXB4Qbes8A9rEzt6wkJV8mUvoirjU0Mp3GGAU06Y0XQyA3/2/RQFVuK7MTfg=="],
 

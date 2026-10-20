@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "runtime": "web-tree-sitter@^0.26.9",
+  "runtime": "web-tree-sitter@^0.27.1",
   "languages": {
     "astro": "tree-sitter-astro.wasm",
     "bash": "tree-sitter-bash.wasm",
