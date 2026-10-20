@@ -131,6 +131,12 @@ and an existing AWS profile. The `auth` MCP tool with `action: "sagemaker"` vali
 the configuration in the installed plugin's data directory and reloads the index on the next search.
 It replaces that plugin's stored Takara credentials. See [SageMaker setup](docs/self-hosted-sagemaker.md#codex-plugin).
 
+This repository's [Codex project configuration](.codex/config.toml) automatically approves Miru's
+search tools and benchmark rollup, while prompting for `auth` and any additional tools. It applies
+when this repository is trusted and Miru is installed as `miru@personal`; use the matching plugin
+identity for other marketplaces. This policy does not change sandbox permissions or configure
+other projects that install Miru.
+
 Current limitation:
 
 - these plugin manifests launch the published Miru runtime through `bunx @takara-ai/miru-code@latest mcp`

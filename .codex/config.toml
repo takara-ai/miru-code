@@ -1,0 +1,19 @@
+# Project policy for the Miru plugin installed from the personal marketplace.
+# Codex loads project configuration only for trusted repositories.
+[plugins."miru@personal".mcp_servers.miru]
+default_tools_approval_mode = "prompt"
+
+[plugins."miru@personal".mcp_servers.miru.tools.search]
+approval_mode = "approve"
+
+[plugins."miru@personal".mcp_servers.miru.tools.locate]
+approval_mode = "approve"
+
+[plugins."miru@personal".mcp_servers.miru.tools.expand]
+approval_mode = "approve"
+
+[plugins."miru@personal".mcp_servers.miru.tools.find_related]
+approval_mode = "approve"
+
+[plugins."miru@personal".mcp_servers.miru.tools.read_benchmark]
+approval_mode = "approve"
