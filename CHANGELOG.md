@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.0](https://github.com/takara-ai/miru-code/compare/v1.13.1...v1.14.0) (2026-10-21)
+
+
+### Features
+
+* **search:** use calibrated linear score fusion ([6ad7da5](https://github.com/takara-ai/miru-code/commit/6ad7da509c05a628cb88dd68c128f9d9c28e4b2f))
+
 ## [1.13.1](https://github.com/takara-ai/miru-code/compare/v1.13.0...v1.13.1) (2026-10-20)
 
 
