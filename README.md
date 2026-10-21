@@ -224,9 +224,7 @@ Local repo hits include `absolute_path` for one-click navigation. Parameter refe
 
 ## How it works
 
-Hybrid search: Takara embeddings + BM25 + fusion + reranking. Index **code**, **docs**, **config**, or **all** with `--content`.
-
-Fusion defaults to a weighted linear combination of semantic and BM25 scores, each divided by its positive maximum over the candidate union (negative scores contribute zero). Every candidate is scored by both retrievers before normalization. Natural-language queries use 40% semantic and 60% lexical weight. Query boosts and path/diversity penalties run after fusion; no cross-encoder or LLM is used. Conceptual-query boosts run at half strength; explicit symbol/location navigation keeps its boosts. Set `MIRU_RANK_FUSION=rrf` to use the previous reciprocal rank fusion and its calibrated weights.
+Miru combines Takara embeddings and BM25 with linear fusion and code-aware ranking. Index **code**, **docs**, **config**, or **all** with `--content`. Set `MIRU_RANK_FUSION=rrf` for reciprocal rank fusion.
 
 MCP watches local files and updates the index incrementally. Package upgrades invalidate stale caches via the version epoch.
 
