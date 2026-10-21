@@ -1,5 +1,8 @@
 /** Optional ranking overrides, primarily for reproducible offline calibration. */
 export interface RankingConfig {
+  fusion: "linear" | "rrf";
+  linearNormalization: "minmax" | "max";
+  linearQueryBoostScale: number;
   rrfK: number;
   candidateMultiplier: number;
   locationCandidateMultiplier: number;
@@ -19,8 +22,11 @@ function numberEnv(name: string, fallback: number, min: number, max: number): nu
 
 export function rankingConfig(): RankingConfig {
   return {
-    // Validated on the cached 3k CodeSearchNet corpus. Overrides preserve a
-    // straightforward rollback/A-B path for repository-specific evaluation.
+    fusion: process.env.MIRU_RANK_FUSION === "rrf" ? "rrf" : "linear",
+    // Selected on a deterministic 600-query CodeSearchNet calibration split.
+    linearNormalization: process.env.MIRU_RANK_LINEAR_NORMALIZATION === "minmax" ? "minmax" : "max",
+    linearQueryBoostScale: numberEnv("MIRU_RANK_LINEAR_QUERY_BOOST_SCALE", 0.5, 0, 1),
+    // RRF settings preserve the previous calibrated configuration for rollback.
     rrfK: numberEnv("MIRU_RANK_RRF_K", 10, 1, 500),
     candidateMultiplier: numberEnv("MIRU_RANK_CANDIDATE_MULTIPLIER", 5, 1, 50),
     locationCandidateMultiplier: numberEnv("MIRU_RANK_LOCATION_CANDIDATE_MULTIPLIER", 10, 1, 100),
