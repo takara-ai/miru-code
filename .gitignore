@@ -56,3 +56,6 @@ tests/fixtures/mcp/*.json
 
 # generated copy of skills/ for Kiro import (see scripts/build-kiro-plugin.ts)
 .kiro-plugin/skills/
+
+# MCPB bundles (built with: bunx @anthropic-ai/mcpb pack mcpb)
+*.mcpb
