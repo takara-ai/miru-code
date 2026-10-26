@@ -375,7 +375,6 @@ function compactSupportingSnippet(snippet: SnippetResult, maxLines: number): Sni
     "[Supporting context — complete outline]",
     declaration ? `Symbol:\n${declaration}` : null,
     anchor ? `Matched line ${snippet.meta.anchor_line}: ${anchor}` : null,
-    "Implementation omitted; call expand only if you need its full body.",
   ]
     .filter((line): line is string => line !== null)
     .join("\n");

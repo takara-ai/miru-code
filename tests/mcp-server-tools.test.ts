@@ -53,15 +53,52 @@ describe("MCP tools against a local index", () => {
         },
       ],
     });
-    expect(truncated.split("\n")[0]).toBe(
-      "src/a.ts:40-80 wanted [truncated: anchor_line 55; read lines 40-80 for the full symbol, or call expand]",
-    );
+    expect(truncated.split("\n")[0]).toBe("src/a.ts:40-80 wanted [truncated: anchor_line 55]");
 
     const whole = formatResultsText({
       query: "q",
       results: [{ chunk: { file_path: "src/a.ts", start_line: 1, end_line: 9, content: "x" } }],
     });
-    expect(whole.split("\n")[0]).toBe("src/a.ts:1-9");
+    expect(whole).toBe("src/a.ts:1-9\nx");
+  });
+
+  test("shares read guidance across truncated hits while preserving each read target", () => {
+    const formatted = formatResultsText({
+      query: "q",
+      results: [
+        {
+          chunk: {
+            file_path: "src/a.ts",
+            match_start_line: 40,
+            match_end_line: 80,
+            anchor_line: 55,
+            symbol: "first",
+            truncated: true,
+            content: "  return x;",
+          },
+        },
+        {
+          chunk: {
+            file_path: "src/b.ts",
+            full_start_line: 10,
+            full_end_line: 30,
+            anchor_line: 20,
+            symbol: "second",
+            truncated: true,
+            content: "  return y;",
+          },
+        },
+        { chunk: { file_path: "src/c.ts", start_line: 1, end_line: 3, content: "z" } },
+      ],
+    });
+    expect(formatted).toBe(
+      [
+        "src/a.ts:40-80 first [truncated: anchor_line 55]\n  return x;",
+        "src/b.ts:10-30 second [truncated: anchor_line 20]\n  return y;",
+        "src/c.ts:1-3\nz",
+        "For truncated hits, read the header's line range; use expand for neighbouring chunks.",
+      ].join("\n\n"),
+    );
   });
 
   test("searches, locates, expands, and finds related chunks", async () => {

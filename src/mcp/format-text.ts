@@ -10,6 +10,7 @@ export function formatResultsText(payload: {
     return "No results found.";
   }
 
+  let hasTruncated = false;
   const blocks = payload.results.map((result) => {
     const chunk = result.chunk as Record<string, unknown>;
     // A truncated hit names the matched symbol's exact range (not the source file's) so the full
@@ -21,13 +22,17 @@ export function formatResultsText(payload: {
       ? (chunk.match_end_line ?? chunk.full_end_line)
       : chunk.end_line;
     const symbol = chunk.truncated && chunk.symbol ? ` ${chunk.symbol}` : "";
-    const truncatedNote = chunk.truncated
-      ? ` [truncated: anchor_line ${chunk.anchor_line}; read lines ${startLine}-${endLine} for the full symbol, or call expand]`
-      : "";
+    const truncatedNote = chunk.truncated ? ` [truncated: anchor_line ${chunk.anchor_line}]` : "";
+    if (chunk.truncated) hasTruncated = true;
     const header = `${chunk.file_path}:${startLine}-${endLine}${symbol}${truncatedNote}`;
     return `${header}\n${chunk.content}`;
   });
 
+  if (hasTruncated) {
+    blocks.push(
+      "For truncated hits, read the header's line range; use expand for neighbouring chunks.",
+    );
+  }
   return blocks.join("\n\n");
 }
 

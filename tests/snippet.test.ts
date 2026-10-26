@@ -371,6 +371,7 @@ describe("trimChunkToSnippet", () => {
     expect(compacted?.result.chunk.content).toContain("[Supporting context — complete outline]");
     expect(compacted?.result.chunk.content).toContain("configureHooks");
     expect(compacted?.result.chunk.content).toContain("Matched line");
+    expect(compacted?.result.chunk.content).not.toContain("Implementation omitted");
     expect(compacted?.meta.truncated).toBe(true);
   });
 
