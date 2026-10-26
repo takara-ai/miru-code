@@ -82,7 +82,9 @@ const DECLARED_NAME_RE =
   /\b(?:function\*?|class|interface|enum|type|struct|trait|impl|record|namespace|contract|library|object|def|fn|func|defmodule)\s+([A-Za-z_$][\w$]*)|\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=/;
 
 /** Keep a recognised name and its preview tied to the same declaration. */
-function namedDeclaration(content: string): { symbol: string; preview: string } | null {
+function namedDeclaration(
+  content: string,
+): { symbol: string; preview: string; lineOffset: number } | null {
   const lines = content.split("\n");
   for (let i = 0; i < Math.min(lines.length, MAX_DECLARATION_LOOKBACK); i++) {
     const line = lines[i] ?? "";
@@ -94,6 +96,7 @@ function namedDeclaration(content: string): { symbol: string; preview: string } 
     if (name) {
       return {
         symbol: name,
+        lineOffset: i,
         preview: lines
           .slice(i, i + 4)
           .join("\n")
@@ -368,6 +371,15 @@ function compactSupportingSnippet(
 ): SnippetResult {
   const lines = snippet.chunk.content.split("\n");
   if (lines.length <= maxLines) {
+    const declarationOffset = matchedDeclaration
+      ? snippet.meta.match_start_line + matchedDeclaration.lineOffset - snippet.chunk.start_line
+      : -1;
+    if (
+      !matchedDeclaration ||
+      lines[declarationOffset]?.trim() !== matchedDeclaration.preview.split("\n")[0]?.trim()
+    ) {
+      return { ...snippet, meta: { ...snippet.meta, symbol: null } };
+    }
     return snippet;
   }
 

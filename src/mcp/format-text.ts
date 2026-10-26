@@ -100,8 +100,12 @@ export function formatLiteralLocateText(payload: Record<string, unknown>): strin
   const lines = [header, ""];
   if (hits.some((hit) => hit.ctx != null)) {
     for (const hit of hits) {
+      const matchInContext =
+        hit.ctx != null && hit.ctx_l !== undefined && hit.ctx[hit.l - hit.ctx_l] === hit.t;
       lines.push(
-        hit.t !== undefined ? `${hit.f}:${hit.l}: ${clipLine(hit.t)}` : `${hit.f}:${hit.l}`,
+        hit.t !== undefined && !matchInContext
+          ? `${hit.f}:${hit.l}: ${clipLine(hit.t)}`
+          : `${hit.f}:${hit.l}`,
       );
       if (hit.ctx != null && hit.ctx_l !== undefined) {
         const ctxStart = hit.ctx_l;

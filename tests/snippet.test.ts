@@ -152,6 +152,40 @@ describe("trimChunkToSnippet", () => {
   });
 
   test.each([
+    { language: "typescript", declaration: "function wanted() {}", comment: "//" },
+    { language: "python", declaration: "def wanted(): pass", comment: "#" },
+    { language: "ruby", declaration: "def wanted; end", comment: "#" },
+    { language: "elixir", declaration: "def wanted, do: :ok", comment: "#" },
+    { language: "go", declaration: "func wanted() {}", comment: "//" },
+    { language: "rust", declaration: "fn wanted() {}", comment: "//" },
+    { language: null, declaration: "function wanted() {}", comment: "//" },
+  ])(
+    "labels only declarations visible in short previews ($language)",
+    ({ language, declaration, comment }) => {
+      const leading = `${comment} target refers to wanted`;
+      const ranked = chunk(
+        [
+          leading,
+          ...Array.from({ length: 20 }, () => ""),
+          `${declaration} ${comment} visible`,
+        ].join("\n"),
+        40,
+        language,
+      );
+      const results = [{ chunk: ranked, score: 1 }];
+      const [hidden] = applySnippetsToResults(results, "target", 1);
+      expect(hidden?.result.chunk.content).toBe(`${leading}\n`);
+      expect(hidden?.meta.symbol).toBeNull();
+      expect(hidden?.meta.match_start_line).toBe(40);
+      expect(hidden?.meta.match_end_line).toBe(ranked.end_line);
+
+      const [visible] = applySnippetsToResults(results, "visible", 1);
+      expect(visible?.result.chunk.content).toContain(declaration);
+      expect(visible?.meta.symbol).toBe("wanted");
+    },
+  );
+
+  test.each([
     {
       language: "typescript",
       declaration: "export function wanted() {",

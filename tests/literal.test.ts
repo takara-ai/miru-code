@@ -375,6 +375,52 @@ describe("locate text format", () => {
     expect(text("locations")).toContain("src/b.ts: 1");
   });
 
+  test.each([
+    { content: "before\nneedle\nafter", line: 2 },
+    { content: "needle\nafter", line: 1 },
+    { content: "before\nneedle", line: 2 },
+  ])("context prints the matched line once at line $line", ({ content, line }) => {
+    const out = formatLiteralLocateText(
+      formatLiteralLocate(
+        locateLiteral([chunk("src/a.ts", content)], "needle", { context_lines: 1 }),
+      ),
+    );
+    expect(out).toBe(
+      [
+        '"needle": 1 match across 1 file',
+        "",
+        `src/a.ts:${line}`,
+        ...content.split("\n").map((text, i) => `  ${i + 1}: ${text}`),
+      ].join("\n"),
+    );
+  });
+
+  test("context preserves identical text at different source lines", () => {
+    const out = formatLiteralLocateText({
+      literal: "needle",
+      n: 1,
+      files: 1,
+      hits: [{ f: "a.txt", l: 2, t: "repeated", ctx_l: 1, ctx: ["repeated", "repeated"] }],
+    });
+    expect(out).toBe('"needle": 1 match across 1 file\n\na.txt:2\n  1: repeated\n  2: repeated');
+  });
+
+  test("context keeps match text when a context block does not contain the same source line", () => {
+    const out = formatLiteralLocateText({
+      literal: "needle",
+      n: 3,
+      files: 3,
+      hits: [
+        { f: "a.txt", l: 2, t: "needle", ctx_l: 1, ctx: ["before", "different"] },
+        { f: "b.txt", l: 10, t: "needle", ctx_l: 1, ctx: ["needle"] },
+        { f: "c.txt", l: 20, t: "needle" },
+      ],
+    });
+    expect(out).toContain("a.txt:2: needle\n  1: before\n  2: different");
+    expect(out).toContain("b.txt:10: needle\n  1: needle");
+    expect(out).toContain("c.txt:20: needle");
+  });
+
   test("a regex header omits the echoed pattern, a plain literal keeps it", () => {
     const regexOut = formatLiteralLocateText(
       formatLiteralLocate(locateLiteral(chunks, "/hit.+/", { mode: "count" })),
