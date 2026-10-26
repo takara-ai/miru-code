@@ -224,7 +224,7 @@ describe("trimChunkToSnippet", () => {
       expect(output?.meta.anchor_line).toBe(40);
       expect(output?.meta.match_start_line).toBe(ranked.start_line);
       expect(output?.meta.match_end_line).toBe(ranked.end_line);
-      expect(output?.result.chunk.content).toContain(`Symbol:\n${declaration}`);
+      expect(output?.result.chunk.content.startsWith(declaration)).toBe(true);
       expect(output?.result.chunk.content).not.toContain("unrelated");
     },
   );
@@ -487,7 +487,7 @@ describe("trimChunkToSnippet", () => {
     );
     const compacted = output[1];
     expect(compacted?.result.chunk.content).not.toContain("[Supporting context");
-    expect(compacted?.result.chunk.content).toContain("configureHooks");
+    expect(compacted?.result.chunk.content.startsWith("export function configureHooks")).toBe(true);
     expect(compacted?.result.chunk.content).toContain("Matched line");
     expect(compacted?.result.chunk.content).not.toContain("Implementation omitted");
     expect(compacted?.meta.truncated).toBe(true);
@@ -512,13 +512,13 @@ describe("trimChunkToSnippet", () => {
     );
     expect(output[0]?.result.chunk.content).toContain("export function ordinary");
     expect(output[0]?.meta.truncated).toBe(false);
-    expect(output[1]?.result.chunk.content).toContain("Symbol:\nexport function unusuallyLarge");
+    expect(output[1]?.result.chunk.content.startsWith("export function unusuallyLarge")).toBe(true);
     expect(output[1]?.meta.truncated).toBe(true);
     expect(output[1]?.result.chunk.content).not.toContain("Matched line");
 
     const primaryLong = applySnippetsToResults([{ chunk: long, score: 1 }], "target");
-    expect(primaryLong[0]?.result.chunk.content).toContain(
-      "Symbol:\nexport function unusuallyLarge",
+    expect(primaryLong[0]?.result.chunk.content.startsWith("export function unusuallyLarge")).toBe(
+      true,
     );
     expect(primaryLong[0]?.result.chunk.content).not.toContain("[Supporting context");
     expect(primaryLong[0]?.result.chunk.content).not.toContain("Matched line");
