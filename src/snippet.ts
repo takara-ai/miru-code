@@ -13,11 +13,9 @@ export interface SnippetMeta {
   anchor_line: number;
   full_start_line: number;
   full_end_line: number;
-  /** Exact lines of the matched (ranked) chunk — the symbol-sized range to read, not the source file. */
+  /** Original ranked chunk's lines for a follow-up read. */
   match_start_line: number;
   match_end_line: number;
-  /** Name of the symbol the matched chunk declares, when one is recognizable. */
-  symbol: string | null;
 }
 
 export interface SnippetResult {
@@ -26,27 +24,12 @@ export interface SnippetResult {
 }
 
 export function resolveSnippetLines(): number {
-  return envOptionalInt(["MIRU_SNIPPET_LINES"], 3) ?? 15;
-}
-
-export function resolveSupportingSnippetLines(): number {
-  return envOptionalInt(["MIRU_SUPPORTING_SNIPPET_LINES"], 3) ?? 12;
-}
-
-/** Keep normal best hits complete; outline only unusually large implementations. */
-export function resolvePrimarySnippetMaxLines(): number {
-  return envOptionalInt(["MIRU_PRIMARY_SNIPPET_MAX_LINES"], 3) ?? 48;
+  return envOptionalInt(["MIRU_SNIPPET_LINES"], 0) ?? 2;
 }
 
 export function searchSnippetsEnabled(): boolean {
   const value = process.env.MIRU_SEARCH_SNIPPETS;
-  if (value === "0" || value === "false") {
-    return false;
-  }
-  if (value === "1" || value === "true") {
-    return true;
-  }
-  return true;
+  return value !== "0" && value !== "false";
 }
 
 function queryMatchTerms(query: string): Set<string> {
@@ -76,358 +59,23 @@ function scoreLine(line: string, terms: Set<string>): number {
   return score;
 }
 
-const DECLARATION_RE =
-  /^\s*(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:function|class|interface|enum|type|struct|trait|impl|record|namespace|contract|library|object)\b|^\s*(?:export\s+)?(?:const|let|var)\s+[$\w]+\s*=\s*[{[(]|^\s*(?:async\s+)?def\s+\w+|^\s*def\s+\w+|^\s*fn\s+\w+|^\s*func\s+\w+|^\s*defmodule\b|^\s*def\w*\b|^\s*(?:(?:public|private|protected|internal|static|final|abstract|virtual|override|sealed|partial|unsafe|extern)\s+)+(?:[A-Za-z_$][\w:<>[\]?.,\s]*\s+)+[A-Za-z_$]\w*\s*\(|^\s*(?:void|bool|boolean|char|short|int|long|float|double|string|[A-Z][\w:<>[\]?.,]*)\s+[A-Za-z_$]\w*\s*\(|^\s*(?:function\s+)?[A-Za-z_]\w*\s*\(\)\s*\{/;
-const DECLARED_NAME_RE =
-  /\b(?:function\*?|class|interface|enum|type|struct|trait|impl|record|namespace|contract|library|object|def|fn|func|defmodule)\s+([A-Za-z_$][\w$]*)|\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=/;
-
-/** Keep a recognised name and its preview tied to the same declaration. */
-function namedDeclaration(
-  content: string,
-): { symbol: string; preview: string; lineOffset: number } | null {
-  const lines = content.split("\n");
-  for (let i = 0; i < Math.min(lines.length, MAX_DECLARATION_LOOKBACK); i++) {
-    const line = lines[i] ?? "";
-    if (!DECLARATION_RE.test(line)) {
-      continue;
-    }
-    const match = DECLARED_NAME_RE.exec(line);
-    const name = match?.[1] ?? match?.[2];
-    if (name) {
-      return {
-        symbol: name,
-        lineOffset: i,
-        preview: lines
-          .slice(i, i + 4)
-          .join("\n")
-          .trim(),
-      };
-    }
-  }
-  return null;
-}
-
-/** Name declared by the first declaration line in `content`, or null when none is recognizable. */
-export function declaredSymbol(content: string): string | null {
-  return namedDeclaration(content)?.symbol ?? null;
-}
-
-const BRACE_BODY_RE =
-  /\b(?:function|class|interface|enum|struct|trait|impl|record|namespace|contract|library|object|fn|func)\b|=\s*[{[(]|[A-Za-z_$]\w*\s*\([^)]*\)\s*\{/;
-const RUBY_OR_ELIXIR_BODY_RE = /^\s*def\w*\b|^\s*defmodule\b/;
-const MAX_DECLARATION_LOOKBACK = 40;
-const INDENTED_BLOCK_LANGUAGES = new Set(["python", "haskell", "ocaml"]);
-const END_BLOCK_LANGUAGES = new Set(["ruby", "elixir"]);
-const TAG_LANGUAGES = new Set(["html", "embeddedtemplate", "xml", "vue", "svelte", "astro"]);
-const BRACE_BLOCK_LANGUAGES = new Set([
-  "bash",
-  "c",
-  "cpp",
-  "csharp",
-  "css",
-  "dart",
-  "go",
-  "java",
-  "javascript",
-  "json",
-  "kotlin",
-  "php",
-  "rust",
-  "scala",
-  "solidity",
-  "swift",
-  "typescript",
-]);
-const HTML_TAG_RE = /<\/?([A-Za-z][\w:-]*)\b[^>]*>/g;
-const HTML_VOID_TAGS = new Set([
-  "area",
-  "base",
-  "br",
-  "col",
-  "embed",
-  "hr",
-  "img",
-  "input",
-  "link",
-  "meta",
-  "param",
-  "source",
-  "track",
-  "wbr",
-]);
-
-function withoutStrings(line: string): string {
-  return line.replace(/(["'`])(?:\\.|(?!\1).)*\1/g, "");
-}
-
-function indentation(line: string): number {
-  return line.length - line.trimStart().length;
-}
-
-function completeIndentedBlock(lines: string[], start: number, end: number): [number, number] {
-  const baseIndent = indentation(lines[start] ?? "");
-  for (let i = Math.max(start + 1, end); i < lines.length; i++) {
-    const line = lines[i] ?? "";
-    if (line.trim() && indentation(line) <= baseIndent) {
-      return [start, i];
-    }
-  }
-  return [start, lines.length];
-}
-
-function isIndentedDeclaration(line: string, language: string | null): boolean {
-  if (language === "python") {
-    return /^\s*(?:async\s+)?(?:def|class)\b/.test(line);
-  }
-  if (language === "haskell") {
-    return /^\s*[A-Za-z_][\w']*\b.*=/.test(line);
-  }
-  return /^\s*(?:let|type|module)\b/.test(line);
-}
-
-function isEndBlockOpen(line: string, language: string | null): boolean {
-  const trimmed = line.trimStart();
-  if (language === "ruby") {
-    return (
-      /^(?:def|class|module|if|unless|case|begin|while|until|for)\b/.test(trimmed) ||
-      /\bdo\b/.test(trimmed)
-    );
-  }
-  return (
-    /^(?:def\w*|defmodule|if|unless|case|cond|receive|try|for|with)\b/.test(trimmed) ||
-    /\b(?:do|fn)\b/.test(trimmed)
-  );
-}
-
-function completeEndBlock(
-  lines: string[],
-  start: number,
-  end: number,
-  language: string | null,
-): [number, number] {
-  let depth = 0;
-  for (let i = start; i < lines.length; i++) {
-    const line = withoutStrings(lines[i] ?? "");
-    if (isEndBlockOpen(line, language)) {
-      depth++;
-    }
-    if (/^\s*end\b/.test(line)) {
-      depth--;
-    }
-    if (i + 1 >= end && depth <= 0) {
-      return [start, i + 1];
-    }
-  }
-  return [start, lines.length];
-}
-
-function completeHtmlTag(
-  lines: string[],
-  start: number,
-  end: number,
-  anchor: number,
-): [number, number] {
-  const openTags: Array<{ name: string; start: number }> = [];
-  for (let i = Math.max(0, start - MAX_DECLARATION_LOOKBACK); i <= anchor; i++) {
-    const line = lines[i] ?? "";
-    for (const match of line.matchAll(HTML_TAG_RE)) {
-      const name = (match[1] as string).toLowerCase();
-      if (match[0].startsWith("</")) {
-        const matchingIndex = openTags.reduce(
-          (last, tag, index) => (tag.name === name ? index : last),
-          -1,
-        );
-        if (matchingIndex >= 0) {
-          openTags.splice(matchingIndex, 1);
-        }
-      } else if (!match[0].endsWith("/>") && !HTML_VOID_TAGS.has(name)) {
-        openTags.push({ name, start: i });
-      }
-    }
-  }
-  const container = openTags.at(-1);
-  if (!container) {
-    return [start, end];
-  }
-  const closeTag = new RegExp(`</${container.name}\\s*>`, "i");
-  for (let i = Math.max(end - 1, container.start); i < lines.length; i++) {
-    if (closeTag.test(lines[i] ?? "")) {
-      return [container.start, i + 1];
-    }
-  }
-  return [container.start, lines.length];
-}
-
-/**
- * Keep a query-centred snippet readable without relying on a parser at response time.
- *
- * Chunks are already AST-derived when a grammar is available. This final guard avoids
- * cutting through the declaration/object that contains the selected line: it moves the
- * start to a nearby declaration and extends the end through its closing delimiter.
- * Unknown syntaxes retain the original fixed window.
- */
-function completeStructure(
-  lines: string[],
-  start: number,
-  end: number,
-  anchor: number,
-  language: string | null,
-): [number, number] {
-  if (TAG_LANGUAGES.has(language ?? "")) {
-    return completeHtmlTag(lines, start, end, anchor);
-  }
-  let structuralStart = start;
-  const lookback = Math.max(0, anchor - MAX_DECLARATION_LOOKBACK);
-  let foundDeclaration = false;
-  for (let i = anchor; i >= lookback; i--) {
-    const line = lines[i] ?? "";
-    if (DECLARATION_RE.test(line)) {
-      structuralStart = i;
-      foundDeclaration = true;
-      break;
-    }
-    // Include a doc block only when the candidate already begins inside it.
-    if (line.trimStart().startsWith("/**")) {
-      structuralStart = i;
-      break;
-    }
-  }
-
-  if (!foundDeclaration && BRACE_BLOCK_LANGUAGES.has(language ?? "")) {
-    for (let i = anchor; i >= lookback; i--) {
-      if ((lines[i] ?? "").includes("{")) {
-        structuralStart = i;
-        break;
-      }
-    }
-  }
-
-  const declaration = lines[structuralStart] ?? "";
-  if (
-    INDENTED_BLOCK_LANGUAGES.has(language ?? "") &&
-    isIndentedDeclaration(declaration, language)
-  ) {
-    return completeIndentedBlock(lines, structuralStart, end);
-  }
-  if (END_BLOCK_LANGUAGES.has(language ?? "") && RUBY_OR_ELIXIR_BODY_RE.test(declaration)) {
-    return completeEndBlock(lines, structuralStart, end, language);
-  }
-  const braceBody = BRACE_BODY_RE.test(declaration);
-  const rubyOrElixirBody = RUBY_OR_ELIXIR_BODY_RE.test(declaration);
-  let braces = 0;
-  let parens = 0;
-  let blockComment = false;
-  let sawBraceBody = false;
-  let rubyEnds = 0;
-
-  for (let i = structuralStart; i < lines.length; i++) {
-    const raw = lines[i] ?? "";
-    const line = withoutStrings(raw);
-    if (line.includes("/*")) {
-      blockComment = true;
-    }
-    if (line.includes("*/")) {
-      blockComment = false;
-    }
-    braces += (line.match(/{/g) ?? []).length - (line.match(/}/g) ?? []).length;
-    parens += (line.match(/\(/g) ?? []).length - (line.match(/\)/g) ?? []).length;
-    if (line.includes("{")) {
-      sawBraceBody = true;
-    }
-    if (rubyOrElixirBody && /^\s*end\b/.test(line)) {
-      rubyEnds++;
-    }
-
-    if (i + 1 < end) {
-      continue;
-    }
-    if (blockComment || parens > 0) {
-      continue;
-    }
-    if (rubyOrElixirBody) {
-      if (rubyEnds > 0) {
-        return [structuralStart, i + 1];
-      }
-      continue;
-    }
-    if (braceBody && (!sawBraceBody || braces > 0)) {
-      continue;
-    }
-    // A non-declaration snippet is still made safe if its window opened a block.
-    if (!braceBody && braces > 0) {
-      continue;
-    }
-    return [structuralStart, i + 1];
-  }
-
-  return [structuralStart, lines.length];
-}
-
-/** Compact long hits using the matched declaration rather than neighbouring source context. */
-function compactSupportingSnippet(
-  snippet: SnippetResult,
-  maxLines: number,
-  matchedDeclaration: ReturnType<typeof namedDeclaration>,
-): SnippetResult {
-  const lines = snippet.chunk.content.split("\n");
-  if (lines.length <= maxLines) {
-    const declarationOffset = matchedDeclaration
-      ? snippet.meta.match_start_line + matchedDeclaration.lineOffset - snippet.chunk.start_line
-      : -1;
-    if (
-      !matchedDeclaration ||
-      lines[declarationOffset]?.trim() !== matchedDeclaration.preview.split("\n")[0]?.trim()
-    ) {
-      return { ...snippet, meta: { ...snippet.meta, symbol: null } };
-    }
-    return snippet;
-  }
-
-  const anchorOffset = Math.max(
-    0,
-    Math.min(lines.length - 1, snippet.meta.anchor_line - snippet.chunk.start_line),
-  );
-  const declaration = matchedDeclaration?.preview ?? null;
-  const anchor = (lines[anchorOffset] ?? "").trim();
-  const anchorInDeclaration = declaration?.split("\n").some((line) => line.trim() === anchor);
-  const outline = [
-    declaration,
-    anchor && !anchorInDeclaration ? `Matched line ${snippet.meta.anchor_line}: ${anchor}` : null,
-  ]
-    .filter((line): line is string => line !== null)
-    .join("\n");
-
-  return {
-    chunk: {
-      ...snippet.chunk,
-      content: outline,
-    },
-    meta: {
-      ...snippet.meta,
-      truncated: true,
-    },
-  };
-}
-
-/** Pick the 0-based line index inside `content` that best matches the query. */
+/** Pick the 0-based line index inside content that best matches the query. */
 export function anchorLineOffset(content: string, query: string): number {
   const lines = content.split("\n");
   const terms = queryMatchTerms(query);
   let bestIndex = Math.floor(lines.length / 2);
   let bestScore = -1;
-
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] ?? "";
-    const score = scoreLine(line, terms);
+    const score = scoreLine(lines[i] ?? "", terms);
     if (score > bestScore) {
       bestScore = score;
       bestIndex = i;
     }
   }
-
   return bestIndex;
 }
 
+/** Return a bounded window of verbatim source lines, without interpreting the language. */
 export function trimChunkToSnippet(
   chunk: Chunk,
   query: string,
@@ -435,53 +83,30 @@ export function trimChunkToSnippet(
   anchorLine?: number,
 ): SnippetResult {
   const lines = chunk.content.split("\n");
-  const queryAnchorOffset = anchorLineOffset(chunk.content, query);
   const anchorOffset =
     anchorLine == null
-      ? queryAnchorOffset
+      ? anchorLineOffset(chunk.content, query)
       : Math.max(0, Math.min(lines.length - 1, anchorLine - chunk.start_line));
-  const requestedStart = Math.max(0, anchorOffset - linesEachSide);
-  const requestedEnd = Math.min(lines.length, anchorOffset + linesEachSide + 1);
-  const [startOffset, endOffset] = completeStructure(
-    lines,
-    requestedStart,
-    requestedEnd,
-    anchorOffset,
-    chunk.language,
-  );
-  const truncated = startOffset > 0 || endOffset < lines.length;
+  const start = Math.max(0, anchorOffset - linesEachSide);
+  const end = Math.min(lines.length, anchorOffset + linesEachSide + 1);
+  const truncated = start > 0 || end < lines.length;
 
-  if (!truncated) {
-    return {
-      chunk,
-      meta: {
-        truncated: false,
-        anchor_line: chunk.start_line + anchorOffset,
-        full_start_line: chunk.start_line,
-        full_end_line: chunk.end_line,
-        match_start_line: chunk.start_line,
-        match_end_line: chunk.end_line,
-        symbol: declaredSymbol(chunk.content),
-      },
-    };
-  }
-
-  const snippetContent = lines.slice(startOffset, endOffset).join("\n");
   return {
-    chunk: {
-      ...chunk,
-      content: snippetContent,
-      start_line: chunk.start_line + startOffset,
-      end_line: chunk.start_line + endOffset - 1,
-    },
+    chunk: truncated
+      ? {
+          ...chunk,
+          content: lines.slice(start, end).join("\n"),
+          start_line: chunk.start_line + start,
+          end_line: chunk.start_line + end - 1,
+        }
+      : chunk,
     meta: {
-      truncated: true,
+      truncated,
       anchor_line: chunk.start_line + anchorOffset,
       full_start_line: chunk.start_line,
       full_end_line: chunk.end_line,
       match_start_line: chunk.start_line,
       match_end_line: chunk.end_line,
-      symbol: declaredSymbol(chunk.content),
     },
   };
 }
@@ -489,40 +114,22 @@ export function trimChunkToSnippet(
 export function applySnippetsToResults(
   results: SearchResult[],
   query: string,
-  linesEachSide?: number,
+  linesEachSide = resolveSnippetLines(),
   sourceChunks?: ReadonlyMap<string, Chunk>,
 ): Array<{ result: SearchResult; meta: SnippetMeta }> {
-  const radius = linesEachSide ?? resolveSnippetLines();
-  const supportingMaxLines = resolveSupportingSnippetLines();
-  const primaryMaxLines = resolvePrimarySnippetMaxLines();
-  const contextualResults = results.map((result) => {
-    const source = sourceChunks?.get(result.chunk.file_path);
+  return results.map(({ chunk: ranked, score }) => {
+    // Select the anchor from the ranked chunk, even when showing wider source context.
+    const anchorLine = ranked.start_line + anchorLineOffset(ranked.content, query);
+    const source = sourceChunks?.get(ranked.file_path) ?? ranked;
+    const snippet = trimChunkToSnippet(source, query, linesEachSide, anchorLine);
     return {
-      result: source ? { ...result, chunk: source } : result,
-      // Select the anchor from the ranked chunk, not from the full source file.
-      // The same query may occur elsewhere in that file.
-      anchorLine: result.chunk.start_line + anchorLineOffset(result.chunk.content, query),
-    };
-  });
-  return contextualResults.map(({ result, anchorLine }, rank) => {
-    const { chunk, meta } = trimChunkToSnippet(result.chunk, query, radius, anchorLine);
-    // `result.chunk` may be the whole source file; the ranked chunk is the symbol-sized match.
-    const ranked = results[rank]?.chunk ?? result.chunk;
-    const declaration = namedDeclaration(ranked.content);
-    const snippet = compactSupportingSnippet(
-      {
-        chunk,
-        meta: {
-          ...meta,
-          match_start_line: ranked.start_line,
-          match_end_line: ranked.end_line,
-          symbol: declaration?.symbol ?? null,
-        },
+      result: { chunk: snippet.chunk, score },
+      meta: {
+        ...snippet.meta,
+        match_start_line: ranked.start_line,
+        match_end_line: ranked.end_line,
       },
-      rank === 0 ? primaryMaxLines : supportingMaxLines,
-      declaration,
-    );
-    return { result: { chunk: snippet.chunk, score: result.score }, meta: snippet.meta };
+    };
   });
 }
 

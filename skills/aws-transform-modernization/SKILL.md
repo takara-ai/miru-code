@@ -28,7 +28,7 @@ For exact literal lookups, use `locate` instead of `search`:
 ## Workflow
 
 1. Call `search` once with `repo` set to the project root.
-2. If a result has `truncated: true`, read the lines in its header (`path:start-end Symbol`) with a ranged read; use `expand` with `file_path` and `anchor_line` for neighbouring chunks.
+2. If a result has `truncated: true`, read the matched range in its header (`path:start-end`) with a ranged read; use `expand` with `file_path` and `anchor_line` for neighbouring chunks.
 3. Use `find_related` to find similar code patterns in other files (e.g. other copies of a legacy routine, parallel implementations). For callers and dependents, use `search` with the routine/interface name.
 4. For exact literal lookups (env var names, error codes, quoted strings), use `locate` with `mode=count` or `locations` rather than `search`.
 5. Read files directly only after Miru has already identified the relevant path.

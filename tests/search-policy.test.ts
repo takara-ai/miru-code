@@ -15,6 +15,8 @@ describe("search-policy", () => {
   test("snippet guidance documents truncated field and anchor_line", () => {
     expect(SNIPPET_GUIDANCE).toContain("truncated: true");
     expect(SNIPPET_GUIDANCE).toContain("anchor_line");
+    expect(SNIPPET_GUIDANCE).toContain("5 numbered source lines");
+    expect(SNIPPET_GUIDANCE).not.toContain("Symbol");
     expect(MCP_SERVER_INSTRUCTIONS).toContain(SNIPPET_GUIDANCE);
   });
 

@@ -1,586 +1,203 @@
 import { describe, expect, test } from "bun:test";
+import { formatResultsText } from "../src/mcp/format-text.ts";
 import {
   anchorLineOffset,
   applySnippetsToResults,
+  resolveSnippetLines,
   searchSnippetsEnabled,
   trimChunkToSnippet,
 } from "../src/snippet.ts";
 import type { Chunk } from "../src/types.ts";
+import { formatResults } from "../src/utils.ts";
 
 function chunk(content: string, start = 1, language: string | null = "typescript"): Chunk {
-  const lines = content.split("\n");
   return {
     content,
     file_path: "src/a.ts",
     start_line: start,
-    end_line: start + lines.length - 1,
+    end_line: start + content.split("\n").length - 1,
     language,
   };
 }
 
-describe("trimChunkToSnippet", () => {
-  test("truncates around query-matching line", () => {
-    const lines = Array.from({ length: 40 }, (_, i) => `line ${i}`);
-    lines[20] = "async function hybridSearch() {}";
-    const body = lines.join("\n");
-    const { chunk: trimmed, meta } = trimChunkToSnippet(chunk(body), "hybrid search ranking", 5);
+const sourceLines = Array.from({ length: 40 }, () => "filler");
+sourceLines.splice(18, 5, "defer func() {", "  before", "  target()", "  after", "end");
 
-    expect(meta.truncated).toBe(true);
-    expect(trimmed.content).toContain("hybridSearch");
-    expect(trimmed.content.split("\n").length).toBeLessThanOrEqual(11);
+describe("search excerpts", () => {
+  test.each([
+    "typescript",
+    "python",
+    "ruby",
+    "elixir",
+    "go",
+    "rust",
+    "java",
+    "html",
+    "haskell",
+    "ocaml",
+    null,
+    "unknown",
+  ])("returns the same bounded source window for %s", (language) => {
+    const source = chunk(sourceLines.join("\n"), 1, language);
+    const { chunk: excerpt, meta } = trimChunkToSnippet(source, "target");
+
+    expect(excerpt.content).toBe(sourceLines.slice(18, 23).join("\n"));
+    expect(excerpt.start_line).toBe(19);
+    expect(excerpt.end_line).toBe(23);
     expect(meta.anchor_line).toBe(21);
-    expect(meta.full_start_line).toBe(1);
-    expect(meta.full_end_line).toBe(40);
-  });
-
-  test("leaves small chunks unchanged", () => {
-    const small = chunk("export function main() {}\n");
-    const { chunk: trimmed, meta } = trimChunkToSnippet(small, "main entry", 15);
-    expect(meta.truncated).toBe(false);
-    expect(trimmed.content).toBe(small.content);
-  });
-
-  test("anchorLineOffset prefers keyword lines", () => {
-    const content = "import x\n\nfunction unrelated() {}\n\nfunction cliUi() {}\n";
-    expect(anchorLineOffset(content, "cli-ui terminal")).toBe(4);
-  });
-
-  test("completes a nearby function instead of returning a broken body", () => {
-    const source = [
-      "export async function configureAgents() {",
-      "  const agents = await discoverAgents();",
-      "  if (agents.length === 0) {",
-      "    return;",
-      "  }",
-      "  await installHooks(agents);",
-      "}",
-      "",
-      "const unrelated = true;",
-    ].join("\n");
-    const { chunk: trimmed } = trimChunkToSnippet(chunk(source), "install hooks", 1);
-    expect(trimmed.content).toContain("export async function configureAgents");
-    expect(trimmed.content).toContain("await installHooks(agents);");
-    expect(trimmed.content.trimEnd().endsWith("}")).toBe(true);
-  });
-
-  test("completes an object literal instead of cutting its fields", () => {
-    const source = [
-      "const ANSI = {",
-      '  reset: "\\x1b[0m",',
-      '  bold: "\\x1b[1m",',
-      '  dim: "\\x1b[2m",',
-      "} as const;",
-      "",
-      "export function format() {}",
-    ].join("\n");
-    const { chunk: trimmed } = trimChunkToSnippet(chunk(source), "bold ansi", 1);
-    expect(trimmed.content).toContain("const ANSI = {");
-    expect(trimmed.content).toContain("} as const;");
-  });
-
-  test("uses source context so a split function can be completed", () => {
-    const first = chunk("export function configure() {\n  const agents = discover();", 10);
-    const source = chunk(
-      "export function configure() {\n  const agents = discover();\n  installHooks(agents);\n}",
-      10,
-    );
-    const [{ result }] = applySnippetsToResults(
-      [{ chunk: first, score: 1 }],
-      "install hooks",
-      2,
-      new Map([[first.file_path, source]]),
-    );
-    const trimmed = result?.chunk ?? first;
-    expect(trimmed.content).toContain("export function configure()");
-    expect(trimmed.content).toContain("installHooks(agents);");
-    expect(trimmed.content.trimEnd().endsWith("}")).toBe(true);
-  });
-
-  test("keeps the ranked-chunk anchor when source context has another query match", () => {
-    const ranked = chunk("// target\nexport function wanted() {\n  return true;\n}", 20);
-    const source = chunk(
-      [
-        "// target mentioned elsewhere",
-        "const unrelated = true;",
-        ...Array.from({ length: 17 }, () => ""),
-        "// target",
-        "export function wanted() {",
-        "  return true;",
-        "}",
-      ].join("\n"),
-      1,
-    );
-    const [{ meta }] = applySnippetsToResults(
-      [{ chunk: ranked, score: 1 }],
-      "target",
-      1,
-      new Map([[ranked.file_path, source]]),
-    );
-    expect(meta.anchor_line).toBe(20);
-  });
-
-  test("reports the matched symbol and its exact range, not the source file's", () => {
-    const ranked = chunk(
-      [
-        "export function wanted() {",
-        ...Array.from({ length: 30 }, (_, i) => `  step(${i});`),
-        "  return target;",
-        "}",
-      ].join("\n"),
-      40,
-    );
-    const source = chunk(
-      [
-        ...Array.from({ length: 39 }, (_, i) => `const filler${i} = ${i};`),
-        ranked.content,
-        ...Array.from({ length: 20 }, (_, i) => `const tail${i} = ${i};`),
-      ].join("\n"),
-      1,
-    );
-    const [{ meta }] = applySnippetsToResults(
-      [{ chunk: ranked, score: 1 }],
-      "target",
-      3,
-      new Map([[ranked.file_path, source]]),
-    );
     expect(meta.truncated).toBe(true);
-    expect(meta.full_start_line).toBe(1);
-    expect(meta.match_start_line).toBe(40);
-    expect(meta.match_end_line).toBe(ranked.end_line);
-    expect(meta.symbol).toBe("wanted");
-    expect(meta.anchor_line).toBe(ranked.end_line - 1);
+    expect(meta).not.toHaveProperty("symbol");
   });
 
   test.each([
-    { language: "typescript", declaration: "function wanted() {}", comment: "//" },
-    { language: "python", declaration: "def wanted(): pass", comment: "#" },
-    { language: "ruby", declaration: "def wanted; end", comment: "#" },
-    { language: "elixir", declaration: "def wanted, do: :ok", comment: "#" },
-    { language: "go", declaration: "func wanted() {}", comment: "//" },
-    { language: "rust", declaration: "fn wanted() {}", comment: "//" },
-    { language: null, declaration: "function wanted() {}", comment: "//" },
-  ])(
-    "labels only declarations visible in short previews ($language)",
-    ({ language, declaration, comment }) => {
-      const leading = `${comment} target refers to wanted`;
-      const ranked = chunk(
-        [
-          leading,
-          ...Array.from({ length: 20 }, () => ""),
-          `${declaration} ${comment} visible`,
-        ].join("\n"),
-        40,
-        language,
-      );
-      const results = [{ chunk: ranked, score: 1 }];
-      const [hidden] = applySnippetsToResults(results, "target", 1);
-      expect(hidden?.result.chunk.content).toBe(`${leading}\n`);
-      expect(hidden?.meta.symbol).toBeNull();
-      expect(hidden?.meta.match_start_line).toBe(40);
-      expect(hidden?.meta.match_end_line).toBe(ranked.end_line);
-
-      const [visible] = applySnippetsToResults(results, "visible", 1);
-      expect(visible?.result.chunk.content).toContain(declaration);
-      expect(visible?.meta.symbol).toBe("wanted");
-    },
-  );
-
-  test.each([
-    {
-      language: "typescript",
-      declaration: "export function wanted() {",
-      body: "  void 0;",
-      end: "}",
-      comment: "// target",
-    },
-    {
-      language: "python",
-      declaration: "def wanted():",
-      body: "    pass",
-      end: "",
-      comment: "# target",
-    },
-    { language: "ruby", declaration: "def wanted", body: "  nil", end: "end", comment: "# target" },
-    {
-      language: "elixir",
-      declaration: "def wanted do",
-      body: "  :ok",
-      end: "end",
-      comment: "# target",
-    },
-    {
-      language: "go",
-      declaration: "func wanted() {",
-      body: "  _ = true",
-      end: "}",
-      comment: "// target",
-    },
-    {
-      language: "rust",
-      declaration: "fn wanted() {",
-      body: "  let _ = true;",
-      end: "}",
-      comment: "// target",
-    },
-    {
-      language: null,
-      declaration: "function wanted() {",
-      body: "  void 0;",
-      end: "}",
-      comment: "// target",
-    },
-  ])(
-    "uses the matched declaration for both the symbol and preview ($language)",
-    ({ language, declaration, body, end, comment }) => {
-      const ranked = chunk(
-        [comment, declaration, ...Array.from({ length: 60 }, () => body), end].join("\n"),
-        40,
-        language,
-      );
-      const source = chunk(
-        [
-          declaration.replace("wanted", "unrelated"),
-          body,
-          end,
-          ...Array.from({ length: 36 }, () => ""),
-          ranked.content,
-        ].join("\n"),
-        1,
-        language,
-      );
-      const [output] = applySnippetsToResults(
-        [{ chunk: ranked, score: 1 }],
-        "target",
-        1,
-        new Map([[ranked.file_path, source]]),
-      );
-      expect(output?.meta.symbol).toBe("wanted");
-      expect(output?.meta.anchor_line).toBe(40);
-      expect(output?.meta.match_start_line).toBe(ranked.start_line);
-      expect(output?.meta.match_end_line).toBe(ranked.end_line);
-      expect(output?.result.chunk.content.startsWith(declaration)).toBe(true);
-      expect(output?.result.chunk.content).not.toContain("unrelated");
-    },
-  );
-
-  test.each([
-    {
-      language: "typescript",
-      declaration: "export function unrelated() {",
-      first: "if (target) {",
-      body: "  doWork();",
-      end: "}",
-    },
-    {
-      language: "go",
-      declaration: "func unrelated() {",
-      first: "defer func() {",
-      body: "  doWork()",
-      end: "}()",
-    },
-  ])(
-    "omits symbols for nameless matched fragments ($language)",
-    ({ language, declaration, first, body, end }) => {
-      const ranked = chunk(
-        [first, ...Array.from({ length: 60 }, () => body), end].join("\n"),
-        40,
-        language,
-      );
-      const source = chunk(
-        [declaration, ...Array.from({ length: 38 }, () => ""), ranked.content, "}"].join("\n"),
-        1,
-        language,
-      );
-      const [output] = applySnippetsToResults(
-        [{ chunk: ranked, score: 1 }],
-        first,
-        1,
-        new Map([[ranked.file_path, source]]),
-      );
-      expect(output?.meta.symbol).toBeNull();
-      expect(output?.meta.anchor_line).toBe(40);
-      expect(output?.result.chunk.content).toBe(`Matched line 40: ${first}`);
-    },
-  );
-
-  test("completes indentation-delimited Python functions", () => {
-    const source = [
-      "def configure_agents():",
-      "    agents = discover_agents()",
-      "    install_hooks(agents)",
-      "    return agents",
-      "",
-      "def unrelated():",
-      "    return None",
-    ].join("\n");
-    const { chunk: trimmed } = trimChunkToSnippet(chunk(source, 1, "python"), "install hooks", 1);
-    expect(trimmed.content).toContain("def configure_agents");
-    expect(trimmed.content).toContain("return agents");
-    expect(trimmed.content).not.toContain("def unrelated");
+    { content: "target\none\ntwo\nthree\nfour", start: 10, end: 12, anchor: 10 },
+    { content: "one\ntwo\nthree\nfour\ntarget", start: 12, end: 14, anchor: 14 },
+  ])("clamps excerpts at source boundaries ($anchor)", ({ content, start, end, anchor }) => {
+    const source = chunk(content, 10);
+    const result = trimChunkToSnippet(source, "target");
+    expect(result.chunk.start_line).toBe(start);
+    expect(result.chunk.end_line).toBe(end);
+    expect(result.chunk.content.split("\n")).toHaveLength(3);
+    expect(result.meta.anchor_line).toBe(anchor);
   });
 
-  test("completes nested Ruby end blocks", () => {
-    const source = [
-      "def configure_agents(agents)",
-      "  if agents.any?",
-      "    install_hooks(agents)",
-      "  end",
+  test("leaves complete small chunks unchanged", () => {
+    const source = chunk("before\ntarget\nafter", 40);
+    const result = trimChunkToSnippet(source, "target");
+    expect(result.chunk).toEqual(source);
+    expect(result.meta.truncated).toBe(false);
+    expect(result.meta.anchor_line).toBe(41);
+  });
+
+  test("supports an excerpt containing only the matched line", () => {
+    const result = trimChunkToSnippet(chunk(sourceLines.join("\n"), 10), "target", 0);
+    expect(result.chunk.content).toBe("  target()");
+    expect(result.chunk.start_line).toBe(30);
+    expect(result.chunk.end_line).toBe(30);
+  });
+
+  test.each([9, 99])("clamps an explicitly supplied anchor (%s)", (anchor) => {
+    const source = chunk("one\ntwo\nthree\nfour\nfive", 10);
+    const result = trimChunkToSnippet(source, "absent", 1, anchor);
+    expect(result.meta.anchor_line).toBe(anchor < 10 ? 10 : 14);
+    expect(result.chunk.content.split("\n")).toHaveLength(2);
+  });
+
+  test("keeps query anchor selection separate from excerpt formatting", () => {
+    expect(anchorLineOffset("first\nquery target\nlast", "query target")).toBe(1);
+  });
+
+  test("uses source neighbours while preserving the ranked range and anchor", () => {
+    const ranked = chunk("target", 20);
+    const lines = [
+      "target mentioned elsewhere",
+      ...Array.from({ length: 17 }, () => "prefix"),
+      "before",
+      "target",
+      "after",
       "end",
-      "",
-      "def unrelated",
-      "end",
-    ].join("\n");
-    const { chunk: trimmed } = trimChunkToSnippet(chunk(source, 1, "ruby"), "install hooks", 1);
-    expect(trimmed.content).toContain("install_hooks");
-    expect(trimmed.content.trimEnd().endsWith("end")).toBe(true);
-    expect(trimmed.content).not.toContain("def unrelated");
-  });
-
-  test("completes Elixir end blocks", () => {
-    const source = [
-      "defmodule Hooks do",
-      "  def configure(agents) do",
-      "    install_hooks(agents)",
-      "  end",
-      "end",
-      "",
-      "defmodule Unrelated do",
-      "end",
-    ].join("\n");
-    const { chunk: trimmed } = trimChunkToSnippet(chunk(source, 1, "elixir"), "install hooks", 1);
-    expect(trimmed.content).toContain("install_hooks");
-    expect(trimmed.content).not.toContain("Unrelated");
-  });
-
-  test("completes HTML elements", () => {
-    const source = [
-      '<section class="search">',
-      "  <h1>Search</h1>",
-      "  <button>Expand</button>",
-      "</section>",
-      "<footer>Footer</footer>",
-    ].join("\n");
-    const { chunk: trimmed } = trimChunkToSnippet(chunk(source, 1, "html"), "expand", 1);
-    expect(trimmed.content).toContain('<section class="search">');
-    expect(trimmed.content).toContain("</section>");
-    expect(trimmed.content).not.toContain("<footer>");
-  });
-
-  test("completes C-style functions and shell functions", () => {
-    const cSource = [
-      "int configure_agents(int count) {",
-      "  install_hooks(count);",
-      "  return count;",
-      "}",
-      "int unrelated(void) { return 0; }",
-    ].join("\n");
-    const bashSource = [
-      "configure_agents() {",
-      '  install_hooks "$@"',
-      "}",
-      "unrelated() { :; }",
-    ].join("\n");
-    expect(trimChunkToSnippet(chunk(cSource, 1, "c"), "install hooks", 1).chunk.content).toContain(
-      "return count;",
+      "tail",
+    ];
+    const source = chunk(lines.join("\n"));
+    const [output] = applySnippetsToResults(
+      [{ chunk: ranked, score: 1 }],
+      "target",
+      undefined,
+      new Map([[ranked.file_path, source]]),
     );
-    expect(
-      trimChunkToSnippet(chunk(bashSource, 1, "bash"), "install hooks", 1).chunk.content,
-    ).toContain('install_hooks "$@"');
+    expect(output?.result.chunk.content).toBe(lines.slice(17, 22).join("\n"));
+    expect(output?.result.chunk.start_line).toBe(18);
+    expect(output?.result.chunk.end_line).toBe(22);
+    expect(output?.meta.anchor_line).toBe(20);
+    expect(output?.meta.match_start_line).toBe(20);
+    expect(output?.meta.match_end_line).toBe(20);
+    expect(output?.meta.full_start_line).toBe(1);
+    expect(output?.meta.full_end_line).toBe(lines.length);
   });
 
-  test("completes CSS blocks and Haskell declarations", () => {
-    const cssSource = [
-      ".search-result {",
-      "  display: grid;",
-      "  gap: 1rem;",
-      "}",
-      ".footer { color: gray; }",
-    ].join("\n");
-    const haskellSource = [
-      "configureAgents agents =",
-      "  installHooks agents",
-      "",
-      "unrelated = Nothing",
-    ].join("\n");
-    const css = trimChunkToSnippet(chunk(cssSource, 1, "css"), "grid gap", 1).chunk.content;
-    const haskell = trimChunkToSnippet(chunk(haskellSource, 1, "haskell"), "install hooks", 1).chunk
-      .content;
-    expect(css).toContain("gap: 1rem;");
-    expect(css.trimEnd().endsWith("}")).toBe(true);
-    expect(haskell).toContain("installHooks agents");
-    expect(haskell).not.toContain("unrelated");
-  });
-
-  test("completes OCaml indentation and preserves unterminated blocks", () => {
-    const ocaml = [
-      "let configure = {",
-      "  install_hooks",
-      "  return_agents",
-      "",
-      "let unrelated = None",
-    ].join("\n");
-    const result = trimChunkToSnippet(chunk(ocaml, 1, "ocaml"), "install hooks", 0).chunk.content;
-    expect(result).toContain("let configure =");
-    expect(result).toContain("return_agents");
-    expect(result).not.toContain("let unrelated");
-
-    const unterminated = trimChunkToSnippet(
-      chunk("def configure\n  install_hooks", 1, null),
-      "install hooks",
-      0,
-    ).chunk.content;
-    expect(unterminated).toContain("install_hooks");
-  });
-
-  test("extends open HTML containers and includes nearby documentation and comments", () => {
-    const unclosed = ["<section>", "  target"].join("\n");
-    expect(trimChunkToSnippet(chunk(unclosed, 1, "html"), "target", 0).chunk.content).toBe(
-      unclosed,
-    );
-
-    const documented = ["/**", " * configure worker", " */", "worker();", "// unrelated"].join(
-      "\n",
-    );
-    expect(trimChunkToSnippet(chunk(documented), "worker", 0).chunk.content).toContain("/**");
-
-    const commented = [
-      "function configure() {",
-      "  /* keep this",
-      "     target comment */",
-      "  return true;",
-      "}",
-      "const other = true;",
-    ].join("\n");
-    const result = trimChunkToSnippet(chunk(commented), "target comment", 0).chunk.content;
-    expect(result).toContain("keep this");
-    expect(result).toContain("return true;");
-
-    const mismatched = ["<section>", "  <article>", "    target", "</section>"].join("\n");
-    expect(trimChunkToSnippet(chunk(mismatched, 1, "html"), "target", 0).chunk.content).toContain(
-      "<article>",
-    );
-    expect(trimChunkToSnippet(chunk("target only", 1, "html"), "target", 0).chunk.content).toBe(
-      "target only",
+  test("renders a multi-declaration hit as a range and numbered match context", () => {
+    const lines = Array.from({ length: 65 }, () => "");
+    lines[0] = "func ensureClerkKey() error {";
+    lines[28] = "func verifyClerkUserID() {";
+    lines[35] = "  before";
+    lines[37] = '  token := strings.TrimPrefix(auth, "Bearer ")';
+    lines[38] = '  if token == "" {';
+    lines[39] = "    return";
+    const payload = formatResults("Bearer", [
+      { chunk: chunk(lines.join("\n"), 1, "go"), score: 1 },
+    ]);
+    expect(payload.results[0]?.chunk).not.toHaveProperty("symbol");
+    expect(formatResultsText(payload)).toBe(
+      [
+        "src/a.ts:1-65 [truncated: anchor_line 38]",
+        "36:   before",
+        "37: ",
+        '38:   token := strings.TrimPrefix(auth, "Bearer ")',
+        '39:   if token == "" {',
+        "40:     return",
+        "",
+        "For truncated hits, read the header's line range; use expand for neighbouring chunks.",
+      ].join("\n"),
     );
   });
 
-  test("uses generic Ruby block matching without a language hint", () => {
-    const complete = ["def configure", "  target", "end", "outside"].join("\n");
-    expect(trimChunkToSnippet(chunk(complete, 1, null), "target", 0).chunk.content).toContain(
-      "end",
+  test("uses the same excerpt budget for every result and preserves ranking", () => {
+    const first = chunk(sourceLines.join("\n"));
+    const second = { ...first, file_path: "src/b.ts" };
+    const output = applySnippetsToResults(
+      [
+        { chunk: first, score: 0.9 },
+        { chunk: second, score: 0.5 },
+      ],
+      "target",
     );
-    const incomplete = ["def configure", "  target", "still inside"].join("\n");
-    expect(trimChunkToSnippet(chunk(incomplete, 1, null), "target", 0).chunk.content).toBe(
-      incomplete,
-    );
-    const rubyIncomplete = ["def configure", "  target", "still inside"].join("\n");
-    expect(trimChunkToSnippet(chunk(rubyIncomplete, 1, "ruby"), "target", 0).chunk.content).toBe(
-      rubyIncomplete,
-    );
+    expect(output.map((entry) => entry.result.score)).toEqual([0.9, 0.5]);
+    expect(output.map((entry) => entry.result.chunk.file_path)).toEqual(["src/a.ts", "src/b.ts"]);
+    for (const entry of output) {
+      expect(entry.result.chunk.content).toBe(sourceLines.slice(18, 23).join("\n"));
+      expect(entry.meta).not.toHaveProperty("symbol");
+    }
   });
 
-  test("search snippets can be explicitly enabled or disabled by environment", () => {
+  test("configures the number of source lines on each side, including zero", () => {
+    const previous = process.env.MIRU_SNIPPET_LINES;
+    try {
+      delete process.env.MIRU_SNIPPET_LINES;
+      expect(resolveSnippetLines()).toBe(2);
+      for (const value of ["0", "1", "4"]) {
+        process.env.MIRU_SNIPPET_LINES = value;
+        const radius = Number(value);
+        expect(resolveSnippetLines()).toBe(radius);
+        const [output] = applySnippetsToResults(
+          [{ chunk: chunk(sourceLines.join("\n")), score: 1 }],
+          "target",
+        );
+        expect(output?.result.chunk.content.split("\n")).toHaveLength(radius * 2 + 1);
+      }
+      for (const value of ["-1", "invalid"]) {
+        process.env.MIRU_SNIPPET_LINES = value;
+        expect(resolveSnippetLines()).toBe(2);
+      }
+    } finally {
+      if (previous === undefined) delete process.env.MIRU_SNIPPET_LINES;
+      else process.env.MIRU_SNIPPET_LINES = previous;
+    }
+  });
+
+  test("search excerpts can be explicitly enabled or disabled", () => {
     const previous = process.env.MIRU_SEARCH_SNIPPETS;
     try {
-      process.env.MIRU_SEARCH_SNIPPETS = "0";
-      expect(searchSnippetsEnabled()).toBe(false);
-      process.env.MIRU_SEARCH_SNIPPETS = "false";
-      expect(searchSnippetsEnabled()).toBe(false);
-      process.env.MIRU_SEARCH_SNIPPETS = "1";
-      expect(searchSnippetsEnabled()).toBe(true);
-      process.env.MIRU_SEARCH_SNIPPETS = "true";
-      expect(searchSnippetsEnabled()).toBe(true);
-      process.env.MIRU_SEARCH_SNIPPETS = "unset value";
-      expect(searchSnippetsEnabled()).toBe(true);
+      for (const value of ["0", "false"]) {
+        process.env.MIRU_SEARCH_SNIPPETS = value;
+        expect(searchSnippetsEnabled()).toBe(false);
+      }
+      for (const value of ["1", "true", "unset value"]) {
+        process.env.MIRU_SEARCH_SNIPPETS = value;
+        expect(searchSnippetsEnabled()).toBe(true);
+      }
     } finally {
       if (previous === undefined) delete process.env.MIRU_SEARCH_SNIPPETS;
       else process.env.MIRU_SEARCH_SNIPPETS = previous;
     }
-  });
-
-  test("compacts long supporting hits without a context label", () => {
-    const primary = chunk("export function primary() {\n  return true;\n}");
-    const supporting = chunk(
-      [
-        "export function configureHooks() {",
-        "  const first = true;",
-        "  const second = true;",
-        "  const third = true;",
-        "  installHooks();",
-        "  return first && second && third;",
-        "}",
-        ...Array.from({ length: 20 }, () => "// additional implementation"),
-      ].join("\n"),
-    );
-    const output = applySnippetsToResults(
-      [
-        { chunk: primary, score: 1 },
-        { chunk: supporting, score: 0.8 },
-      ],
-      "install hooks",
-    );
-    const compacted = output[1];
-    expect(compacted?.result.chunk.content).not.toContain("[Supporting context");
-    expect(compacted?.result.chunk.content.startsWith("export function configureHooks")).toBe(true);
-    expect(compacted?.result.chunk.content).toContain("Matched line");
-    expect(compacted?.result.chunk.content).not.toContain("Implementation omitted");
-    expect(compacted?.meta.truncated).toBe(true);
-  });
-
-  test("keeps ordinary best hits complete but compacts unusually large ones", () => {
-    const ordinary = chunk(["export function ordinary() {", "  return target;", "}"].join("\n"));
-    const long = chunk(
-      [
-        "export function unusuallyLarge() {",
-        "  const target = true;",
-        ...Array.from({ length: 60 }, () => "  doWork();"),
-        "}",
-      ].join("\n"),
-    );
-    const output = applySnippetsToResults(
-      [
-        { chunk: ordinary, score: 1 },
-        { chunk: long, score: 0.9 },
-      ],
-      "target",
-    );
-    expect(output[0]?.result.chunk.content).toContain("export function ordinary");
-    expect(output[0]?.meta.truncated).toBe(false);
-    expect(output[1]?.result.chunk.content.startsWith("export function unusuallyLarge")).toBe(true);
-    expect(output[1]?.meta.truncated).toBe(true);
-    expect(output[1]?.result.chunk.content).not.toContain("Matched line");
-
-    const primaryLong = applySnippetsToResults([{ chunk: long, score: 1 }], "target");
-    expect(primaryLong[0]?.result.chunk.content.startsWith("export function unusuallyLarge")).toBe(
-      true,
-    );
-    expect(primaryLong[0]?.result.chunk.content).not.toContain("[Supporting context");
-    expect(primaryLong[0]?.result.chunk.content).not.toContain("Matched line");
-  });
-
-  test("does not repeat a declaration used as the matched line", () => {
-    const declaration = "export function configureHooks() {";
-    const source = chunk(
-      [declaration, ...Array.from({ length: 60 }, () => "  doWork();"), "}"].join("\n"),
-      40,
-    );
-    const [output] = applySnippetsToResults([{ chunk: source, score: 1 }], "configureHooks");
-    const content = output?.result.chunk.content ?? "";
-
-    expect(content.split(declaration)).toHaveLength(2);
-    expect(content).not.toContain("Matched line");
-    expect(output?.meta.anchor_line).toBe(40);
-    expect(output?.meta.truncated).toBe(true);
-  });
-
-  test("applySnippetsToResults reduces token estimate", () => {
-    const lines = Array.from({ length: 50 }, (_, i) => `// filler ${i}`).join("\n");
-    const big = chunk(`${lines}\nexport function target() {}\n${lines}`);
-    const results = [{ chunk: big, score: 1 }];
-    const fullTokens = Math.floor(big.content.length / 4);
-    const snippetLen =
-      applySnippetsToResults(results, "target function")[0]?.result.chunk.content.length ?? 0;
-    const snippetTokens = Math.floor(snippetLen / 4);
-    expect(snippetTokens).toBeLessThan(fullTokens / 2);
   });
 });

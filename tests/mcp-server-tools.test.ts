@@ -32,15 +32,15 @@ describe("MCP tools against a local index", () => {
     expect(formatResultsText({ query: "nothing", results: [] })).toBe("No results found.");
   });
 
-  test("a truncated hit header names the symbol, its exact lines and the anchor line", () => {
+  test("renders numbered excerpts with file ranges and ignores inferred symbol names", () => {
     const truncated = formatResultsText({
       query: "q",
       results: [
         {
           chunk: {
             file_path: "src/a.ts",
-            start_line: 50,
-            end_line: 60,
+            start_line: 55,
+            end_line: 55,
             content: "  return x;",
             truncated: true,
             anchor_line: 55,
@@ -53,13 +53,14 @@ describe("MCP tools against a local index", () => {
         },
       ],
     });
-    expect(truncated.split("\n")[0]).toBe("src/a.ts:40-80 wanted [truncated: anchor_line 55]");
+    expect(truncated.split("\n")[0]).toBe("src/a.ts:40-80 [truncated: anchor_line 55]");
+    expect(truncated).toContain("\n55:   return x;");
 
     const whole = formatResultsText({
       query: "q",
       results: [{ chunk: { file_path: "src/a.ts", start_line: 1, end_line: 9, content: "x" } }],
     });
-    expect(whole).toBe("src/a.ts:1-9\nx");
+    expect(whole).toBe("src/a.ts:1-9\n1: x");
   });
 
   test("shares read guidance across truncated hits while preserving each read target", () => {
@@ -69,6 +70,8 @@ describe("MCP tools against a local index", () => {
         {
           chunk: {
             file_path: "src/a.ts",
+            start_line: 55,
+            end_line: 55,
             match_start_line: 40,
             match_end_line: 80,
             anchor_line: 55,
@@ -80,6 +83,8 @@ describe("MCP tools against a local index", () => {
         {
           chunk: {
             file_path: "src/b.ts",
+            start_line: 20,
+            end_line: 20,
             full_start_line: 10,
             full_end_line: 30,
             anchor_line: 20,
@@ -93,9 +98,9 @@ describe("MCP tools against a local index", () => {
     });
     expect(formatted).toBe(
       [
-        "src/a.ts:40-80 first [truncated: anchor_line 55]\n  return x;",
-        "src/b.ts:10-30 second [truncated: anchor_line 20]\n  return y;",
-        "src/c.ts:1-3\nz",
+        "src/a.ts:40-80 [truncated: anchor_line 55]\n55:   return x;",
+        "src/b.ts:10-30 [truncated: anchor_line 20]\n20:   return y;",
+        "src/c.ts:1-3\n1: z",
         "For truncated hits, read the header's line range; use expand for neighbouring chunks.",
       ].join("\n\n"),
     );

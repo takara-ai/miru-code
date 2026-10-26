@@ -13,19 +13,21 @@ export function formatResultsText(payload: {
   let hasTruncated = false;
   const blocks = payload.results.map((result) => {
     const chunk = result.chunk as Record<string, unknown>;
-    // A truncated hit names the matched symbol's exact range (not the source file's) so the full
-    // body is one ranged read away; `anchor_line` is the matched line for `expand`/`find_related`.
+    // Keep the original matched range available for a read; the body is a short source excerpt.
     const startLine = chunk.truncated
       ? (chunk.match_start_line ?? chunk.full_start_line)
       : chunk.start_line;
     const endLine = chunk.truncated
       ? (chunk.match_end_line ?? chunk.full_end_line)
       : chunk.end_line;
-    const symbol = chunk.truncated && chunk.symbol ? ` ${chunk.symbol}` : "";
     const truncatedNote = chunk.truncated ? ` [truncated: anchor_line ${chunk.anchor_line}]` : "";
     if (chunk.truncated) hasTruncated = true;
-    const header = `${chunk.file_path}:${startLine}-${endLine}${symbol}${truncatedNote}`;
-    return `${header}\n${chunk.content}`;
+    const header = `${chunk.file_path}:${startLine}-${endLine}${truncatedNote}`;
+    const excerpt = (chunk.content as string)
+      .split("\n")
+      .map((line, index) => `${Number(chunk.start_line) + index}: ${line}`)
+      .join("\n");
+    return `${header}\n${excerpt}`;
   });
 
   if (hasTruncated) {

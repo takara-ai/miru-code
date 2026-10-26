@@ -11,7 +11,7 @@ Reach for Miru FIRST, before opening files, whenever you don't know the exact pa
 
 **Check first:** exact token (identifier, quoted string, env var, error code) → `locate`. Otherwise → `search`.
 
-Snippets are ~±15 lines. A `truncated: true` hit names its symbol and exact lines (`path:start-end Symbol`) plus `anchor_line`: to see the full body, read exactly those lines with a ranged read (`offset`/`limit`), never the whole file. `expand` (`file_path` + `anchor_line`) is the fallback for neighbouring chunks — only if the snippet doesn't already answer.
+Snippets show up to 5 numbered source lines around a match by default. A `truncated: true` hit gives the matched file range (`path:start-end`) and `anchor_line`. For more context, read just that range (`offset`/`limit`); use `expand` (`file_path` + `anchor_line`) for neighbouring chunks.
 
 `repo` is optional, set it for another repo.
 

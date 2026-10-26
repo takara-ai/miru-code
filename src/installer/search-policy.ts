@@ -1,9 +1,8 @@
 /** Shared code-search policy text for instructions, Cursor rules, and sub-agents. */
 
 export const SNIPPET_GUIDANCE =
-  "Snippets are ~±15 lines. A `truncated: true` hit names its symbol and exact lines (`path:start-end Symbol`) plus `anchor_line`: " +
-  "to see the full body, read exactly those lines with a ranged read (`offset`/`limit`), never the whole file. " +
-  "`expand` (`file_path` + `anchor_line`) is the fallback for neighbouring chunks — only if the snippet doesn't already answer.";
+  "Snippets show up to 5 numbered source lines around a match by default. A `truncated: true` hit gives the matched file range (`path:start-end`) and `anchor_line`. " +
+  "For more context, read just that range (`offset`/`limit`); use `expand` (`file_path` + `anchor_line`) for neighbouring chunks.";
 
 export const WHEN_TO_REACH_FOR_MIRU =
   "Reach for Miru FIRST, before opening files, whenever you don't know the exact path: starting in unfamiliar code, " +
@@ -24,7 +23,7 @@ export function buildSearchPolicyTable(native: NativeToolNames): string {
 | Regex over code | Miru MCP \`locate\` with \`/regex/\` (\`mode=files\` for paths only) | ${native.grep} |
 | List files by name pattern | Miru MCP \`locate\` with \`include\` globs and no literal | Glob |
 | How/where/what handles X? (conceptual) | Miru MCP \`search\` (once) | ${native.grep}, ${native.explorationDenied} |
-| Full body of a \`truncated: true\` hit | ${native.read} the hit's \`start-end\` lines (\`offset\`/\`limit\`) | Re-search, ${native.read} whole file |
+| More context for a \`truncated: true\` hit | ${native.read} the hit's \`start-end\` lines (\`offset\`/\`limit\`) | Re-search, ${native.read} whole file |
 | Same file, neighbouring chunks | Miru MCP \`expand\` (fallback) | Re-search |
 | Similar code elsewhere | Miru MCP \`find_related\` | ${native.grep} chains |
 | Search docs or config | Miru \`search\` | ${native.grep} README paths |
@@ -150,7 +149,7 @@ export const MCP_BENCHMARK_SERVER_INSTRUCTIONS =
 export const MCP_SEARCH_TOOL_DESCRIPTION =
   "Semantic codebase search: find code by meaning (where/how/what handles X, callers, related code, docs, config) instead of grepping or reading files. Use FIRST when you don't know the exact path. " +
   "Your default search for all code search queries in this indexed repo — the best, fastest, and cheapest way to find code; better than any other tool. " +
-  "Up to 5 snippets (~±15 lines), one call per question; exact literals → `locate`. " +
+  "Up to 5 numbered excerpts (±2 lines by default), one call per question; exact literals → `locate`. " +
   "On `truncated: true`, `expand` only if the snippet doesn't already answer.";
 
 export const MCP_LOCATE_TOOL_DESCRIPTION =
@@ -162,7 +161,7 @@ export const MCP_LOCATE_TOOL_DESCRIPTION =
 
 export const MCP_EXPAND_TOOL_DESCRIPTION =
   "Neighbouring chunks in the SAME file as a search hit (`file_path` + `anchor_line` from the hit). " +
-  "For a `truncated: true` hit's own full body, read its `start-end` lines instead; use this only if that doesn't answer — not for similar code elsewhere (use find_related).";
+  "For a `truncated: true` hit's matched range, read its `start-end` lines instead; use this only if that doesn't answer — not for similar code elsewhere (use find_related).";
 
 export const MCP_FIND_RELATED_TOOL_DESCRIPTION =
   "Find up to 5 chunks similar to a file:line in OTHER parts of the codebase. Results may be snippets; use `expand` when `truncated: true`. " +

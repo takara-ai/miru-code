@@ -1,4 +1,3 @@
-import { join } from "node:path";
 import * as z from "zod";
 import packageJson from "../../package.json";
 import { benchmarkSearchComparison, toAgentBenchmarkSummary } from "../benchmark/compare.ts";
@@ -23,7 +22,7 @@ import {
 } from "../installer/search-policy.ts";
 import { formatLiteralLocate, hasRegexLiteral, listIndexedFiles } from "../literal.ts";
 import { residualSearchResultCount } from "../ranking/residual-ranker.ts";
-import type { Chunk, ContentType, SearchResult } from "../types.ts";
+import type { ContentType } from "../types.ts";
 import {
   DEFAULT_EXPAND_AFTER,
   DEFAULT_EXPAND_BEFORE,
@@ -69,45 +68,6 @@ function withBenchmarkSkippedNote(body: string, reason: BenchmarkSkipReason): st
     benchmark_skipped: reason,
     note: BENCHMARK_SKIP_NOTES[reason],
   })}`;
-}
-
-/**
- * Use the source file for final snippet shaping when it is locally available.
- * Index chunks can intentionally split a large declaration; source-backed
- * snippets let the structural guard return a complete declaration instead.
- */
-async function loadSnippetSources(
-  root: string | null,
-  results: SearchResult[],
-): Promise<Map<string, Chunk> | undefined> {
-  if (!root) {
-    return undefined;
-  }
-  const sources = new Map<string, Chunk>();
-  await Promise.all(
-    [...new Set(results.map((result) => result.chunk.file_path))].map(async (filePath) => {
-      try {
-        const content = await Bun.file(join(root, filePath)).text();
-        const indexed = results.find((result) => result.chunk.file_path === filePath)?.chunk;
-        // Synthetic index entries (for example package entry-point metadata) do
-        // not occur verbatim in the source file and must retain their own chunk.
-        if (!indexed || !content.includes(indexed.content)) {
-          return;
-        }
-        const lines = content.split("\n");
-        sources.set(filePath, {
-          content,
-          file_path: filePath,
-          start_line: 1,
-          end_line: lines.length,
-          language: indexed.language,
-        });
-      } catch {
-        // A stale index entry is still safe to format from its indexed chunk.
-      }
-    }),
-  );
-  return sources;
 }
 
 async function persistBenchmarkQuery(
@@ -210,7 +170,6 @@ export function createMcpServer(
               formatResults(query, results, {
                 repoRoot,
                 snippet: true,
-                snippetSourceChunks: await loadSnippetSources(index.root, results),
               }),
             );
             return toolText(
@@ -232,7 +191,6 @@ export function createMcpServer(
         const payload = formatResults(query, results, {
           repoRoot,
           snippet: true,
-          snippetSourceChunks: await loadSnippetSources(index.root, results),
         });
         const body = formatResultsText(payload);
         return toolText(skip ? withBenchmarkSkippedNote(body, skip) : body);
@@ -450,7 +408,6 @@ export function createMcpServer(
             formatResults(`Chunks related to ${filePath}:${anchorLine}`, results, {
               repoRoot,
               snippet: true,
-              snippetSourceChunks: await loadSnippetSources(index.root, results),
             }),
           ),
         );

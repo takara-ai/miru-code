@@ -7,7 +7,7 @@ alwaysApply: true
 
 DO NOT use Grep, Glob, SemanticSearch, or broad file reads to explore how code works when Miru MCP is available.
 
-Search returns compact snippets (~±15 lines around the best match). When a hit has `truncated: true`, its header gives `path:start-end Symbol` and `anchor_line`: read exactly those lines (ranged read) instead of rereading the whole file, and call `expand` with `file_path` and `anchor_line` only for neighbouring chunks.
+Search returns numbered source excerpts (±2 lines around the match by default). When a hit has `truncated: true`, its header gives the matched file range (`path:start-end`) and `anchor_line`: read just that range for more context, and call `expand` with `file_path` and `anchor_line` only for neighbouring chunks.
 
 Use Miru MCP tools:
 - `search` — one call per question; pass project root as `repo`
