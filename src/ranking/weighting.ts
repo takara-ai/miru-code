@@ -11,6 +11,11 @@ export function resolveAlpha(query: string, alpha: number | null | undefined): n
   if (alpha != null) {
     return alpha;
   }
+  const configured = process.env.MIRU_RANK_ALPHA?.trim();
+  if (configured) {
+    const value = Number(configured);
+    if (Number.isFinite(value) && value >= 0 && value <= 1) return value;
+  }
   if (isSymbolQuery(query)) return ALPHA_SYMBOL;
   return rankingConfig().fusion === "rrf" ? ALPHA_NL_RRF : ALPHA_NL_LINEAR;
 }

@@ -41,6 +41,7 @@ import { promptConfirm } from "./installer/prompt.ts";
 import { DEFAULT_LITERAL_MODE, formatLiteralLocate, type LiteralLocateOptions } from "./literal.ts";
 import { serveMcp } from "./mcp/serve.ts";
 import { MiruIndex } from "./miru-index.ts";
+import { residualSearchResultCount } from "./ranking/residual-ranker.ts";
 import {
   canPromptForCredentials,
   ensureCredentials,
@@ -110,7 +111,10 @@ async function runSearch(
   const index = await withSpinner("Indexing and searching", async () => {
     const built = await MiruIndex.fromSource(path, content);
     await built.saveToCache(path);
-    const results = await built.search({ query, topK: SEARCH_RESULT_COUNT });
+    const results = await built.search({
+      query,
+      topK: residualSearchResultCount(query, built.embeddingModel, built.supportsCodeRanking),
+    });
     return { index: built, results };
   });
 

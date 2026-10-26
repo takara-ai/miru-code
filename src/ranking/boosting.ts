@@ -7,6 +7,7 @@ import { searchImprovementsEnabled } from "./features.ts";
 import {
   boostExactStemMatches,
   boostLocationSignals,
+  isLocationQuery,
   penalizeInstallerForLocation,
 } from "./location.ts";
 
@@ -73,10 +74,14 @@ function definitionPatterns(symbolName: string): [RegExp, RegExp] {
     new RegExp(keywordPrefix + sqlBody + suffix, "im"),
   ];
   definitionPatternCache.set(symbolName, cached);
+  if (definitionPatternCache.size > 4096) {
+    const oldest = definitionPatternCache.keys().next().value;
+    if (oldest !== undefined) definitionPatternCache.delete(oldest);
+  }
   return cached;
 }
 
-function chunkDefinesSymbol(chunk: Chunk, symbolName: string): boolean {
+export function chunkDefinesSymbol(chunk: Chunk, symbolName: string): boolean {
   const [general, sql] = definitionPatterns(symbolName);
   return general.test(chunk.content) || sql.test(chunk.content);
 }
@@ -95,7 +100,7 @@ export function isSymbolQuery(query: string): boolean {
   return SYMBOL_QUERY_RE.test(query.trim());
 }
 
-function extractSymbolName(query: string): string {
+export function extractSymbolName(query: string): string {
   for (const sep of ["::", "\\", "->", "."]) {
     if (query.includes(sep)) {
       return query.split(sep).pop()?.trim() ?? query.trim();
@@ -112,6 +117,19 @@ function definitionTier(chunk: Chunk, names: Set<string>, boostUnit: number): nu
     .replace(/\.[^.]+$/, "")
     .toLowerCase();
   return boostUnit * ([...names].some((n) => stemMatches(stem, n.toLowerCase())) ? 1.5 : 1.0);
+}
+
+/** Same exact-name and matching-stem tiers used by production symbol navigation. */
+export function symbolDefinitionTier(chunk: Chunk, query: string): number {
+  if (isSymbolQuery(query)) {
+    return definitionTier(chunk, new Set([extractSymbolName(query), query.trim()]), 1);
+  }
+  const names = new Set(query.match(EMBEDDED_SYMBOL_RE) ?? []);
+  if (!names.size) return 0;
+  const tuning = rankingConfig();
+  const scale =
+    tuning.fusion === "linear" && !isLocationQuery(query) ? tuning.linearQueryBoostScale : 1;
+  return definitionTier(chunk, names, tuning.embeddedSymbolScale * scale);
 }
 
 export function boostMultiChunkFiles(

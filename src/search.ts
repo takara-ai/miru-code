@@ -8,6 +8,7 @@ import { rankingConfig } from "./ranking/config.ts";
 import { searchImprovementsEnabled } from "./ranking/features.ts";
 import { isLocationQuery } from "./ranking/location.ts";
 import { rerankTopk } from "./ranking/penalties.ts";
+import { activeResidualRanker, rankResidualCandidates } from "./ranking/residual-ranker.ts";
 import { resolveAlpha } from "./ranking/weighting.ts";
 import { tokenize } from "./tokens.ts";
 import type { Chunk, SearchResult } from "./types.ts";
@@ -98,6 +99,7 @@ interface HybridSearchOptions {
 }
 
 export interface HybridCandidates {
+  embeddingModel?: string;
   semanticScores: Map<string, number>;
   bm25Scores: Map<string, number>;
   chunksByKey: Map<string, Chunk>;
@@ -110,19 +112,25 @@ export async function prepareHybridCandidates(
   const { query, queryVector, embeddings, semanticIndex, bm25Index, chunks, topK, selector } =
     options;
 
-  const chunksByKey = new Map(chunks.map((c) => [chunkKey(c), c]));
+  // Symbol discovery must not reintroduce files excluded by the caller's scope.
+  const eligible = selector
+    ? selector.flatMap((i) => (chunks[i] ? [chunks[i] as Chunk] : []))
+    : chunks;
+  const chunksByKey = new Map(eligible.map((c) => [chunkKey(c), c]));
   const semanticScores = new Map<string, number>();
   const bm25Scores = new Map<string, number>();
 
   if (selector?.length === 0) {
-    return { semanticScores, bm25Scores, chunksByKey };
+    return { semanticScores, bm25Scores, chunksByKey, embeddingModel: embeddings.model };
   }
 
   const tuning = rankingConfig();
+  const residual = activeResidualRanker(query, embeddings.model, options.alpha, options.rerank);
+  const depth = residual ? Math.max(topK, residual.candidateTopK) : topK;
   const candidateCount =
     searchImprovementsEnabled() && isLocationQuery(query)
-      ? topK * tuning.locationCandidateMultiplier
-      : topK * tuning.candidateMultiplier;
+      ? depth * tuning.locationCandidateMultiplier
+      : depth * tuning.candidateMultiplier;
 
   const queryVecPromise = queryVector ? Promise.resolve(queryVector) : embeddings.embedQuery(query);
   const bm25Promise = scoreBm25(query, bm25Index, chunks, selector);
@@ -137,11 +145,15 @@ export async function prepareHybridCandidates(
   );
 
   for (const r of semantic) {
-    semanticScores.set(chunkKey(r.chunk), r.score);
+    const key = chunkKey(r.chunk);
+    if (chunksByKey.has(key)) semanticScores.set(key, r.score);
   }
 
   const lexicalIndices = sortTopK(lexicalScores, candidateCount).filter(
-    (i) => chunks[i] !== undefined && (lexicalScores[i] ?? 0) > 0,
+    (i) =>
+      chunks[i] !== undefined &&
+      chunksByKey.has(chunkKey(chunks[i] as Chunk)) &&
+      (lexicalScores[i] ?? 0) > 0,
   );
   for (const i of lexicalIndices) {
     bm25Scores.set(chunkKey(chunks[i] as Chunk), lexicalScores[i] as number);
@@ -162,7 +174,8 @@ export async function prepareHybridCandidates(
         missingSemantic.length,
         missingSemantic,
       )) {
-        semanticScores.set(chunkKey(r.chunk), r.score);
+        const key = chunkKey(r.chunk);
+        if (chunksByKey.has(key)) semanticScores.set(key, r.score);
       }
     }
     const candidateKeys = new Set([...semanticScores.keys(), ...bm25Scores.keys()]);
@@ -172,13 +185,44 @@ export async function prepareHybridCandidates(
     }
   }
 
-  return { semanticScores, bm25Scores, chunksByKey };
+  return { semanticScores, bm25Scores, chunksByKey, embeddingModel: embeddings.model };
 }
 
 /** Same fusion and post-fusion ranking for live search and cached calibration. */
 export function rankHybridCandidates(
   candidates: HybridCandidates,
   options: Pick<HybridSearchOptions, "query" | "chunks" | "topK" | "alpha" | "rerank">,
+): SearchResult[] {
+  const model = activeResidualRanker(
+    options.query,
+    candidates.embeddingModel,
+    options.alpha,
+    options.rerank,
+  );
+  if (!model) return rankBaseHybridCandidates(candidates, options);
+  const wide = { ...options, topK: Math.max(1, candidates.chunksByKey.size) };
+  const prior = rankBaseHybridCandidates(candidates, wide);
+  const featureBase = rankBaseHybridCandidates(
+    candidates,
+    { ...wide, alpha: model.featureBase.alpha },
+    model.featureBase.normalization,
+  );
+  return rankResidualCandidates(
+    model,
+    options.query,
+    candidates.semanticScores,
+    candidates.bm25Scores,
+    prior,
+    featureBase,
+    options.topK,
+  );
+}
+
+/** Shared base scorer; feature extraction can request its frozen normalization. */
+export function rankBaseHybridCandidates(
+  candidates: HybridCandidates,
+  options: Pick<HybridSearchOptions, "query" | "chunks" | "topK" | "alpha" | "rerank">,
+  normalization?: "max" | "minmax",
 ): SearchResult[] {
   const { semanticScores, bm25Scores, chunksByKey } = candidates;
   const { query, chunks, topK, alpha, rerank = true } = options;
@@ -188,7 +232,8 @@ export function rankHybridCandidates(
   const normalize =
     tuning.fusion === "rrf"
       ? (scores: Map<string, number>) => rrfScores(scores, tuning.rrfK)
-      : (scores: Map<string, number>) => normalizeScores(scores, tuning.linearNormalization);
+      : (scores: Map<string, number>) =>
+          normalizeScores(scores, normalization ?? tuning.linearNormalization);
   const normalizedSemantic = normalize(semanticScores);
   const normalizedBm25 = normalize(bm25Scores);
 

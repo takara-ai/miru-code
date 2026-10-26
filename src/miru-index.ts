@@ -96,6 +96,11 @@ export class MiruIndex {
   /** Content kinds indexed at build time (e.g. `code`, `markdown`). */
   private readonly content: ContentType[];
 
+  /** Default code ranking is disabled for prose-only indexes. */
+  get supportsCodeRanking(): boolean {
+    return this.content.includes("code");
+  }
+
   /** Repo-relative file path → chunk indices in `chunksInternal`. */
   private fileMapping: Map<string, number[]>;
 

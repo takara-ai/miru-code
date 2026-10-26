@@ -22,6 +22,7 @@ import {
   MCP_SERVER_INSTRUCTIONS,
 } from "../installer/search-policy.ts";
 import { formatLiteralLocate, hasRegexLiteral, listIndexedFiles } from "../literal.ts";
+import { residualSearchResultCount } from "../ranking/residual-ranker.ts";
 import type { Chunk, ContentType, SearchResult } from "../types.ts";
 import {
   DEFAULT_EXPAND_AFTER,
@@ -184,7 +185,7 @@ export function createMcpServer(
         const source = repo ?? defaultRepo;
         const index = await getIndexForRepo(source, cache);
         const repoRoot = localRepoRoot(source);
-        const k = SEARCH_RESULT_COUNT;
+        const k = residualSearchResultCount(query, index.embeddingModel, index.supportsCodeRanking);
         let skip: BenchmarkSkipReason | undefined;
         if (benchmark && (include || exclude)) {
           skip = "filtered_search";

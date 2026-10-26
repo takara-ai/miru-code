@@ -7,7 +7,12 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["**", "!tokenizer/tokenizer.json", "!.agents/plugins/marketplace.json"]
+    "includes": [
+      "**",
+      "!tokenizer/tokenizer.json",
+      "!.agents/plugins/marketplace.json",
+      "!src/ranking/residual-model.json"
+    ]
   },
   "formatter": {
     "enabled": true,

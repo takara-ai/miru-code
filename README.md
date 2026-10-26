@@ -309,6 +309,12 @@ const index = await MiruIndex.fromPath("./src");
 const results = await index.search({ query: "BM25 tokenize" });
 ```
 
+CLI and MCP code searches using `ds1-miru-int8` return the top four distinct files
+by default. A bundled CPU tree reranker refines int8 + BM25 scores and existing
+symbol boosts for every query, including symbols, paths and non-English text.
+It needs no additional model download or inference API call. See the
+[evaluation and serving policy](docs/always-on-ranker.md) for results and tradeoffs.
+
 ## Environment
 
 
@@ -317,6 +323,8 @@ const results = await index.search({ query: "BM25 tokenize" });
 | `TAKARA_API_KEY`              | Required                                                                 |
 | `MIRU_OPENAI_BASE_URL`        | Default `https://infer.takara.ai/v1`                                     |
 | `MIRU_OPENAI_EMBEDDING_MODEL` | Default `ds1-miru-int8`                                                  |
+| `MIRU_RESIDUAL_TOP4`         | Set `0` to restore five code-search results while keeping the reranker   |
+| `MIRU_RESIDUAL_RANK_MODEL`   | Override the bundled reranker JSON; set `0` to disable learned ranking   |
 | `MIRU_WORKSPACE_ROOT`         | Optional: restrict MCP local `repo` paths to this directory              |
 | `MIRU_MAX_INDEX_FILES`        | Cap files indexed per operation                                          |
 | `MIRU_ALLOW_HTTP_GIT`         | Set `1` to allow plain `http://` git clones                              |
