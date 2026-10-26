@@ -395,10 +395,26 @@ describe("trimChunkToSnippet", () => {
     expect(output[0]?.result.chunk.content).toContain("export function ordinary");
     expect(output[0]?.result.chunk.content).not.toContain("complete outline");
     expect(output[1]?.result.chunk.content).toContain("complete outline");
+    expect(output[1]?.result.chunk.content).not.toContain("Matched line");
 
     const primaryLong = applySnippetsToResults([{ chunk: long, score: 1 }], "target");
     expect(primaryLong[0]?.result.chunk.content).toContain("complete outline");
-    expect(primaryLong[0]?.result.chunk.content).toContain("Matched line");
+    expect(primaryLong[0]?.result.chunk.content).not.toContain("Matched line");
+  });
+
+  test("does not repeat a declaration used as the matched line", () => {
+    const declaration = "export function configureHooks() {";
+    const source = chunk(
+      [declaration, ...Array.from({ length: 60 }, () => "  doWork();"), "}"].join("\n"),
+      40,
+    );
+    const [output] = applySnippetsToResults([{ chunk: source, score: 1 }], "configureHooks");
+    const content = output?.result.chunk.content ?? "";
+
+    expect(content.split(declaration)).toHaveLength(2);
+    expect(content).not.toContain("Matched line");
+    expect(output?.meta.anchor_line).toBe(40);
+    expect(output?.meta.truncated).toBe(true);
   });
 
   test("applySnippetsToResults reduces token estimate", () => {
