@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.14.1](https://github.com/takara-ai/miru-code/compare/v1.14.0...v1.14.1) (2026-10-26)
+
+
+### Bug Fixes
+
+* **mcp:** deduplicate truncated search read guidance ([33ad2a0](https://github.com/takara-ai/miru-code/commit/33ad2a0be61bc672470eb6d26bc688453e6842c3))
+* **search:** deduplicate snippet anchor previews ([adc41b0](https://github.com/takara-ai/miru-code/commit/adc41b0624cb71eaf055d3d7a9226fb51dda502b))
+* **search:** remove redundant snippet context label ([f4cc69a](https://github.com/takara-ai/miru-code/commit/f4cc69a62d0070dc45bb27cc15917712e58a37c6))
+
 ## [1.14.0](https://github.com/takara-ai/miru-code/compare/v1.13.1...v1.14.0) (2026-10-26)
 
 
