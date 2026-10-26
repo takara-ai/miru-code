@@ -7,7 +7,6 @@ import { createIndexFromPath } from "../src/index/create.ts";
 import { IndexCache } from "../src/mcp/index-cache.ts";
 import { createMcpServer } from "../src/mcp/server.ts";
 import { MiruIndex } from "../src/miru-index.ts";
-import { computeSourceCacheKey } from "../src/utils.ts";
 import { MemoryTransport } from "./helpers/mcp-memory-transport.ts";
 import { unitVector } from "./test-helpers.ts";
 
@@ -24,7 +23,7 @@ function mockEmbeddings(): EmbeddingBackend {
   };
 }
 
-/** Build an MCP server whose cache already holds a pre-built index (skips real embeddings). */
+/** Each independent MCP session can load this fixture without network embeddings. */
 async function serverWithSeededIndex(root: string): Promise<ReturnType<typeof createMcpServer>> {
   const embeddings = mockEmbeddings();
   const built = await createIndexFromPath(root, embeddings, ["code"], root);
@@ -38,15 +37,8 @@ async function serverWithSeededIndex(root: string): Promise<ReturnType<typeof cr
     content: ["code"],
   });
 
-  const cache = new IndexCache(["code"]);
-  const cacheKey = computeSourceCacheKey(root);
-  const entry = (
-    cache as unknown as {
-      ensureEntry(key: string, source?: string): { index: MiruIndex | null; task: unknown };
-    }
-  ).ensureEntry(cacheKey, root);
-  entry.index = index;
-  entry.task = Promise.resolve(index);
+  index.saveToCache = async () => {};
+  const cache = new IndexCache(["code"], null, { fromSource: async () => index });
 
   return createMcpServer(cache);
 }

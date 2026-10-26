@@ -1,6 +1,7 @@
 import { basename } from "node:path";
 import { type Chunk, chunkKey, type SearchResult } from "../types.ts";
 import { rankingConfig } from "./config.ts";
+import { ChunkFeatureCache } from "./feature-cache.ts";
 import { buildRankFeatures, RANK_FEATURE_NAMES } from "./learned-features.ts";
 
 export const ALWAYS_ON_FEATURE_VERSION = 3;
@@ -35,8 +36,7 @@ interface Metadata {
   identifiers: Set<string>;
   entries: number;
 }
-const metadata = new Map<Chunk, Metadata>();
-let entries = 0;
+const metadata = new ChunkFeatureCache<Metadata>();
 
 /** Language-independent word boundaries; no English stopword list. */
 export function unicodeRankTerms(text: string): string[] {
@@ -56,10 +56,7 @@ const overlap = (terms: readonly string[], present: Set<string>) =>
 function describe(chunk: Chunk): Metadata {
   const cached = metadata.get(chunk);
   if (cached?.content === chunk.content && cached.path === chunk.file_path) return cached;
-  if (cached) {
-    entries -= cached.entries;
-    metadata.delete(chunk);
-  }
+  if (cached) metadata.delete(chunk);
   const definitions = [
     ...chunk.content.matchAll(
       /(?:^|[^\p{L}\p{N}_])(?:def|function|func|fn|class|struct|interface|trait|enum|fun|let|const|type|lemma|theorem|structure|inductive|namespace)\s+([\p{L}_][\p{L}\p{N}_]*)/gu,
@@ -87,22 +84,12 @@ function describe(chunk: Chunk): Metadata {
     value.stem.size +
     value.definitions.size +
     value.identifiers.size;
-  if (value.entries <= 100_000) {
-    metadata.set(chunk, value);
-    entries += value.entries;
-    while (metadata.size > 512 || entries > 100_000) {
-      const oldest = metadata.entries().next().value;
-      if (!oldest) break;
-      entries -= oldest[1].entries;
-      metadata.delete(oldest[0]);
-    }
-  }
+  metadata.set(chunk, value, value.entries);
   return value;
 }
 
 export function clearAlwaysOnFeatureCache(): void {
   metadata.clear();
-  entries = 0;
 }
 
 /** Preserve the boosted production prior; file diversity is applied after scoring. */

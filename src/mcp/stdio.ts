@@ -44,6 +44,8 @@ export const LATEST_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0];
 export class StdioTransport {
   private buffer = "";
   private started = false;
+  private closed = false;
+  private reader: Pick<ReadableStreamDefaultReader, "cancel" | "releaseLock"> | null = null;
   private abortController: AbortController | null = null;
   private readonly inputStream: () => ReadableStream<Uint8Array<ArrayBufferLike>>;
   private readonly writeText: (text: string) => Promise<unknown>;
@@ -69,12 +71,14 @@ export class StdioTransport {
     if (this.started) {
       throw new Error("StdioTransport already started");
     }
+    if (this.closed) throw new Error("StdioTransport already closed");
     this.started = true;
     this.abortController = new AbortController();
-    const reader = this.inputStream().getReader();
     const decoder = new TextDecoder();
 
     try {
+      const reader = this.inputStream().getReader();
+      this.reader = reader;
       while (!this.abortController.signal.aborted) {
         const { done, value } = await reader.read();
         if (done) {
@@ -87,14 +91,26 @@ export class StdioTransport {
         this.onerror?.(error instanceof Error ? error : new Error(String(error)));
       }
     } finally {
-      reader.releaseLock();
-      this.onclose?.();
+      this.reader?.releaseLock();
+      this.reader = null;
+      this.buffer = "";
+      this.notifyClose();
     }
   }
 
   async close(): Promise<void> {
     this.abortController?.abort();
     this.buffer = "";
+    try {
+      await this.reader?.cancel();
+    } finally {
+      this.notifyClose();
+    }
+  }
+
+  private notifyClose(): void {
+    if (this.closed) return;
+    this.closed = true;
     this.onclose?.();
   }
 
@@ -105,7 +121,7 @@ export class StdioTransport {
 
   private async append(chunk: string): Promise<void> {
     this.buffer += chunk;
-    while (true) {
+    while (!this.closed && !this.abortController?.signal.aborted) {
       const newline = this.buffer.indexOf("\n");
       if (newline === -1) {
         return;

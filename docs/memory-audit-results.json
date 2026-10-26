@@ -1,0 +1,250 @@
+{
+  "passed": true,
+  "bunVersion": "1.4.4",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "networkRequests": 0,
+  "encodingCalls": 0,
+  "forcedCollection": true,
+  "retainedChunks": 0,
+  "retainedIndexes": 0,
+  "search": {
+    "snapshots": [
+      {
+        "label": "search-warm-512",
+        "heapBytes": 4980367,
+        "extraBytes": 1855983,
+        "rssBytes": 40634176,
+        "objects": 52438,
+        "promises": 218
+      },
+      {
+        "label": "search-1024",
+        "heapBytes": 4919275,
+        "extraBytes": 1866571,
+        "rssBytes": 39061312,
+        "objects": 51595,
+        "promises": 218
+      },
+      {
+        "label": "search-1536",
+        "heapBytes": 4936852,
+        "extraBytes": 1883140,
+        "rssBytes": 39176000,
+        "objects": 51602,
+        "promises": 218
+      },
+      {
+        "label": "search-2048",
+        "heapBytes": 4937484,
+        "extraBytes": 1883852,
+        "rssBytes": 44304192,
+        "objects": 51599,
+        "promises": 218
+      },
+      {
+        "label": "search-2560",
+        "heapBytes": 4940202,
+        "extraBytes": 1886090,
+        "rssBytes": 43190080,
+        "objects": 51603,
+        "promises": 218
+      },
+      {
+        "label": "search-3072",
+        "heapBytes": 4949172,
+        "extraBytes": 1895428,
+        "rssBytes": 44353344,
+        "objects": 51597,
+        "promises": 216
+      },
+      {
+        "label": "search-3584",
+        "heapBytes": 4949790,
+        "extraBytes": 1895902,
+        "rssBytes": 43812672,
+        "objects": 51607,
+        "promises": 218
+      },
+      {
+        "label": "search-4096",
+        "heapBytes": 4952176,
+        "extraBytes": 1898176,
+        "rssBytes": 43321152,
+        "objects": 51610,
+        "promises": 218
+      },
+      {
+        "label": "search-4608",
+        "heapBytes": 4951922,
+        "extraBytes": 1897762,
+        "rssBytes": 43321152,
+        "objects": 51613,
+        "promises": 218
+      }
+    ],
+    "workers": [
+      {
+        "label": "workers-warm-24",
+        "heapBytes": 4988821,
+        "extraBytes": 1883685,
+        "rssBytes": 45156736,
+        "objects": 52004,
+        "promises": 218
+      },
+      {
+        "label": "workers-48",
+        "heapBytes": 5056278,
+        "extraBytes": 1950374,
+        "rssBytes": 44222848,
+        "objects": 52010,
+        "promises": 217
+      },
+      {
+        "label": "workers-72",
+        "heapBytes": 5059351,
+        "extraBytes": 1952887,
+        "rssBytes": 43436416,
+        "objects": 52015,
+        "promises": 217
+      },
+      {
+        "label": "workers-96",
+        "heapBytes": 5072196,
+        "extraBytes": 1963828,
+        "rssBytes": 43534720,
+        "objects": 52026,
+        "promises": 217
+      },
+      {
+        "label": "workers-120",
+        "heapBytes": 5077608,
+        "extraBytes": 1964632,
+        "rssBytes": 43108736,
+        "objects": 52037,
+        "promises": 218
+      },
+      {
+        "label": "workers-144",
+        "heapBytes": 5076808,
+        "extraBytes": 1967960,
+        "rssBytes": 43288960,
+        "objects": 52033,
+        "promises": 217
+      }
+    ],
+    "queries": 4608,
+    "workerQueries": 144,
+    "identicalResults": true
+  },
+  "cache": {
+    "created": 120,
+    "watchersClosed": 120,
+    "remainingWatchers": 0,
+    "peakWatchers": 10,
+    "snapshots": [
+      {
+        "label": "index-cycles-20",
+        "heapBytes": 21649478,
+        "extraBytes": 3168054,
+        "rssBytes": 68241792,
+        "objects": 373913,
+        "promises": 237
+      },
+      {
+        "label": "index-cycles-40",
+        "heapBytes": 21683845,
+        "extraBytes": 3200565,
+        "rssBytes": 98191808,
+        "objects": 373753,
+        "promises": 236
+      },
+      {
+        "label": "index-cycles-60",
+        "heapBytes": 23068375,
+        "extraBytes": 3303255,
+        "rssBytes": 94194112,
+        "objects": 403759,
+        "promises": 239
+      },
+      {
+        "label": "index-cycles-80",
+        "heapBytes": 23072785,
+        "extraBytes": 3307521,
+        "rssBytes": 96995776,
+        "objects": 403737,
+        "promises": 239
+      },
+      {
+        "label": "index-cycles-100",
+        "heapBytes": 21730769,
+        "extraBytes": 3238401,
+        "rssBytes": 96192960,
+        "objects": 373944,
+        "promises": 236
+      },
+      {
+        "label": "index-cycles-120",
+        "heapBytes": 21882948,
+        "extraBytes": 3273092,
+        "rssBytes": 93817344,
+        "objects": 376197,
+        "promises": 237
+      }
+    ]
+  },
+  "ast": {
+    "parses": 1250,
+    "snapshots": [
+      {
+        "label": "ast-warm-250",
+        "heapBytes": 71460482,
+        "extraBytes": 69513346,
+        "rssBytes": 65112896,
+        "objects": 23165,
+        "promises": 219
+      },
+      {
+        "label": "ast-500",
+        "heapBytes": 71473841,
+        "extraBytes": 69526833,
+        "rssBytes": 50481984,
+        "objects": 23169,
+        "promises": 220
+      },
+      {
+        "label": "ast-750",
+        "heapBytes": 71484000,
+        "extraBytes": 69536000,
+        "rssBytes": 50580288,
+        "objects": 23180,
+        "promises": 220
+      },
+      {
+        "label": "ast-1000",
+        "heapBytes": 71460096,
+        "extraBytes": 69525680,
+        "rssBytes": 50858816,
+        "objects": 23058,
+        "promises": 220
+      },
+      {
+        "label": "ast-1250",
+        "heapBytes": 71472838,
+        "extraBytes": 69536582,
+        "rssBytes": 49679168,
+        "objects": 23076,
+        "promises": 220
+      }
+    ]
+  },
+  "deltas": {
+    "searchHeapBytes": -28445,
+    "workersHeapBytes": 87987,
+    "workersRssBytes": -1867776,
+    "cacheHeapBytes": 233470,
+    "astHeapBytes": 12356,
+    "astRssBytes": -15433728
+  },
+  "limits": "Finite offline workload; forced GC tests retained objects. RSS may retain allocator/WASM capacity. Not a proof of zero leaks in all workloads."
+}

@@ -39,10 +39,15 @@ export class MiruMcpServer {
   private readonly instructions?: string;
   private readonly tools = new Map<string, RegisteredTool>();
   private transport: StdioTransport | null = null;
+  private readonly onclose?: () => void;
 
-  constructor(serverInfo: MiruMcpServerInfo, options?: { instructions?: string }) {
+  constructor(
+    serverInfo: MiruMcpServerInfo,
+    options?: { instructions?: string; onclose?: () => void },
+  ) {
     this.serverInfo = serverInfo;
     this.instructions = options?.instructions;
+    this.onclose = options?.onclose;
   }
 
   registerTool<S extends Record<string, z.ZodType>>(
@@ -63,19 +68,44 @@ export class MiruMcpServer {
   }
 
   async connect(transport: StdioTransport): Promise<void> {
+    if (this.transport) throw new Error("MCP server already connected");
     this.transport = transport;
+    const previousClose = transport.onclose;
+    let closed = false;
+    const release = () => {
+      if (closed) return;
+      closed = true;
+      if (this.transport === transport) this.transport = null;
+      transport.onmessage = undefined;
+      transport.onclose = undefined;
+      try {
+        this.onclose?.();
+      } finally {
+        previousClose?.();
+      }
+    };
+    transport.onclose = release;
     transport.onmessage = async (message) => {
       await this.handleMessage(message);
     };
     transport.onerror = (error) => {
       console.error(error);
     };
-    await transport.start();
+    try {
+      await transport.start();
+    } catch (error) {
+      release();
+      throw error;
+    }
   }
 
   async close(): Promise<void> {
-    await this.transport?.close();
-    this.transport = null;
+    const transport = this.transport;
+    try {
+      await transport?.close();
+    } finally {
+      transport?.onclose?.();
+    }
   }
 
   private async handleMessage(message: JsonRpcMessage): Promise<void> {

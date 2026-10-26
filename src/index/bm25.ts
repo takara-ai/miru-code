@@ -29,15 +29,30 @@ function runScoreWorker(job: Bm25ScoreJob): Promise<Bm25ScoreResult> {
     const worker = new Worker(new URL("./bm25-worker.ts", import.meta.url).href, {
       type: "module",
     });
-    worker.onmessage = (event: MessageEvent<Bm25ScoreResult>) => {
+    const cleanup = () => {
+      worker.onmessage = null;
+      worker.onerror = null;
+      worker.onmessageerror = null;
       worker.terminate();
+    };
+    worker.onmessage = (event: MessageEvent<Bm25ScoreResult>) => {
+      cleanup();
       resolve(event.data);
     };
     worker.onerror = (err) => {
-      worker.terminate();
+      cleanup();
       reject(err);
     };
-    worker.postMessage(job);
+    worker.onmessageerror = () => {
+      cleanup();
+      reject(new Error("Could not deserialize BM25 worker result"));
+    };
+    try {
+      worker.postMessage(job);
+    } catch (error) {
+      cleanup();
+      reject(error);
+    }
   });
 }
 

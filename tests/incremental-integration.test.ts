@@ -79,7 +79,7 @@ type CacheEntryInternal = {
 };
 
 type IndexCacheTestAccess = {
-  ensureEntry(cacheKey: string, source?: string): CacheEntryInternal;
+  ensureEntry(cacheKey: string, source: string): CacheEntryInternal;
   noteFileChange(source: string, filename: string | null | undefined): void;
   checkAndQueueStaleFiles(source: string, index: MiruIndex, cacheKey: string): Promise<void>;
   flushFileUpdates(cacheKey: string, source: string, knownIndex?: MiruIndex): Promise<void>;
@@ -228,7 +228,7 @@ describe("incremental integration", () => {
       const cache = new IndexCache(["code"]);
       const cacheKey = computeSourceCacheKey(root);
       const internals = cacheInternals(cache);
-      const entry = internals.ensureEntry(cacheKey);
+      const entry = internals.ensureEntry(cacheKey, root);
       entry.index = index;
       entry.task = Promise.resolve(index);
 
@@ -532,7 +532,7 @@ describe("incremental integration", () => {
         const cache = new IndexCache(["code"]);
         const cacheKey = computeSourceCacheKey(resolvedRoot);
         const internals = cacheInternals(cache);
-        const entry = internals.ensureEntry(cacheKey);
+        const entry = internals.ensureEntry(cacheKey, root);
         entry.index = index;
         entry.task = Promise.resolve(index);
 
@@ -595,7 +595,7 @@ describe("incremental integration", () => {
       const cache = new IndexCache(["code"]);
       const cacheKey = computeSourceCacheKey(root);
       const internals = cacheInternals(cache);
-      const entry = internals.ensureEntry(cacheKey);
+      const entry = internals.ensureEntry(cacheKey, root);
       entry.index = index;
       entry.task = Promise.resolve(index);
 

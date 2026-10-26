@@ -44,6 +44,7 @@ type CacheEntry = {
   task: Promise<MiruIndex> | null;
   pendingPaths: Set<string>;
   flushQueued: boolean;
+  flushing: boolean;
   updateChain: Promise<void>;
   /** Dead-credentials failure from a background re-embed; `get()` throws it until a retry clears it. */
   lastError: Error | null;
@@ -112,6 +113,7 @@ export class IndexCache {
         task: null,
         pendingPaths: new Set(),
         flushQueued: false,
+        flushing: false,
         updateChain: Promise.resolve(),
         lastError: null,
       };
@@ -122,10 +124,16 @@ export class IndexCache {
 
   private clearEntry(cacheKey: string): void {
     const entry = this.entries.get(cacheKey);
+    this.entries.delete(cacheKey);
+    if (entry) {
+      entry.pendingPaths.clear();
+      entry.index = null;
+      entry.task = null;
+      entry.lastError = null;
+    }
     if (entry && !isGitUrl(entry.source)) {
       this.stopWatcher(resolve(entry.source));
     }
-    this.entries.delete(cacheKey);
   }
 
   private stopWatcher(resolvedPath: string): void {
@@ -142,9 +150,11 @@ export class IndexCache {
     const entry = this.ensureEntry(cacheKey, source);
     const task = (async () => {
       const index = await this.fromSource(source, this.content, undefined, ref);
+      if (this.entries.get(cacheKey) !== entry) return index;
       if (!isGitUrl(source)) {
         await index.saveToCache(resolve(source));
       }
+      if (this.entries.get(cacheKey) !== entry) return index;
       // Publish before stale reconciliation so flushFileUpdates can use
       // entry.index instead of awaiting this same task (self-deadlock).
       entry.index = index;
@@ -152,6 +162,8 @@ export class IndexCache {
         // Await reconciliation here (not fire-and-forget) so callers of `get()`
         // never observe an index that's stale relative to what's on disk.
         await this.checkAndQueueStaleFiles(source, index, cacheKey);
+      } else if (entry.pendingPaths.size > 0) {
+        await this.flushFileUpdates(cacheKey, source, index);
       }
       return index;
     })();
@@ -159,8 +171,10 @@ export class IndexCache {
     entry.task = task;
     void task
       .then((index) => {
-        entry.index = index;
-        this.maybeStartWatcher(source);
+        if (this.entries.get(cacheKey) === entry) {
+          entry.index = index;
+          this.maybeStartWatcher(source);
+        }
         return index;
       })
       .catch(() => {
@@ -194,10 +208,10 @@ export class IndexCache {
   }
 
   private scheduleFlush(cacheKey: string, source: string, entry: CacheEntry): void {
-    if (!entry.flushQueued) {
+    if (!entry.flushQueued && !entry.flushing) {
       entry.flushQueued = true;
       queueMicrotask(() => {
-        void this.flushFileUpdates(cacheKey, source);
+        if (this.entries.get(cacheKey) === entry) void this.flushFileUpdates(cacheKey, source);
       });
     }
   }
@@ -235,16 +249,22 @@ export class IndexCache {
     if (!entry) {
       return Promise.resolve();
     }
+    if (entry.flushing) return entry.updateChain;
+    entry.flushing = true;
     entry.flushQueued = false;
+    let failed = false;
 
-    const run = async (): Promise<void> => {
+    const run = async (): Promise<boolean> => {
+      if (this.entries.get(cacheKey) !== entry) return false;
       const paths = [...entry.pendingPaths];
       entry.pendingPaths.clear();
       if (paths.length === 0) {
-        return;
+        return false;
       }
 
       const requeue = (err?: unknown): void => {
+        failed = true;
+        if (this.entries.get(cacheKey) !== entry) return;
         if (err !== undefined && isCredentialsError(err)) {
           entry.lastError = err instanceof Error ? err : new Error(String(err));
         }
@@ -253,28 +273,22 @@ export class IndexCache {
         }
       };
 
-      // Prefer an index already in hand (or published on the entry). Never await
-      // entry.task while that task is itself waiting on this flush — that deadlocks.
-      let index = knownIndex ?? entry.index;
-      if (!index && entry.task) {
-        try {
-          index = await entry.task;
-        } catch (err) {
-          requeue(err);
-          return;
-        }
-      }
+      // A build publishes its index before draining changes. Waiting on that
+      // build here can deadlock when the build itself waits on this flush.
+      const index = knownIndex ?? entry.index;
       if (!index) {
         requeue();
-        return;
+        return false;
       }
+      if (this.entries.get(cacheKey) !== entry) return false;
 
       try {
         await index.applyFileChanges(paths);
       } catch (err) {
         requeue(err);
-        return;
+        return false;
       }
+      if (this.entries.get(cacheKey) !== entry) return false;
       entry.lastError = null;
       if (!isGitUrl(source)) {
         try {
@@ -284,9 +298,19 @@ export class IndexCache {
           // not requeue the change and repeatedly re-embed the same file.
         }
       }
+      return true;
     };
 
-    entry.updateChain = entry.updateChain.then(run, run);
+    const drain = async () => {
+      while (await run()) {
+        if (!entry.pendingPaths.size) break;
+      }
+    };
+    entry.updateChain = entry.updateChain.then(drain, drain).finally(() => {
+      entry.flushing = false;
+      if (!failed && this.entries.get(cacheKey) === entry && entry.pendingPaths.size > 0)
+        this.scheduleFlush(cacheKey, source, entry);
+    });
     return entry.updateChain;
   }
 
@@ -305,7 +329,8 @@ export class IndexCache {
     }
 
     const storedMtimes = index.getStoredFileMtimes();
-    const entry = this.ensureEntry(cacheKey, source);
+    const entry = this.entries.get(cacheKey);
+    if (!entry || entry.index !== index) return;
 
     try {
       await Promise.all(
@@ -314,11 +339,12 @@ export class IndexCache {
             const currentStat = await Bun.file(resolve(root, filePath)).stat();
             const currentMtime = Math.floor(currentStat.mtime?.getTime() ?? 0);
 
-            if (currentMtime !== storedMtime) {
+            if (this.entries.get(cacheKey) === entry && currentMtime !== storedMtime) {
               entry.pendingPaths.add(normalizeRelativePath(filePath));
             }
           } catch {
-            entry.pendingPaths.add(normalizeRelativePath(filePath));
+            if (this.entries.get(cacheKey) === entry)
+              entry.pendingPaths.add(normalizeRelativePath(filePath));
           }
         }),
       );
@@ -328,13 +354,14 @@ export class IndexCache {
       // the mtime comparison above; a directory walk is the only way to find them.
       const extensions = getExtensions(index.contentTypes);
       for await (const absolutePath of walkFiles(root, extensions)) {
+        if (this.entries.get(cacheKey) !== entry) return;
         const relativePath = normalizeRelativePath(relative(root, absolutePath));
         if (!storedMtimes.has(relativePath)) {
           entry.pendingPaths.add(relativePath);
         }
       }
 
-      if (entry.pendingPaths.size > 0) {
+      if (this.entries.get(cacheKey) === entry && entry.pendingPaths.size > 0) {
         await this.flushFileUpdates(cacheKey, source, index);
       }
     } catch {}
@@ -376,6 +403,7 @@ export class IndexCache {
   }
 
   close(): void {
+    for (const key of this.entries.keys()) this.clearEntry(key);
     for (const watcher of this.watchers.values()) {
       watcher.close();
     }

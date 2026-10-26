@@ -152,6 +152,7 @@ export function createMcpServer(
     },
     {
       instructions: benchmark ? MCP_BENCHMARK_SERVER_INSTRUCTIONS : MCP_SERVER_INSTRUCTIONS,
+      onclose: () => cache.close?.(),
     },
   );
 

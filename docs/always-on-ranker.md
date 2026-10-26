@@ -23,6 +23,8 @@ path and definition features plus 16 boosted-prior and Unicode overlap features.
 Definition features share production symbol detection and boost tiers. Unicode
 terms use NFKC normalization and Unicode letter/number boundaries. Parsed feature
 caches are bounded independently of corpus size.
+They use weak chunk keys so discarded indexes can be collected. The
+[memory audit](memory-audit.md) records lifecycle fixes and an offline soak.
 
 The model has 200 trees with at most 15 leaves per tree. A correction strength of
 0.5 is incorporated into exported leaf values; the final correction is clipped to

@@ -2,6 +2,53 @@ import { describe, expect, test } from "bun:test";
 import { BM25Index } from "../src/index/bm25.ts";
 
 describe("BM25Index", () => {
+  test("cleans up workers when sending or decoding a message fails", async () => {
+    const previousWorker = globalThis.Worker;
+    const previousConcurrency = process.env.MIRU_CONCURRENCY;
+    try {
+      process.env.MIRU_CONCURRENCY = "2";
+      for (const failure of ["send", "decode"]) {
+        const workers: {
+          terminated: boolean;
+          onmessage: unknown;
+          onerror: unknown;
+          onmessageerror: unknown;
+        }[] = [];
+        globalThis.Worker = class {
+          onmessage = null;
+          onerror = null;
+          onmessageerror: (() => void) | null = null;
+          terminated = false;
+          constructor() {
+            workers.push(this);
+          }
+          postMessage() {
+            if (failure === "send") throw Error("send failed");
+            queueMicrotask(() => this.onmessageerror?.());
+          }
+          terminate() {
+            this.terminated = true;
+          }
+        } as unknown as typeof Worker;
+        const index = new BM25Index();
+        index.index(Array.from({ length: 300 }, () => ["alpha"]));
+        await expect(index.getScoresAsync(["alpha"])).rejects.toThrow(
+          failure === "send" ? "send failed" : "deserialize",
+        );
+        expect(workers).toHaveLength(2);
+        for (const worker of workers) {
+          expect(worker.terminated).toBe(true);
+          expect(worker.onmessage).toBeNull();
+          expect(worker.onerror).toBeNull();
+          expect(worker.onmessageerror).toBeNull();
+        }
+      }
+    } finally {
+      globalThis.Worker = previousWorker;
+      if (previousConcurrency === undefined) delete process.env.MIRU_CONCURRENCY;
+      else process.env.MIRU_CONCURRENCY = previousConcurrency;
+    }
+  });
   test("ranks matching document higher than unrelated document", () => {
     const index = new BM25Index();
     index.index([

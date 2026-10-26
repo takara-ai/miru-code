@@ -60,7 +60,7 @@ describe("StdioTransport", () => {
     expect(sent).toEqual(['{"jsonrpc":"2.0","id":7,"result":{"ok":true}}\n']);
     await expect(transport.start()).rejects.toThrow("already started");
     await transport.close();
-    expect(closes).toBe(2);
+    expect(closes).toBe(1);
   });
 
   test("reports stream failures and releases the reader", async () => {

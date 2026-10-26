@@ -7,6 +7,7 @@ import {
   isSymbolQuery,
   symbolDefinitionTier,
 } from "./boosting.ts";
+import { ChunkFeatureCache } from "./feature-cache.ts";
 import { isLocationQuery } from "./location.ts";
 
 export const RANK_FEATURE_VERSION = 2;
@@ -68,8 +69,11 @@ function tokens(text: string): string[] {
 const coverage = (needles: readonly string[], haystack: Set<string>) =>
   needles.length ? needles.filter((token) => haystack.has(token)).length / needles.length : 0;
 
-const definitionMetadata = new Map<Chunk, { content: string; lower: string; present: number }>();
-let definitionChars = 0;
+const definitionMetadata = new ChunkFeatureCache<{
+  content: string;
+  lower: string;
+  present: number;
+}>();
 /** Definition-only cache migration: no body/path tokenization or retrieval recomputation. */
 export function buildDefinitionFeatures(query: string, chunks: readonly Chunk[]) {
   const identifiers = [...new Set(query.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? [])].filter(
@@ -79,10 +83,7 @@ export function buildDefinitionFeatures(query: string, chunks: readonly Chunk[])
   return chunks.map((chunk) => {
     let metadata = definitionMetadata.get(chunk);
     if (!metadata || metadata.content !== chunk.content) {
-      if (metadata) {
-        definitionChars -= metadata.lower.length;
-        definitionMetadata.delete(chunk);
-      }
+      if (metadata) definitionMetadata.delete(chunk);
       metadata = {
         content: chunk.content,
         lower: chunk.content.toLowerCase(),
@@ -92,16 +93,7 @@ export function buildDefinitionFeatures(query: string, chunks: readonly Chunk[])
           ),
         ),
       };
-      if (metadata.lower.length <= 2_000_000) {
-        definitionMetadata.set(chunk, metadata);
-        definitionChars += metadata.lower.length;
-        while (definitionMetadata.size > 512 || definitionChars > 2_000_000) {
-          const oldest = definitionMetadata.entries().next().value;
-          if (!oldest) break;
-          definitionChars -= oldest[1].lower.length;
-          definitionMetadata.delete(oldest[0]);
-        }
-      }
+      definitionMetadata.set(chunk, metadata);
     }
     const lower = metadata.lower;
     const tier = symbolDefinitionTier(chunk, query);
@@ -122,30 +114,23 @@ export function buildDefinitionFeatures(query: string, chunks: readonly Chunk[])
 
 // Bound parsed token metadata independently of corpus size; vectors stay int8.
 export const RANK_FEATURE_CACHE_LIMIT = 512;
-const MAX_TOKEN_ENTRIES = 100_000;
-let cachedTokenEntries = 0;
-const chunkFeatures = new Map<
-  Chunk,
-  {
-    content: string;
-    path: string;
-    start: number;
-    end: number;
-    body: Set<string>;
-    head: Set<string>;
-    pathTokens: Set<string>;
-    stem: Set<string>;
-    identifiers: Set<string>;
-    definitions: Set<string>;
-    values: number[];
-    tokenEntries: number;
-  }
->();
+const chunkFeatures = new ChunkFeatureCache<{
+  content: string;
+  path: string;
+  start: number;
+  end: number;
+  body: Set<string>;
+  head: Set<string>;
+  pathTokens: Set<string>;
+  stem: Set<string>;
+  identifiers: Set<string>;
+  definitions: Set<string>;
+  values: number[];
+  tokenEntries: number;
+}>();
 export function clearRankFeatureCache(): void {
   chunkFeatures.clear();
-  cachedTokenEntries = 0;
   definitionMetadata.clear();
-  definitionChars = 0;
 }
 function staticFeatures(chunk: Chunk) {
   const cached = chunkFeatures.get(chunk);
@@ -157,10 +142,7 @@ function staticFeatures(chunk: Chunk) {
     cached.end === chunk.end_line
   )
     return cached;
-  if (cached) {
-    cachedTokenEntries -= cached.tokenEntries;
-    chunkFeatures.delete(chunk);
-  }
+  if (cached) chunkFeatures.delete(chunk);
   const path = chunk.file_path.replaceAll("\\", "/");
   const definitions = [
     ...chunk.content.matchAll(
@@ -203,19 +185,7 @@ function staticFeatures(chunk: Chunk) {
     value.stem.size +
     value.identifiers.size +
     value.definitions.size;
-  if (value.tokenEntries <= MAX_TOKEN_ENTRIES) {
-    chunkFeatures.set(chunk, value);
-    cachedTokenEntries += value.tokenEntries;
-    while (
-      chunkFeatures.size > RANK_FEATURE_CACHE_LIMIT ||
-      cachedTokenEntries > MAX_TOKEN_ENTRIES
-    ) {
-      const oldest = chunkFeatures.entries().next().value;
-      if (!oldest) break;
-      cachedTokenEntries -= oldest[1].tokenEntries;
-      chunkFeatures.delete(oldest[0]);
-    }
-  }
+  chunkFeatures.set(chunk, value, value.tokenEntries);
   return value;
 }
 
