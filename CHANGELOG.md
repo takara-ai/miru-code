@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.14.0](https://github.com/takara-ai/miru-code/compare/v1.13.1...v1.14.0) (2026-10-26)
+
+
+### Features
+
+* **search:** enable always-on reranking with top-four results ([deb0a8c](https://github.com/takara-ai/miru-code/commit/deb0a8c8d2c79aec59b1b85df6d428f710f45cdd))
+* **search:** use calibrated linear score fusion ([6ad7da5](https://github.com/takara-ai/miru-code/commit/6ad7da509c05a628cb88dd68c128f9d9c28e4b2f))
+
+
+### Bug Fixes
+
+* **memory:** release cached indexes and session resources ([b09d277](https://github.com/takara-ai/miru-code/commit/b09d27796f6da5cc86f7995aa2df3d37d382fb05))
+
 ## [1.13.1](https://github.com/takara-ai/miru-code/compare/v1.13.0...v1.13.1) (2026-10-20)
 
 
