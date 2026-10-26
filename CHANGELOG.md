@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.14.2](https://github.com/takara-ai/miru-code/compare/v1.14.1...v1.14.2) (2026-10-26)
+
+
+### Bug Fixes
+
+* **search:** align snippet symbols with matched declarations ([fcdf69f](https://github.com/takara-ai/miru-code/commit/fcdf69f058e144f34e0579ccc70cea3bd516f27f))
+* **search:** remove redundant symbol preview label ([9b32944](https://github.com/takara-ai/miru-code/commit/9b32944e5b8f575b2141e5259bd8860aa5930849))
+
 ## [1.14.1](https://github.com/takara-ai/miru-code/compare/v1.14.0...v1.14.1) (2026-10-26)
 
 
