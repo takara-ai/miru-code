@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.14.4](https://github.com/takara-ai/miru-code/compare/v1.14.3...v1.14.4) (2026-10-26)
+
+
+### Bug Fixes
+
+* **coverage:** refresh badge after excerpt simplification ([670e180](https://github.com/takara-ai/miru-code/commit/670e180dee3f72e6c23b567e4b32be662c84da71))
+* **search:** replace symbol outlines with bounded source excerpts ([d41448d](https://github.com/takara-ai/miru-code/commit/d41448dcd0f4baef89f70f03a581a7f99afe4994))
+
 ## [1.14.3](https://github.com/takara-ai/miru-code/compare/v1.14.2...v1.14.3) (2026-10-26)
 
 

@@ -7,12 +7,12 @@
     "source": "github"
   },
   "websiteUrl": "https://takara.ai",
-  "version": "1.14.3",
+  "version": "1.14.4",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@takara-ai/miru-code",
-      "version": "1.14.3",
+      "version": "1.14.4",
       "runtimeHint": "bunx",
       "transport": {
         "type": "stdio"
