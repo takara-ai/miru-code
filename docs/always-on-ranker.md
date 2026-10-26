@@ -94,8 +94,9 @@ All 1,000 exported test predictions matched native LightGBM with zero observed
 error. Local ranking-only latency averaged 5.46 ms (p95 15.73 ms), excluding
 embedding and retrieval; this is not a production latency guarantee.
 
-Release verification on 2026-10-26 passed 840 tests, typecheck, lint and plugin-skill
-sync, with 99.6% source-line coverage. The cached repository replay again verified
+Release verification on 2026-10-26 passed 840 tests on Linux, macOS and Windows,
+plus typecheck, lint and plugin-skill sync. The Linux CI coverage result is 98.1%
+(the local macOS run reported 99.6%). The cached repository replay again verified
 all 1,840 queries and 9,385,380 feature values with top4 enabled by default. The
 packaged tarball contains the exact evaluated model and its serving dependencies.
 
