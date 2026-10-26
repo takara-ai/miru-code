@@ -373,7 +373,6 @@ function compactSupportingSnippet(snippet: SnippetResult, maxLines: number): Sni
   const anchor = (lines[anchorOffset] ?? "").trim();
   const anchorInDeclaration = declaration?.split("\n").some((line) => line.trim() === anchor);
   const outline = [
-    "[Supporting context — complete outline]",
     declaration ? `Symbol:\n${declaration}` : null,
     anchor && !anchorInDeclaration ? `Matched line ${snippet.meta.anchor_line}: ${anchor}` : null,
   ]
