@@ -81,19 +81,32 @@ const DECLARATION_RE =
 const DECLARED_NAME_RE =
   /\b(?:function\*?|class|interface|enum|type|struct|trait|impl|record|namespace|contract|library|object|def|fn|func|defmodule)\s+([A-Za-z_$][\w$]*)|\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=/;
 
-/** Name declared by the first declaration line in `content`, or null when none is recognizable. */
-export function declaredSymbol(content: string): string | null {
-  for (const line of content.split("\n").slice(0, MAX_DECLARATION_LOOKBACK)) {
+/** Keep a recognised name and its preview tied to the same declaration. */
+function namedDeclaration(content: string): { symbol: string; preview: string } | null {
+  const lines = content.split("\n");
+  for (let i = 0; i < Math.min(lines.length, MAX_DECLARATION_LOOKBACK); i++) {
+    const line = lines[i] ?? "";
     if (!DECLARATION_RE.test(line)) {
       continue;
     }
     const match = DECLARED_NAME_RE.exec(line);
     const name = match?.[1] ?? match?.[2];
     if (name) {
-      return name;
+      return {
+        symbol: name,
+        preview: lines
+          .slice(i, i + 4)
+          .join("\n")
+          .trim(),
+      };
     }
   }
   return null;
+}
+
+/** Name declared by the first declaration line in `content`, or null when none is recognizable. */
+export function declaredSymbol(content: string): string | null {
+  return namedDeclaration(content)?.symbol ?? null;
 }
 
 const BRACE_BODY_RE =
@@ -347,29 +360,22 @@ function completeStructure(
   return [structuralStart, lines.length];
 }
 
-/**
- * Turn a long supporting hit into an explicit outline instead of emitting a
- * syntactically broken fragment. The best hit remains complete; this is only
- * for lower-ranked context that helps navigation but rarely needs a full body.
- */
-function compactSupportingSnippet(snippet: SnippetResult, maxLines: number): SnippetResult {
+/** Compact long hits using the matched declaration rather than neighbouring source context. */
+function compactSupportingSnippet(
+  snippet: SnippetResult,
+  maxLines: number,
+  matchedDeclaration: ReturnType<typeof namedDeclaration>,
+): SnippetResult {
   const lines = snippet.chunk.content.split("\n");
   if (lines.length <= maxLines) {
     return snippet;
   }
 
-  const declarationIndex = lines.findIndex((line) => DECLARATION_RE.test(line));
   const anchorOffset = Math.max(
     0,
     Math.min(lines.length - 1, snippet.meta.anchor_line - snippet.chunk.start_line),
   );
-  const declaration =
-    declarationIndex >= 0
-      ? lines
-          .slice(declarationIndex, Math.min(lines.length, declarationIndex + 4))
-          .join("\n")
-          .trim()
-      : null;
+  const declaration = matchedDeclaration?.preview ?? null;
   const anchor = (lines[anchorOffset] ?? "").trim();
   const anchorInDeclaration = declaration?.split("\n").some((line) => line.trim() === anchor);
   const outline = [
@@ -489,20 +495,20 @@ export function applySnippetsToResults(
   return contextualResults.map(({ result, anchorLine }, rank) => {
     const { chunk, meta } = trimChunkToSnippet(result.chunk, query, radius, anchorLine);
     // `result.chunk` may be the whole source file; the ranked chunk is the symbol-sized match.
-    const ranked = results[rank]?.chunk;
+    const ranked = results[rank]?.chunk ?? result.chunk;
+    const declaration = namedDeclaration(ranked.content);
     const snippet = compactSupportingSnippet(
       {
         chunk,
-        meta: ranked
-          ? {
-              ...meta,
-              match_start_line: ranked.start_line,
-              match_end_line: ranked.end_line,
-              symbol: declaredSymbol(ranked.content) ?? meta.symbol,
-            }
-          : meta,
+        meta: {
+          ...meta,
+          match_start_line: ranked.start_line,
+          match_end_line: ranked.end_line,
+          symbol: declaration?.symbol ?? null,
+        },
       },
       rank === 0 ? primaryMaxLines : supportingMaxLines,
+      declaration,
     );
     return { result: { chunk: snippet.chunk, score: result.score }, meta: snippet.meta };
   });

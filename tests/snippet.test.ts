@@ -151,6 +151,124 @@ describe("trimChunkToSnippet", () => {
     expect(meta.anchor_line).toBe(ranked.end_line - 1);
   });
 
+  test.each([
+    {
+      language: "typescript",
+      declaration: "export function wanted() {",
+      body: "  void 0;",
+      end: "}",
+      comment: "// target",
+    },
+    {
+      language: "python",
+      declaration: "def wanted():",
+      body: "    pass",
+      end: "",
+      comment: "# target",
+    },
+    { language: "ruby", declaration: "def wanted", body: "  nil", end: "end", comment: "# target" },
+    {
+      language: "elixir",
+      declaration: "def wanted do",
+      body: "  :ok",
+      end: "end",
+      comment: "# target",
+    },
+    {
+      language: "go",
+      declaration: "func wanted() {",
+      body: "  _ = true",
+      end: "}",
+      comment: "// target",
+    },
+    {
+      language: "rust",
+      declaration: "fn wanted() {",
+      body: "  let _ = true;",
+      end: "}",
+      comment: "// target",
+    },
+    {
+      language: null,
+      declaration: "function wanted() {",
+      body: "  void 0;",
+      end: "}",
+      comment: "// target",
+    },
+  ])(
+    "uses the matched declaration for both the symbol and preview ($language)",
+    ({ language, declaration, body, end, comment }) => {
+      const ranked = chunk(
+        [comment, declaration, ...Array.from({ length: 60 }, () => body), end].join("\n"),
+        40,
+        language,
+      );
+      const source = chunk(
+        [
+          declaration.replace("wanted", "unrelated"),
+          body,
+          end,
+          ...Array.from({ length: 36 }, () => ""),
+          ranked.content,
+        ].join("\n"),
+        1,
+        language,
+      );
+      const [output] = applySnippetsToResults(
+        [{ chunk: ranked, score: 1 }],
+        "target",
+        1,
+        new Map([[ranked.file_path, source]]),
+      );
+      expect(output?.meta.symbol).toBe("wanted");
+      expect(output?.meta.anchor_line).toBe(40);
+      expect(output?.meta.match_start_line).toBe(ranked.start_line);
+      expect(output?.meta.match_end_line).toBe(ranked.end_line);
+      expect(output?.result.chunk.content).toContain(`Symbol:\n${declaration}`);
+      expect(output?.result.chunk.content).not.toContain("unrelated");
+    },
+  );
+
+  test.each([
+    {
+      language: "typescript",
+      declaration: "export function unrelated() {",
+      first: "if (target) {",
+      body: "  doWork();",
+      end: "}",
+    },
+    {
+      language: "go",
+      declaration: "func unrelated() {",
+      first: "defer func() {",
+      body: "  doWork()",
+      end: "}()",
+    },
+  ])(
+    "omits symbols for nameless matched fragments ($language)",
+    ({ language, declaration, first, body, end }) => {
+      const ranked = chunk(
+        [first, ...Array.from({ length: 60 }, () => body), end].join("\n"),
+        40,
+        language,
+      );
+      const source = chunk(
+        [declaration, ...Array.from({ length: 38 }, () => ""), ranked.content, "}"].join("\n"),
+        1,
+        language,
+      );
+      const [output] = applySnippetsToResults(
+        [{ chunk: ranked, score: 1 }],
+        first,
+        1,
+        new Map([[ranked.file_path, source]]),
+      );
+      expect(output?.meta.symbol).toBeNull();
+      expect(output?.meta.anchor_line).toBe(40);
+      expect(output?.result.chunk.content).toBe(`Matched line 40: ${first}`);
+    },
+  );
+
   test("completes indentation-delimited Python functions", () => {
     const source = [
       "def configure_agents():",
