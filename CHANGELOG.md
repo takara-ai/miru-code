@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.3](https://github.com/takara-ai/miru-code/compare/v1.14.2...v1.14.3) (2026-10-26)
+
+
+### Bug Fixes
+
+* **mcp:** align short previews and deduplicate locate lines ([d13ce75](https://github.com/takara-ai/miru-code/commit/d13ce7519ab5057f6cd46cc9dc42a062ccbc402d))
+
 ## [1.14.2](https://github.com/takara-ai/miru-code/compare/v1.14.1...v1.14.2) (2026-10-26)
 
 
