@@ -1,47 +1,65 @@
-<svg width="800" height="280" viewBox="0 0 800 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="miru-diagram-title miru-diagram-desc">
-  <title id="miru-diagram-title">How Miru fits into an agent's code search workflow</title>
-  <desc id="miru-diagram-desc">A coding agent sends a natural-language query to the Miru MCP server, which runs hybrid search (AST-aware embeddings plus BM25 and reranking) over the indexed repository, then returns ranked code chunks back to the agent.</desc>
-
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title description">
+  <title id="title">Miru — from question to code</title>
+  <desc id="description">Ask your coding agent where authentication is configured. Miru searches the indexed repository using embeddings, BM25, and code-aware ranking, then returns file paths, line numbers, and focused source excerpts so your agent can continue.</desc>
   <defs>
-    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M1 1L8 5L1 9" fill="none" stroke="#4A4D4E" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-    </marker>
+    <pattern id="grain" width="7" height="7" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r=".45" fill="#151515" opacity=".11"/></pattern>
+    <filter id="shadow" x="-20%" y="-10%" width="140%" height="140%"><feDropShadow dx="0" dy="18" stdDeviation="19" flood-color="#20120f" flood-opacity=".2"/></filter>
+    <filter id="glow" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="30"/></filter>
+    <marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="8" markerHeight="8" orient="auto"><path d="m3 2 4 4-4 4" fill="none" stroke="#D91009" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>
+    <style>.sans{font-family:Arial,"Liberation Sans",sans-serif}.mono{font-family:Menlo,"Liberation Mono",monospace}</style>
   </defs>
-
-  <rect x="0" y="0" width="800" height="280" fill="#FFFFFF"/>
-
-  <text x="400" y="34" text-anchor="middle" font-family="Lato, 'Gill Sans', sans-serif" font-size="13" fill="#4A4D4E">
-    Replaces the grep/glob-style search agents fall back on today
-  </text>
-
-  <!-- Coding agent -->
-  <g>
-    <rect x="40" y="100" width="180" height="80" rx="10" fill="#FFFFFF" stroke="#4A4D4E" stroke-width="1.5"/>
-    <text x="130" y="134" text-anchor="middle" font-family="Lato, 'Gill Sans', sans-serif" font-size="16" font-weight="600" fill="#000000">Coding agent</text>
-    <text x="130" y="156" text-anchor="middle" font-family="Lato, 'Gill Sans', sans-serif" font-size="12" fill="#4A4D4E">"where's auth set up?"</text>
+  <rect width="1200" height="720" rx="14" fill="#f6f4ef"/>
+  <rect width="1200" height="720" rx="14" fill="url(#grain)"/>
+  <path d="m850 672 105-119 15 151Z" fill="#D91009" opacity=".1" filter="url(#glow)"/>
+  <path d="M0 110H1200M0 638H1200" stroke="#e1ddd4"/>
+  <g transform="translate(64 31)">
+    <g transform="scale(0.063)" fill="#D91009"><path d="M266.642 292.456 476.421 355.055 428.39 490.987 31.5294 660.868 148.083 331.685 237.792 287.702Z"/>
+      <path d="m798.675 237.34 52.269 110.058-92.342-91.333-238.338 234.896-53.068-43.763 28.552-80.806 21.747 18.123 65.482-48.548 157.517-116.297Z"/>
+      <path d="m548.776 278.522 14.709 44.509-45.196 33.507-19.248-16.039-103.7-166.238Z"/>
+      <path d="m465.914 328.961-179.942-53.696 72.551-118.457Z"/>
+      <path d="m276.163 249.156-12.556 20.503-29.182-4.808-26.936 13.205L0 13.2754Z"/>
+      <path d="m628.097 217.461-69.63 41.046-141.59-96.21L689.535 0Z"/></g>
+    <text x="68" y="35" class="sans" fill="#171717" font-size="29" font-weight="700" letter-spacing="-1.2">takara.ai</text>
   </g>
+  <text x="1136" y="64" text-anchor="end" class="mono" fill="#D91009" font-size="18" font-weight="700" letter-spacing="2.2">AGENTIC CODE SEARCH</text>
+  <text x="64" y="202" class="sans" fill="#171717" font-size="72" font-weight="700" letter-spacing="-3.4">From question to code.</text>
+  <text x="67" y="250" class="sans" fill="#55514b" font-size="28" letter-spacing="-.5">Relevant context, directly in your coding agent.</text>
 
-  <line x1="220" y1="140" x2="288" y2="140" stroke="#4A4D4E" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <g transform="translate(64 294)" filter="url(#shadow)">
+    <rect width="1072" height="310" rx="11" fill="#131313"/>
+    <path d="M11 0H1061Q1072 0 1072 11V54H0V11Q0 0 11 0" fill="#1a1a1a"/>
+    <path d="M0 54H1072" stroke="#ffffff" stroke-opacity=".1"/>
+    <circle cx="29" cy="27" r="4.5" fill="#ffffff" fill-opacity=".15"/>
+    <circle cx="46" cy="27" r="4.5" fill="#ffffff" fill-opacity=".15"/>
+    <circle cx="63" cy="27" r="4.5" fill="#ffffff" fill-opacity=".15"/>
+    <text x="88" y="34" class="mono" fill="#ffffff" fill-opacity=".6" font-size="18">miru — code search</text>
 
-  <!-- Miru MCP server (hero box, Takara Red) -->
-  <g>
-    <rect x="290" y="70" width="220" height="140" rx="10" fill="#D91009"/>
-    <text x="400" y="106" text-anchor="middle" font-family="Lato, 'Gill Sans', sans-serif" font-size="17" font-weight="700" fill="#FFFFFF">Miru MCP server</text>
-    <text x="400" y="132" text-anchor="middle" font-family="Lato, 'Gill Sans', sans-serif" font-size="12.5" fill="#FFFFFF">AST-aware embeddings</text>
-    <text x="400" y="150" text-anchor="middle" font-family="Lato, 'Gill Sans', sans-serif" font-size="12.5" fill="#FFFFFF">+ BM25 + reranking</text>
-    <text x="400" y="168" text-anchor="middle" font-family="Lato, 'Gill Sans', sans-serif" font-size="12.5" fill="#FFFFFF">over indexed repo</text>
+    <g class="mono" fill="#ff756c" font-size="20" font-weight="700" letter-spacing="1.4">
+      <text x="34" y="102">01 / ASK</text>
+      <text x="392" y="102">02 / SEARCH</text>
+      <text x="750" y="102">03 / CONTEXT</text>
+    </g>
+    <path d="M300 95H354" fill="none" stroke="#D91009" stroke-width="1.7" marker-end="url(#arrow)"/>
+    <path d="M658 95H712" fill="none" stroke="#D91009" stroke-width="1.7" marker-end="url(#arrow)"/>
+    <path d="M357 124V231M715 124V231" stroke="#ffffff" stroke-opacity=".12"/>
+    <g class="sans" fill="#ffffff" font-size="28" font-weight="700" letter-spacing="-.5">
+      <text x="34" y="151">Ask your agent</text>
+      <text x="392" y="151">Miru searches</text>
+      <text x="750" y="151">Get relevant code</text>
+    </g>
+    <g fill="#ffffff" fill-opacity=".68" font-size="23" class="sans">
+      <text x="34" y="194">“Where is authentication</text>
+      <text x="34" y="225">configured?”</text>
+      <text x="392" y="194">Embeddings + BM25</text>
+      <text x="392" y="225">Code-aware ranking</text>
+      <text x="750" y="194">File paths + line numbers</text>
+      <text x="750" y="225">Focused source excerpts</text>
+    </g>
+    <path d="M34 253H1038" stroke="#ffffff" stroke-opacity=".1"/>
+    <path d="m36 278 4-4 4 4-4 4Z" fill="#D91009"/>
+    <text x="56" y="285" class="mono" fill="#ffffff" fill-opacity=".58" font-size="19">Your agent reads the relevant code and continues.</text>
   </g>
-
-  <line x1="510" y1="140" x2="578" y2="140" stroke="#4A4D4E" stroke-width="1.5" marker-end="url(#arrow)"/>
-
-  <!-- Ranked chunks (accent, Azure Blue) -->
-  <g>
-    <rect x="580" y="100" width="180" height="80" rx="10" fill="#FFFFFF" stroke="#00A3EE" stroke-width="1.75"/>
-    <text x="670" y="134" text-anchor="middle" font-family="Lato, 'Gill Sans', sans-serif" font-size="16" font-weight="600" fill="#00668F">Ranked chunks</text>
-    <text x="670" y="156" text-anchor="middle" font-family="Lato, 'Gill Sans', sans-serif" font-size="12" fill="#4A4D4E">path, lines, snippet</text>
-  </g>
-
-  <text x="400" y="248" text-anchor="middle" font-family="Lato, 'Gill Sans', sans-serif" font-size="12" fill="#4A4D4E">
-    Every connected agent (Cursor, Claude Code, Copilot, Codex, and more) gets this via MCP
-  </text>
+  <text x="64" y="685" class="mono" fill="#55514b" font-size="20">Semantic + keyword search</text>
+  <text x="1136" y="685" text-anchor="end" class="mono" fill="#55514b" font-size="20">Connected through MCP</text>
+  <rect x=".5" y=".5" width="1199" height="719" rx="13.5" fill="none" stroke="#e1ddd4"/>
 </svg>

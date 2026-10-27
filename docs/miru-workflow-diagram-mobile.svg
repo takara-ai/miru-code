@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="980" viewBox="0 0 600 980" role="img" aria-labelledby="title description">
+  <title id="title">Miru — from question to code</title>
+  <desc id="description">Ask your coding agent where authentication is configured. Miru searches the indexed repository using embeddings, BM25, and code-aware ranking, then returns file paths, line numbers, and focused source excerpts so your agent can continue.</desc>
+  <defs>
+    <pattern id="grain" width="7" height="7" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r=".45" fill="#151515" opacity=".11"/></pattern>
+    <filter id="shadow" x="-20%" y="-10%" width="140%" height="140%"><feDropShadow dx="0" dy="18" stdDeviation="19" flood-color="#20120f" flood-opacity=".2"/></filter>
+    <filter id="glow" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="30"/></filter>
+    <marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="8" markerHeight="8" orient="auto"><path d="m3 2 4 4-4 4" fill="none" stroke="#D91009" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>
+    <style>.sans{font-family:Arial,"Liberation Sans",sans-serif}.mono{font-family:Menlo,"Liberation Mono",monospace}</style>
+  </defs>
+  <rect width="600" height="980" rx="14" fill="#f6f4ef"/>
+  <rect width="600" height="980" rx="14" fill="url(#grain)"/>
+  <path d="m390 940 87-93 15 112Z" fill="#D91009" opacity=".12" filter="url(#glow)"/>
+  <path d="M0 103H600M0 906H600" stroke="#e1ddd4"/>
+  <g transform="translate(32 30)">
+    <g transform="scale(0.059)" fill="#D91009"><path d="M266.642 292.456 476.421 355.055 428.39 490.987 31.5294 660.868 148.083 331.685 237.792 287.702Z"/>
+      <path d="m798.675 237.34 52.269 110.058-92.342-91.333-238.338 234.896-53.068-43.763 28.552-80.806 21.747 18.123 65.482-48.548 157.517-116.297Z"/>
+      <path d="m548.776 278.522 14.709 44.509-45.196 33.507-19.248-16.039-103.7-166.238Z"/>
+      <path d="m465.914 328.961-179.942-53.696 72.551-118.457Z"/>
+      <path d="m276.163 249.156-12.556 20.503-29.182-4.808-26.936 13.205L0 13.2754Z"/>
+      <path d="m628.097 217.461-69.63 41.046-141.59-96.21L689.535 0Z"/></g>
+    <text x="68" y="35" class="sans" fill="#171717" font-size="29" font-weight="700" letter-spacing="-1.2">takara.ai</text>
+  </g>
+  <text x="32" y="151" class="mono" fill="#D91009" font-size="21" font-weight="700" letter-spacing="2">AGENTIC CODE SEARCH</text>
+  <g class="sans" fill="#171717" font-size="62" font-weight="700" letter-spacing="-2.8">
+    <text x="30" y="224">From question</text>
+    <text x="30" y="288">to code.</text>
+  </g>
+  <text x="32" y="333" class="sans" fill="#55514b" font-size="25" letter-spacing="-.4">Relevant context for your agent.</text>
+  <g transform="translate(32 375)" filter="url(#shadow)">
+    <rect width="536" height="493" rx="11" fill="#131313"/>
+    <path d="M11 0H525Q536 0 536 11V54H0V11Q0 0 11 0" fill="#1a1a1a"/>
+    <path d="M0 54H536" stroke="#ffffff" stroke-opacity=".1"/>
+    <circle cx="25" cy="27" r="4.5" fill="#ffffff" fill-opacity=".15"/>
+    <circle cx="42" cy="27" r="4.5" fill="#ffffff" fill-opacity=".15"/>
+    <circle cx="59" cy="27" r="4.5" fill="#ffffff" fill-opacity=".15"/>
+    <text x="83" y="34" class="mono" fill="#ffffff" fill-opacity=".6" font-size="21">miru — code search</text>
+    <g class="mono" fill="#ff756c" font-size="23" font-weight="700">
+      <text x="28" y="108">01</text>
+      <text x="28" y="251">02</text>
+      <text x="28" y="394">03</text>
+    </g>
+    <g class="sans" fill="#ffffff" font-size="29" font-weight="700" letter-spacing="-.5">
+      <text x="83" y="108">Ask your agent</text>
+      <text x="83" y="251">Miru searches</text>
+      <text x="83" y="394">Get relevant code</text>
+    </g>
+    <g class="sans" fill="#ffffff" fill-opacity=".68" font-size="25">
+      <text x="83" y="147">“Where is authentication</text>
+      <text x="83" y="180">configured?”</text>
+      <text x="83" y="290">Embeddings + BM25</text>
+      <text x="83" y="323">Code-aware ranking</text>
+      <text x="83" y="433">File paths + line numbers</text>
+      <text x="83" y="466">Focused source excerpts</text>
+    </g>
+    <path d="M28 207H508M28 350H508" stroke="#ffffff" stroke-opacity=".12"/>
+  </g>
+  <text x="32" y="951" class="mono" fill="#55514b" font-size="22">Connected through MCP</text>
+  <rect x=".5" y=".5" width="599" height="979" rx="13.5" fill="none" stroke="#e1ddd4"/>
+</svg>

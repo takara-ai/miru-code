@@ -13,18 +13,20 @@ The embedding model is sold on AWS Marketplace:
 | 1    | AWS admin | Subscribe on Marketplace                                                       |
 | 2    | AWS admin | Deploy the endpoint with the CloudFormation/CDK template (below)               |
 | 3    | AWS admin | Create an invoke-only IAM user / profile or IAM Identity Center permission set |
-| 4    | Developer | `miru setup --sagemaker` — Miru validates and saves the endpoint               |
+| 4    | Developer | [Configure the Claude Code plugin or CLI](#4-point-miru-at-the-endpoint) with the endpoint and AWS profile |
 
 Miru **never** creates IAM users, IAM roles, SageMaker resources, or writes `~/.aws`. It only inherits a profile you already have and checks that it can call the endpoint.
 
 ## One mode at a time
 
-Miru stores **either** a Takara API key **or** a SageMaker endpoint — never both.
+The CLI stores **either** Takara credentials **or** a SageMaker endpoint — never both.
 
 - `miru setup --sagemaker …` **removes** any stored Takara API key
 - `miru setup` (Takara) **removes** any stored SageMaker endpoint
 
 You do not need `--clear` when switching; the other mode is purged automatically.
+
+For Claude Code, use the [plugin settings](#claude-code-plugin). Its endpoint setting overrides stored Takara credentials without deleting them; clearing the setting returns the plugin to Takara. CLI setup does not configure the plugin.
 
 ### Codex plugin
 
@@ -89,7 +91,7 @@ templates create the same resources and outputs.
 
 | Output              | Use                                                                 |
 | -------------------- | -------------------------------------------------------------------- |
-| `EndpointArn`         | Pass to `miru setup --sagemaker --arn …` in step 4                  |
+| `EndpointArn`         | Use in the plugin settings or CLI setup in step 4                  |
 | `ExecutionRoleArn`    | The endpoint's IAM role (informational; not used by `miru setup`)  |
 | `EndpointNameOut`     | Endpoint name                                                       |
 | `RegionOut`           | Region the stack deployed into — should match `Region`              |
@@ -177,6 +179,25 @@ bun run sagemaker:auth-check -- --arn arn:aws:sagemaker:<region>:<account-id>:en
 
 ## 4. Point Miru at the endpoint
 
+### Claude Code plugin
+
+This is the recommended setup for Claude Code. [Install the Claude Code plugin](../README.md#claude-code-recommended) first. After steps 1–3, run `/plugin` inside Claude Code, open **miru**, and set:
+
+| Setting                  | Value                                                                                  |
+| ------------------------ | ---------------------------------------------------------------------------------------- |
+| `SageMaker endpoint ARN` | The `EndpointArn` output from step 2                                                     |
+| `AWS profile`            | The profile from step 3. It must already exist in `~/.aws`; Miru never creates one.       |
+
+Restart Claude Code and ask it to search your project with Miru. No Miru CLI installation or `miru setup` step is needed.
+
+When the ARN is set, it **takes priority over any stored Takara sign-in** and Miru does not contact `infer.takara.ai`. Nothing is deleted, so clearing the ARN returns you to Takara. Leaving the ARN blank means Takara is used. The profile is only read when an ARN is set.
+
+If the profile uses SSO, run `aws sso login --profile <name>` again whenever the token expires.
+
+### CLI (fallback)
+
+Use this when running Miru from a terminal or installing an IDE integration through the CLI. These credentials are separate from the Claude Code plugin's settings.
+
 ```bash
 miru setup --sagemaker \
   --arn arn:aws:sagemaker:<region>:<account-id>:endpoint/<name> \
@@ -196,29 +217,11 @@ After that, indexing and search embed via SageMaker — no egress to `infer.taka
 
 If `TAKARA_API_KEY` is still set in your shell or `.env.local`, remove it there too so it cannot conflict later.
 
-### Claude Code plugin
-
-The plugin has no terminal step. Do steps 1–3 first, then set the plugin settings. Run `/plugin`, open **miru**, and set:
-
-| Setting                  | Value                                                                                  |
-| ------------------------ | ---------------------------------------------------------------------------------------- |
-| `SageMaker endpoint ARN` | The `EndpointArn` output from step 2                                                     |
-| `AWS profile`            | The profile from step 3. It must already exist in `~/.aws`; Miru never creates one.       |
-
-Or from a shell, then restart Claude Code:
-
-```bash
-echo '{"sagemaker_endpoint_arn":"arn:aws:sagemaker:<region>:<account-id>:endpoint/<name>","aws_profile":"miru"}' \
-  | claude plugin configure miru@miru --values-stdin
-```
-
-When the ARN is set, it **takes priority over any stored Takara sign-in** and Miru does not contact `infer.takara.ai`. Nothing is deleted, so clearing the ARN returns you to Takara. Leaving the ARN blank means Takara is used. The profile is only read when an ARN is set.
-
-If the profile uses SSO, run `aws sso login --profile <name>` again whenever the token expires.
-
-The plugin's `auth` tool only handles Takara sign-in; SageMaker is configured through these settings only.
-
 ## Switch back to Takara
+
+In the Claude Code plugin, clear the **SageMaker endpoint ARN** setting and restart. Sign in through Miru's `auth` tool if prompted.
+
+For the CLI:
 
 ```bash
 miru setup
@@ -228,11 +231,9 @@ Enter your Takara API key. Setup validates it, saves it, and **deletes any store
 
 Also unset any `MIRU_SAGEMAKER_*` variables if you set them in the environment or `.env.local`.
 
-In the Claude Code plugin, clear the **SageMaker endpoint ARN** setting and restart.
-
 ## Environment alternatives
 
-Prefer `miru setup --sagemaker` so auth is checked automatically. You can also set:
+For the CLI, prefer `miru setup --sagemaker` so auth is checked automatically. You can also set:
 
 | Variable                                                 | Purpose                                                   |
 | --------------------------------------------------------- | ----------------------------------------------------------- |
