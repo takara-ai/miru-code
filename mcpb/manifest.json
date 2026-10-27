@@ -1,0 +1,51 @@
+{
+  "manifest_version": "0.3",
+  "name": "miru",
+  "display_name": "Miru Code Search",
+  "version": "1.10.1",
+  "description": "Hybrid semantic and keyword code search for coding agents.",
+  "long_description": "Miru (見る) indexes a local repository and gives agents `search`, `locate`, `expand`, and `find_related` tools. Requires Bun (https://bun.sh) on PATH; the bundle launches the published npm package with bunx.",
+  "author": {
+    "name": "Takara",
+    "url": "https://takara.ai"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/takara-ai/miru-code"
+  },
+  "homepage": "https://takara.ai",
+  "support": "https://github.com/takara-ai/miru-code/issues",
+  "license": "MIT",
+  "keywords": ["code-search", "semantic-search", "hybrid-search", "mcp", "embeddings"],
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.cjs",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.cjs"],
+      "env": {
+        "TAKARA_API_KEY": "${user_config.takara_api_key}",
+        "MIRU_DEFAULT_REPO": "${user_config.default_repo}"
+      }
+    }
+  },
+  "user_config": {
+    "takara_api_key": {
+      "type": "string",
+      "title": "Takara API key",
+      "description": "Optional. Without it, the MCP auth tool signs in with a device code.",
+      "sensitive": true,
+      "required": false
+    },
+    "default_repo": {
+      "type": "directory",
+      "title": "Default repository",
+      "description": "Optional. Repository searched when a tool call omits `repo`.",
+      "required": false
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "linux", "win32"],
+    "runtimes": { "node": ">=18.0.0" }
+  }
+}
