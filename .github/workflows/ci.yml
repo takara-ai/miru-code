@@ -9,6 +9,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  release-card:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install renderer and fonts
+        run: sudo apt-get update && sudo apt-get install -y librsvg2-bin fonts-liberation
+      - name: Render release card
+        run: bun scripts/generate-release-card.ts --release-json tests/fixtures/release-card.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-card-preview
+          path: dist/release-card/
+          if-no-files-found: error
+
   lint-typecheck:
     runs-on: ubuntu-latest
     steps:

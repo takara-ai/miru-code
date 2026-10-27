@@ -1,0 +1,5 @@
+{
+  "tagName": "v0.0.0-preview",
+  "isDraft": false,
+  "body": "### Features\n\n* **search:** Show compact source excerpts with original line numbers\n* **plugins:** Support Miru across coding agents\n\n### Bug Fixes\n\n* **auth:** Handle expired credentials without repeating sign-in prompts\n* **coverage:** Refresh coverage badge"
+}
