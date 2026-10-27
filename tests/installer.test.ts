@@ -1246,6 +1246,39 @@ describe("installer apply", () => {
 });
 
 describe("Copilot detection", () => {
+  test("Copilot routing install is persistent, idempotent and preserves user instructions", async () => {
+    const root = await mkdtemp(join(tmpdir(), "miru-copilot-routing-"));
+    try {
+      const original = AGENT_TARGETS.find((target) => target.id === "copilot");
+      if (!original?.mcp) throw new Error("Missing Copilot target");
+      const target: AgentTarget = {
+        ...original,
+        mcp: { ...original.mcp, path: join(root, "mcp-config.json") },
+        instructionsPath: join(root, "copilot-instructions.md"),
+        subagentPath: join(root, "agents/miru-code.agent.md"),
+      };
+      await Bun.write(target.instructionsPath ?? "", "Keep my project conventions.\n");
+      expect((await applyMcp(target, "install"))?.action).toBe("created");
+      const entry = (await Bun.file(target.mcp?.path ?? "").json()).mcpServers.miru;
+      expect(entry.deferTools).toBe("never");
+      expect(entry.tools).toEqual(["*"]);
+      await applyInstructions(target, "install");
+      await applySubagent(target, "install");
+      const first = await Bun.file(target.instructionsPath ?? "").text();
+      expect(first).toContain("Keep my project conventions.");
+      expect(first).toContain("named `miru-code`");
+      await applyInstructions(target, "install");
+      expect(await Bun.file(target.instructionsPath ?? "").text()).toBe(first);
+      expect(await Bun.file(target.subagentPath ?? "").text()).toContain('"miru/locate"');
+      await applyInstructions(target, "uninstall");
+      expect((await Bun.file(target.instructionsPath ?? "").text()).trim()).toBe(
+        "Keep my project conventions.",
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("isCopilotInstalled ignores shared ~/.copilot skills root alone", async () => {
     const home = await mkdtemp(join(tmpdir(), "miru-copilot-detect-"));
     try {

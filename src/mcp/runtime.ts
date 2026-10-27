@@ -22,8 +22,10 @@ type ToolHandler<Args> = (args: Args) => Promise<{
   content: Array<{ type: "text"; text: string }>;
 }>;
 
+type ClientText = string | (() => string);
+
 type RegisteredTool = {
-  description: string;
+  description: ClientText;
   meta?: Record<string, unknown>;
   inputSchema: Record<string, z.ZodType>;
   handler: ToolHandler<Record<string, unknown>>;
@@ -36,24 +38,29 @@ export type MiruMcpServerInfo = {
 
 export class MiruMcpServer {
   readonly serverInfo: MiruMcpServerInfo;
-  private readonly instructions?: string;
+  private readonly instructions?: ClientText;
+  private client?: { name: string; version: string };
   private readonly tools = new Map<string, RegisteredTool>();
   private transport: StdioTransport | null = null;
   private readonly onclose?: () => void;
 
   constructor(
     serverInfo: MiruMcpServerInfo,
-    options?: { instructions?: string; onclose?: () => void },
+    options?: { instructions?: ClientText; onclose?: () => void },
   ) {
     this.serverInfo = serverInfo;
     this.instructions = options?.instructions;
     this.onclose = options?.onclose;
   }
 
+  get clientInfo(): Readonly<{ name: string; version: string }> | undefined {
+    return this.client;
+  }
+
   registerTool<S extends Record<string, z.ZodType>>(
     name: string,
     config: {
-      description: string;
+      description: ClientText;
       inputSchema: S;
       _meta?: Record<string, unknown>;
     },
@@ -166,17 +173,20 @@ export class MiruMcpServer {
     }
 
     const requestedVersion = input.data.protocolVersion;
+    this.client = input.data.clientInfo;
     const protocolVersion = SUPPORTED_PROTOCOL_VERSIONS.includes(
       requestedVersion as (typeof SUPPORTED_PROTOCOL_VERSIONS)[number],
     )
       ? requestedVersion
       : LATEST_PROTOCOL_VERSION;
 
+    const instructions =
+      typeof this.instructions === "function" ? this.instructions() : this.instructions;
     return {
       protocolVersion,
       capabilities: this.getCapabilities(),
       serverInfo: this.serverInfo,
-      ...(this.instructions ? { instructions: this.instructions } : {}),
+      ...(instructions ? { instructions } : {}),
     };
   }
 
@@ -194,7 +204,7 @@ export class MiruMcpServer {
   private listTools(): Array<Record<string, unknown>> {
     return [...this.tools.entries()].map(([name, tool]) => ({
       name,
-      description: tool.description,
+      description: typeof tool.description === "function" ? tool.description() : tool.description,
       inputSchema: shapeToJsonSchema(tool.inputSchema),
       ...(tool.meta ? { _meta: tool.meta } : {}),
     }));

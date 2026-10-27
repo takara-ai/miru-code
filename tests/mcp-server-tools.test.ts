@@ -6,6 +6,7 @@ import { formatResultsText } from "../src/mcp/format-text.ts";
 import type { IndexCache } from "../src/mcp/index-cache.ts";
 import { createMcpServer } from "../src/mcp/server.ts";
 import type { Chunk, SearchResult } from "../src/types.ts";
+import { formatResults } from "../src/utils.ts";
 import { MemoryTransport } from "./helpers/mcp-memory-transport.ts";
 
 const sourceChunk: Chunk = {
@@ -28,6 +29,61 @@ function payload(transport: MemoryTransport, id: number): string {
 }
 
 describe("MCP tools against a local index", () => {
+  test("Copilot negotiation enables complete short results without changing other clients", async () => {
+    const short: Chunk = {
+      ...sourceChunk,
+      content: ["export function renew() {", ...Array(6).fill("  check();"), "}"].join("\n"),
+      end_line: 8,
+    };
+    const cache = {
+      get: async () => ({ search: async () => [{ chunk: short, score: 1 }] }),
+    } as unknown as IndexCache;
+    for (const [name, truncated] of [
+      ["copilot-cli", false],
+      ["other-client", true],
+    ] as const) {
+      const transport = new MemoryTransport([
+        {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: {
+            protocolVersion: "2025-06-18",
+            clientInfo: { name, version: "test" },
+          },
+        },
+        call(2, "search", { query: "renew", repo: "/repo" }),
+      ]);
+      const server = createMcpServer(cache);
+      await server.connect(transport);
+      expect(payload(transport, 2).includes("truncated:")).toBe(truncated);
+      if (!truncated) expect(payload(transport, 2)).toContain("8: }");
+      await server.close();
+    }
+  });
+  test("small complete chunks avoid context calls without exposing long chunks or long lines", () => {
+    const chunk = (lines: number, width = 30): Chunk => ({
+      ...sourceChunk,
+      content: Array.from({ length: lines }, (_, i) => `// ${i} ${"x".repeat(width)}`).join("\n"),
+      start_line: 40,
+      end_line: 39 + lines,
+    });
+    const short = chunk(8);
+    const large = chunk(30);
+    const wide = chunk(8, 400);
+    const result = (value: Chunk, complete = true) =>
+      formatResultsText(
+        formatResults("x", [{ chunk: value, score: 1 }], {
+          snippet: true,
+          shortChunkLines: complete ? 12 : undefined,
+        }),
+      );
+    expect(result(short)).toContain("47: ");
+    expect(result(short)).not.toContain("truncated:");
+    expect(result(short, false)).toContain("truncated:");
+    expect(result(large)).toContain("truncated:");
+    expect(result(wide)).toContain("truncated:");
+  });
   test("formats empty results", () => {
     expect(formatResultsText({ query: "nothing", results: [] })).toBe("No results found.");
   });

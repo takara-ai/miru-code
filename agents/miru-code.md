@@ -42,7 +42,7 @@ Native tools are allowed ONLY when:
 | Regex over code | Miru MCP `locate` with `/regex/` (`mode=files` for paths only) | Grep |
 | List files by name pattern | Miru MCP `locate` with `include` globs and no literal | Glob |
 | How/where/what handles X? (conceptual) | Miru MCP `search` (once) | Grep, Grep, Glob, SemanticSearch, or Read |
-| Full body of a `truncated: true` hit | Read the hit's `start-end` lines (`offset`/`limit`) | Re-search, Read whole file |
+| More context for a `truncated: true` hit | Read the hit's `start-end` lines (`offset`/`limit`) | Re-search, Read whole file |
 | Same file, neighbouring chunks | Miru MCP `expand` (fallback) | Re-search |
 | Similar code elsewhere | Miru MCP `find_related` | Grep chains |
 | Search docs or config | Miru `search` | Grep README paths |

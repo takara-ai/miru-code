@@ -3,7 +3,7 @@ import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { AgentId } from "../agents.ts";
-import { INSTRUCTIONS_MARKDOWN } from "./search-policy.ts";
+import { COPILOT_SEARCH_POLICY, INSTRUCTIONS_MARKDOWN } from "./search-policy.ts";
 
 /** Shared Copilot / VS Code / Visual Studio config root (MCP, agents). */
 export function copilotHomeDir(home: string): string {
@@ -85,9 +85,11 @@ const STDIO_SERVER_CONFIG: Record<string, unknown> = {
   type: "stdio",
 };
 
-const BARE_STDIO_SERVER_CONFIG: Record<string, unknown> = {
+export const COPILOT_SERVER_CONFIG: Record<string, unknown> = {
   command: "bunx",
   args: [MIRU_BUNX_PACKAGE, "mcp"],
+  deferTools: "never",
+  tools: ["*"],
 };
 
 const OPENCODE_SERVER_CONFIG: Record<string, unknown> = {
@@ -99,6 +101,8 @@ export const INSTRUCTIONS = `${MIRU_START}
 ${INSTRUCTIONS_MARKDOWN}
 ${MIRU_END}
 `;
+
+export const COPILOT_INSTRUCTIONS = `${MIRU_START}\n${COPILOT_SEARCH_POLICY}\n${MIRU_END}\n`;
 
 export type McpConfigFormat = "json" | "toml";
 
@@ -306,9 +310,9 @@ export const AGENT_TARGETS: AgentTarget[] = [
     mcp: jsonMcp(
       join(copilotHomeDir(HOME), "mcp-config.json"),
       "mcpServers",
-      BARE_STDIO_SERVER_CONFIG,
+      COPILOT_SERVER_CONFIG,
     ),
-    instructionsPath: null,
+    instructionsPath: join(copilotHomeDir(HOME), "copilot-instructions.md"),
     cursorRulesPath: null,
     legacyHooksPath: join(copilotHomeDir(HOME), "hooks", "miru-search.json"),
     legacyHooksFormat: "vscode",

@@ -7,6 +7,7 @@ import { ensureCredentials } from "../setup.ts";
 import {
   AGENT_TARGETS,
   type AgentTarget,
+  COPILOT_INSTRUCTIONS,
   INSTRUCTIONS,
   type InstallAction,
   type InstallMode,
@@ -30,6 +31,7 @@ import {
   replaceOrAppendMarked,
   stripJsonComments,
 } from "./config.ts";
+import { applyCopilotRouting } from "./copilot-routing.ts";
 import { removeLegacySearchHooks } from "./legacy-hooks.ts";
 import { promptConfirm, promptMultiSelect, requireInteractiveTerminal } from "./prompt.ts";
 import { CURSOR_RULES_MDC } from "./search-policy.ts";
@@ -174,7 +176,13 @@ async function applyInstructions(
   }
 
   const action =
-    mode === "install" ? await replaceOrAppendMarked(path, INSTRUCTIONS) : await removeMarked(path);
+    mode === "install"
+      ? await replaceOrAppendMarked(
+          path,
+          agent.id === "copilot" ? COPILOT_INSTRUCTIONS : INSTRUCTIONS,
+        )
+      : await removeMarked(path);
+  await applyCopilotRouting(agent, mode);
   return { path, action };
 }
 
