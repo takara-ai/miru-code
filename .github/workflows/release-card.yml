@@ -1,0 +1,63 @@
+name: Release card
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Published release tag
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (leave blank for latest)
+        required: false
+        type: string
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-cards-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  card:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Use the current generator when backfilling an older release.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install renderer and fonts
+        run: sudo apt-get update && sudo apt-get install -y librsvg2-bin fonts-liberation
+
+      - name: Read published release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+        run: |
+          if [ -n "$RELEASE_TAG" ]; then
+            gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json tagName,body,isDraft > release.json
+          else
+            gh release view --repo "$GITHUB_REPOSITORY" --json tagName,body,isDraft > release.json
+          fi
+
+      - name: Generate SVG and PNG cards
+        run: bun scripts/generate-release-card.ts --release-json release.json
+
+      - name: Attach cards to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(jq -r .tagName release.json)
+          gh release upload "$tag" dist/release-card/*.svg dist/release-card/*.png --clobber --repo "$GITHUB_REPOSITORY"
+          printf 'Attached SVG and PNG cards to [%s](%s/%s/releases/tag/%s).\n' "$tag" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$tag" >> "$GITHUB_STEP_SUMMARY"

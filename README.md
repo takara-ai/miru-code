@@ -463,6 +463,25 @@ Local MCP: `"command": "bun", "args": ["/path/to/miru-code/src/cli.ts"]`
 
 `miru -h` / setup print a framed wordmark on color terminals (`MIRU_QUIET=1` for subtitle only). Crane art lives in `src/brand-banner.ts`; regenerate with `bun run scripts/render-crane-art.ts` (ImageMagick). The crane is a registered mark of Takara.ai Ltd.
 
+### Release cards
+
+Each GitHub release gets a 1200 × 1200 SVG and PNG card as release assets. The generator reuses the Takara release-card design and takes up to three highlights from the published release notes, prioritizing features, security changes, and performance improvements. Routine maintenance is omitted when user-facing changes are available. No additional API key is needed.
+
+Release Please calls the card workflow directly; manually published releases also trigger it. To regenerate cards for an older release, run the **Release card** workflow with its tag (leave the tag blank for the latest release):
+
+```bash
+gh workflow run release-card.yml -f tag=v1.14.4
+```
+
+For a local preview, install `librsvg` (`brew install librsvg` on macOS, `apt-get install librsvg2-bin fonts-liberation` on Ubuntu), then run:
+
+```bash
+gh release view v1.14.4 --repo takara-ai/miru-code --json tagName,body,isDraft > /tmp/miru-release.json
+bun scripts/generate-release-card.ts --release-json /tmp/miru-release.json
+```
+
+Cards are written to `dist/release-card/`. CI renders a preview and saves it as the `release-card-preview` artifact.
+
 ## Credits
 
 Miru uses work by [MinishLab](https://github.com/MinishLab). Thank you to its authors.

@@ -92,3 +92,13 @@ jobs:
 
       - name: Publish to npm
         run: npm publish --access public ./takara-ai-miru-code-*.tgz
+
+  # GITHUB_TOKEN-created releases do not trigger a separate release event workflow.
+  release-card:
+    needs: release
+    if: needs.release.outputs.release_created == 'true'
+    uses: ./.github/workflows/release-card.yml
+    with:
+      tag: ${{ needs.release.outputs.tag_name }}
+    permissions:
+      contents: write
