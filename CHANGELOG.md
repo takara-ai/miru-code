@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.15.0](https://github.com/takara-ai/miru-code/compare/v1.14.4...v1.15.0) (2026-10-27)
+
+
+### Features
+
+* **release:** generate cards from release highlights ([a1f36d4](https://github.com/takara-ai/miru-code/commit/a1f36d4210adf69e062a6226764703573f7a1d0a))
+* **release:** generate cards from release highlights ([6d7f15b](https://github.com/takara-ai/miru-code/commit/6d7f15bcc02f586e0505144cda89f59924597168))
+
 ## [1.14.4](https://github.com/takara-ai/miru-code/compare/v1.14.3...v1.14.4) (2026-10-26)
 
 
