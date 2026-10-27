@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.1](https://github.com/takara-ai/miru-code/compare/v1.15.0...v1.15.1) (2026-10-27)
+
+
+### Bug Fixes
+
+* **copilot:** enforce Miru routing and reduce normal-agent overhead ([2305d03](https://github.com/takara-ai/miru-code/commit/2305d03faf560ea40754528a5c7c2a4d045f7332))
+
 ## [1.15.0](https://github.com/takara-ai/miru-code/compare/v1.14.4...v1.15.0) (2026-10-27)
 
 
