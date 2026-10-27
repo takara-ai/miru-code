@@ -71,6 +71,25 @@ Releases and the changelog are generated from these via [release-please](release
 - [Biome](https://biomejs.dev/) handles linting and formatting: `bun run lint`, `bun run lint:fix`.
 - TypeScript strictness is enforced via `bun run typecheck`.
 
+## Release cards
+
+Published releases receive a 1200 × 1200 SVG and PNG card generated from up to three user-facing release highlights.
+
+To regenerate a published release's cards, run the **Release card** workflow with its tag; omit the tag for the latest release:
+
+```bash
+gh workflow run release-card.yml -f tag=v1.14.4
+```
+
+For a local preview, install `librsvg` (`brew install librsvg` on macOS), then run:
+
+```bash
+gh release view v1.14.4 --repo takara-ai/miru-code --json tagName,body,isDraft > /tmp/miru-release.json
+bun scripts/generate-release-card.ts --release-json /tmp/miru-release.json
+```
+
+Output: `dist/release-card/`. CI saves the preview as the `release-card-preview` artifact.
+
 ## Questions?
 
 Contact jordan@takara.ai

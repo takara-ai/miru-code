@@ -68,13 +68,9 @@ The group must already exist in Identity Center (for federated setups, the group
 
 ## Developers: per-machine setup
 
-Requires the AWS CLI v2 and Miru 1.5.0 or later.
+Requires the AWS CLI v2. For Claude Code, [install the Miru plugin](../README.md#claude-code-recommended) first, then create and sign in to your AWS profile:
 
 ```bash
-# Install or update Miru
-bun add -g @takara-ai/miru-code
-miru --version
-
 # Create an SSO profile. Choose the endpoint account and the MiruInvoke role.
 aws configure sso --profile miru
 
@@ -83,6 +79,15 @@ aws sso login --profile miru
 
 # Confirm you are the SSO role in the right account
 aws sts get-caller-identity --profile miru
+```
+
+In Claude Code, open the [Miru plugin settings](self-hosted-sagemaker.md#claude-code-plugin) and set the endpoint ARN and AWS profile `miru`, then restart Claude Code. The plugin does not need a global Miru CLI install or `miru setup`.
+
+For terminal use or IDEs configured through the CLI, install Miru 1.5.0 or later and save the endpoint separately:
+
+```bash
+bun add -g @takara-ai/miru-code
+miru --version
 
 # Point Miru at the endpoint
 miru setup --sagemaker --arn <endpoint-arn> --profile miru
