@@ -185,6 +185,8 @@ export function formatResults(
   options?: {
     repoRoot?: string | null;
     snippet?: boolean;
+    /** Return small complete chunks instead of paying for a second context call. */
+    shortChunkLines?: number;
     snippetSourceChunks?: ReadonlyMap<string, Chunk>;
   },
 ): { query: string; results: Record<string, unknown>[] } {
@@ -198,7 +200,11 @@ export function formatResults(
   return {
     query,
     results: results.map((result, index) => {
-      const entry = payload?.[index];
+      const completeShortChunk =
+        options?.shortChunkLines != null &&
+        result.chunk.end_line - result.chunk.start_line + 1 <= options.shortChunkLines &&
+        result.chunk.content.length <= 2_000;
+      const entry = completeShortChunk ? undefined : payload?.[index];
       const chunk = entry?.result.chunk ?? result.chunk;
       const dict = chunkToResponseDict(chunk, repoRoot);
       const score = formatRelevanceScore(result.score, maxScore);

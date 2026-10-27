@@ -54,7 +54,7 @@ function isMiruEntry(format: LegacyHooksFormat, entry: Record<string, unknown>):
   return isLegacyCommand(entry.command);
 }
 
-/** Remove search hooks installed by older Miru releases; Miru no longer installs hooks. */
+/** Remove obsolete cross-host hooks; current CLI routing hooks have a separate owned file. */
 export async function removeLegacySearchHooks(
   format: LegacyHooksFormat,
   path: string,

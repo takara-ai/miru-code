@@ -12,7 +12,9 @@ import { benchmarkLocateComparison } from "../benchmark/locate-compare.ts";
 import { selectComparableLiteralSearchTool } from "../benchmark/rg-literal.ts";
 import { appendAgentBenchmark } from "../benchmark/summary.ts";
 import {
-  MCP_BENCHMARK_SERVER_INSTRUCTIONS,
+  MCP_BENCHMARK_GUIDANCE,
+  MCP_COPILOT_SERVER_INSTRUCTIONS,
+  MCP_COPILOT_TOOL_DESCRIPTIONS,
   MCP_EXPAND_TOOL_DESCRIPTION,
   MCP_FIND_RELATED_TOOL_DESCRIPTION,
   MCP_LOCATE_TOOL_DESCRIPTION,
@@ -111,17 +113,23 @@ export function createMcpServer(
       version: packageJson.version,
     },
     {
-      instructions: benchmark ? MCP_BENCHMARK_SERVER_INSTRUCTIONS : MCP_SERVER_INSTRUCTIONS,
+      instructions: (): string => {
+        const base = copilotClient() ? MCP_COPILOT_SERVER_INSTRUCTIONS : MCP_SERVER_INSTRUCTIONS;
+        return benchmark ? `${base} ${MCP_BENCHMARK_GUIDANCE}` : base;
+      },
       onclose: () => cache.close?.(),
     },
   );
+  const copilotClient = () => /copilot/i.test(server.clientInfo?.name ?? "");
+  const shortChunkLines = () => (copilotClient() ? 12 : undefined);
 
   registerAuthTool(server, { onAuthenticated: () => cache.close() });
 
   server.registerTool(
     "search",
     {
-      description: MCP_SEARCH_TOOL_DESCRIPTION,
+      description: () =>
+        copilotClient() ? MCP_COPILOT_TOOL_DESCRIPTIONS.search : MCP_SEARCH_TOOL_DESCRIPTION,
       _meta: LOAD_UPFRONT_META,
       inputSchema: {
         query: z.string().describe("Natural language or code query."),
@@ -170,6 +178,7 @@ export function createMcpServer(
               formatResults(query, results, {
                 repoRoot,
                 snippet: true,
+                shortChunkLines: shortChunkLines(),
               }),
             );
             return toolText(
@@ -191,6 +200,7 @@ export function createMcpServer(
         const payload = formatResults(query, results, {
           repoRoot,
           snippet: true,
+          shortChunkLines: shortChunkLines(),
         });
         const body = formatResultsText(payload);
         return toolText(skip ? withBenchmarkSkippedNote(body, skip) : body);
@@ -203,7 +213,8 @@ export function createMcpServer(
   server.registerTool(
     "locate",
     {
-      description: MCP_LOCATE_TOOL_DESCRIPTION,
+      description: () =>
+        copilotClient() ? MCP_COPILOT_TOOL_DESCRIPTIONS.locate : MCP_LOCATE_TOOL_DESCRIPTION,
       _meta: LOAD_UPFRONT_META,
       inputSchema: {
         literal: z
@@ -316,7 +327,8 @@ export function createMcpServer(
   server.registerTool(
     "expand",
     {
-      description: MCP_EXPAND_TOOL_DESCRIPTION,
+      description: () =>
+        copilotClient() ? MCP_COPILOT_TOOL_DESCRIPTIONS.expand : MCP_EXPAND_TOOL_DESCRIPTION,
       _meta: LOAD_UPFRONT_META,
       inputSchema: {
         file_path: z.string().describe("Path from a search hit."),
@@ -377,7 +389,10 @@ export function createMcpServer(
   server.registerTool(
     "find_related",
     {
-      description: MCP_FIND_RELATED_TOOL_DESCRIPTION,
+      description: () =>
+        copilotClient()
+          ? MCP_COPILOT_TOOL_DESCRIPTIONS.find_related
+          : MCP_FIND_RELATED_TOOL_DESCRIPTION,
       _meta: LOAD_UPFRONT_META,
       inputSchema: {
         file_path: z.string().describe("Path from a search hit."),
@@ -408,6 +423,7 @@ export function createMcpServer(
             formatResults(`Chunks related to ${filePath}:${anchorLine}`, results, {
               repoRoot,
               snippet: true,
+              shortChunkLines: shortChunkLines(),
             }),
           ),
         );

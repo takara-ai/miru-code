@@ -1,5 +1,9 @@
 import { join } from "node:path";
-import { buildSubagentBody, type NativeToolNames } from "./installer/search-policy.ts";
+import {
+  buildSubagentBody,
+  COPILOT_SEARCH_POLICY,
+  type NativeToolNames,
+} from "./installer/search-policy.ts";
 
 export type AgentId = "claude" | "copilot" | "cursor" | "gemini" | "kiro" | "opencode";
 
@@ -17,9 +21,10 @@ const AGENT_NATIVE_TOOLS: Record<AgentId, NativeToolNames> = {
     read: "Read",
   },
   copilot: {
-    explorationDenied: "grep_search, codebase_search, glob, or read_file",
-    grep: "grep_search",
-    read: "read_file",
+    explorationDenied:
+      "grep, rg, glob, grep_search, file_search, codebase_search, or broad view/read_file calls",
+    grep: "grep/rg",
+    read: "view",
   },
   gemini: {
     explorationDenied: "grep_search, glob, or read_file",
@@ -45,7 +50,8 @@ export function agentDestination(agent: AgentId, cwd = "."): string {
 
 export async function loadAgentTemplate(agent: AgentId): Promise<string> {
   const frontmatter = (await Bun.file(join(AGENTS_DIR, `${agent}.md`)).text()).trim();
-  const body = buildSubagentBody(AGENT_NATIVE_TOOLS[agent]);
+  const body =
+    agent === "copilot" ? COPILOT_SEARCH_POLICY : buildSubagentBody(AGENT_NATIVE_TOOLS[agent]);
   return `${frontmatter}\n\n${body}\n`;
 }
 

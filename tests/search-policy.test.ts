@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { loadAgentTemplate } from "../src/agents.ts";
 import {
   buildSubagentBody,
+  COPILOT_SEARCH_POLICY,
   MCP_BENCHMARK_SERVER_INSTRUCTIONS,
   MCP_LOCATE_TOOL_DESCRIPTION,
   MCP_READ_BENCHMARK_TOOL_DESCRIPTION,
@@ -34,6 +35,20 @@ describe("search-policy", () => {
     const template = await loadAgentTemplate("copilot");
     expect(template).toContain("grep_search");
     expect(template).toContain("read_file");
+    expect(template).toContain("`rg`");
+    expect(template).toContain("view");
+    expect(template).toContain("search_code_subagent");
+    expect(template).toContain("include-custom-instructions: true");
+    expect(COPILOT_SEARCH_POLICY).toContain("context_lines=8");
+    const match = template.match(/^tools: (.+)$/m);
+    const tools: string[] = JSON.parse(match?.[1] ?? "[]");
+    expect(tools).toContain("miru/locate");
+    expect(tools).toContain("miru/find_related");
+    expect(tools).toContain("agent");
+    expect(tools).not.toContain("*");
+    expect(tools).not.toContain("search");
+    expect(tools).not.toContain("execute");
+    expect(COPILOT_SEARCH_POLICY).toContain("named `miru-code`");
     expect(
       buildSubagentBody({
         explorationDenied: "grep_search",

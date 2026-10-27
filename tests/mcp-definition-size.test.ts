@@ -20,7 +20,9 @@ const call = (id: number, name: string, args: object) => ({
   params: { name, arguments: args },
 });
 
-async function listDefinitions(): Promise<{ tools: Listed[]; instructions: string }> {
+async function listDefinitions(
+  clientName = "size-test",
+): Promise<{ tools: Listed[]; instructions: string }> {
   const transport = new MemoryTransport([
     {
       jsonrpc: "2.0",
@@ -29,7 +31,7 @@ async function listDefinitions(): Promise<{ tools: Listed[]; instructions: strin
       params: {
         protocolVersion: "2025-06-18",
         capabilities: {},
-        clientInfo: { name: "size-test", version: "0" },
+        clientInfo: { name: clientName, version: "0" },
       },
     },
     { jsonrpc: "2.0", id: 2, method: "tools/list" },
@@ -41,6 +43,28 @@ async function listDefinitions(): Promise<{ tools: Listed[]; instructions: strin
 }
 
 describe("MCP definition size", () => {
+  test("Copilot gets smaller definitions with identical schemas and recovery access", async () => {
+    const general = await listDefinitions();
+    for (const name of ["GitHub Copilot CLI", "copilot-cli"]) {
+      const compact = await listDefinitions(name);
+      expect(compact.tools.map(({ name, inputSchema }) => ({ name, inputSchema }))).toEqual(
+        general.tools.map(({ name, inputSchema }) => ({ name, inputSchema })),
+      );
+      const tokens = (defs: typeof general) =>
+        countTokens(JSON.stringify(defs.tools)) + countTokens(defs.instructions);
+      expect(tokens(compact)).toBeLessThan(tokens(general) * 0.8);
+      expect(compact.instructions).toContain("miru-code");
+      expect(compact.tools.find((t) => t.name === "auth")?.description).toContain(
+        "never speculatively",
+      );
+      expect(compact.tools.find((t) => t.name === "expand")?.description).toContain(
+        "reported range",
+      );
+      expect(compact.tools.find((t) => t.name === "locate")?.description).toContain(
+        "context_lines=8",
+      );
+    }
+  });
   test("tool definitions plus server instructions stay within the per-session budget", async () => {
     const { tools, instructions } = await listDefinitions();
     const total = tools.reduce((sum, tool) => sum + countTokens(JSON.stringify(tool)), 0);

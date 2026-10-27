@@ -113,12 +113,37 @@ miru uninstall   # remove miru config
 | Gemini CLI     | `~/.gemini/settings.json`             | `~/.gemini/GEMINI.md`           | `~/.agents/skills/caveman/SKILL.md` | `~/.agents/skills/ste/SKILL.md`         |
 | Kiro           | `~/.kiro/settings/mcp.json`           | `~/.kiro/steering/miru.md`      | `~/.kiro/skills/caveman/SKILL.md`   | `~/.kiro/skills/ste/SKILL.md`           |
 | OpenCode       | `$XDG_CONFIG_HOME/opencode/opencode.json(c)` *(else `~/.config/opencode/…`)* | `…/AGENTS.md` | `~/.agents/skills/caveman/SKILL.md` | `~/.agents/skills/ste/SKILL.md` |
-| GitHub Copilot | `~/.copilot/mcp-config.json`          | —                               | `~/.agents/skills/caveman/SKILL.md` | `~/.agents/skills/ste/SKILL.md`         |
+| GitHub Copilot | `~/.copilot/mcp-config.json`          | `~/.copilot/copilot-instructions.md` | `~/.agents/skills/caveman/SKILL.md` | `~/.agents/skills/ste/SKILL.md`         |
 | Codex          | `~/.codex/config.toml`                | `~/.codex/AGENTS.md`            | `~/.agents/skills/caveman/SKILL.md` | `~/.agents/skills/ste/SKILL.md`         |
 | VS Code        | `…/Code/User/mcp.json`                | —                               | `~/.agents/skills/caveman/SKILL.md` | `~/.agents/skills/ste/SKILL.md`         |
 | Visual Studio  | `%USERPROFILE%\.mcp.json`             | —                               | `~/.agents/skills/caveman/SKILL.md` | `~/.agents/skills/ste/SKILL.md`         |
 | Windsurf       | —                                     | —                               | `~/.agents/skills/caveman/SKILL.md` | `~/.agents/skills/ste/SKILL.md`         |
 
+
+### GitHub Copilot CLI
+
+Select **GitHub Copilot** with **MCP server**, **Instructions** and **Sub-agent**
+enabled in `miru install`, then restart Copilot. These defaults apply to normal
+Copilot sessions: indexed searches use Miru, context reads stay within located
+ranges, and delegated code investigation selects the `miru-code` child with Miru
+tools. Other user instructions and hook files are preserved.
+
+Copilot clients receive shorter MCP definitions and complete small search chunks
+to avoid redundant context calls. Other clients keep their existing definitions
+and snippet behavior. A manual MCP-only setup gets the server improvements;
+the installer supplies the policy, named agent and routing hooks.
+
+Existing users should update and reinstall the integrations:
+
+```bash
+bun add -g @takara-ai/miru-code@latest
+miru install
+```
+
+Restart Copilot afterward. The hooks are a routing aid, not a security boundary.
+See the [cost and compliance evaluation](docs/copilot-cost-evaluation.md) and
+[evaluation harness](docs/copilot-evaluation.md). Evaluation covers Copilot CLI;
+VS Code, cloud agent and Microsoft 365 Copilot were not evaluated.
 
 ### Plugin packaging
 
