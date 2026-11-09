@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.2](https://github.com/takara-ai/miru-code/compare/v1.15.1...v1.15.2) (2026-11-09)
+
+
+### Bug Fixes
+
+* **sagemaker:** clarify setup and verify smoke-test responses ([6ded884](https://github.com/takara-ai/miru-code/commit/6ded884298a7c875aff4c034d8149d0222fee95a))
+
 ## [1.15.1](https://github.com/takara-ai/miru-code/compare/v1.15.0...v1.15.1) (2026-10-27)
 
 
