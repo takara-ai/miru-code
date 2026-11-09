@@ -64,10 +64,12 @@ You'll pass this in as `ModelPackageArn` in step 2.
 
 ## 2. Deploy the endpoint (CloudFormation or CDK)
 
-The supported way to deploy the endpoint is the template in
-[`examples/sagemaker-marketplace`](../examples/sagemaker-marketplace), from a clean AWS account with no
-prior SageMaker/Marketplace setup beyond the subscription above. Pick CloudFormation or CDK — both
-templates create the same resources and outputs.
+From a checkout of this repository, use the CloudFormation or CDK template in
+[`examples/sagemaker-marketplace`](../examples/sagemaker-marketplace). Deploy into the account entitled
+to use the Marketplace subscription. Use an AWS deployment profile for that account. The identity
+provisioning the stack needs permission to create the IAM role and SageMaker resources and to pass
+the execution role to SageMaker (`iam:PassRole`). For CDK, check that the bootstrap execution role has
+those permissions. Install AWS CLI v2, plus Node.js and npm if using CDK.
 
 ### Parameters
 
@@ -77,7 +79,12 @@ templates create the same resources and outputs.
 | `EndpointName`          | No       | `ds1-endpoint`    | Name for the SageMaker endpoint                                                                                                       |
 | `InstanceType`          | No       | `ml.c5.xlarge`    | SageMaker instance type for the endpoint                                                                                              |
 | `InitialInstanceCount`  | No       | `1`               | Number of instances for the production variant                                                                                       |
-| `Region`                | Yes      | —                 | Region you're deploying into. Doesn't change where the stack deploys — it's a cross-check that must match `ModelPackageArn`'s region and your `--region`/profile |
+| `Region`                | Yes      | —                 | Expected region recorded as a tag. The templates do not validate it or use it to select the deployment region. |
+
+Before deploying, compare the region in `ModelPackageArn` with the actual CloudFormation or CDK
+target. Choose a real-time instance type supported by the package and check your SageMaker endpoint
+quota in that region. Use a distinct `EndpointName` (up to 37 characters) for each stack in the same
+account, even across regions, because the derived IAM role name is account-wide.
 
 ### What it creates
 
@@ -92,48 +99,53 @@ templates create the same resources and outputs.
 | Output              | Use                                                                 |
 | -------------------- | -------------------------------------------------------------------- |
 | `EndpointArn`         | Use in the plugin settings or CLI setup in step 4                  |
-| `ExecutionRoleArn`    | The endpoint's IAM role (informational; not used by `miru setup`)  |
+| `ExecutionRoleArn`    | SageMaker service execution role (informational only)  |
 | `EndpointNameOut`     | Endpoint name                                                       |
 | `RegionOut`           | Region the stack deployed into — should match `Region`              |
 
 ### Deploy with CloudFormation
 
+Set `DEPLOY_PROFILE`, `DEPLOY_REGION`, and `MODEL_PACKAGE_ARN` to your deployment values before running these commands.
+
 ```bash
 aws cloudformation deploy \
   --template-file examples/sagemaker-marketplace/cloudformation/sagemaker-marketplace-endpoint.yml \
   --stack-name ds1-sagemaker-endpoint \
-  --region <region> \
+  --profile "$DEPLOY_PROFILE" \
+  --region "$DEPLOY_REGION" \
   --capabilities CAPABILITY_NAMED_IAM \
   --parameter-overrides \
-    ModelPackageArn=arn:aws:sagemaker:<region>:<account-id>:model-package/<name> \
-    Region=<region>
+    ModelPackageArn="$MODEL_PACKAGE_ARN" \
+    Region="$DEPLOY_REGION"
 
 aws cloudformation describe-stacks \
   --stack-name ds1-sagemaker-endpoint \
-  --region <region> \
+  --profile "$DEPLOY_PROFILE" \
+  --region "$DEPLOY_REGION" \
   --query "Stacks[0].Outputs"
 ```
 
 ### Deploy with CDK
 
+Use the same three variables as above. Set the deployment profile’s default region to
+`DEPLOY_REGION` before running CDK.
+
 ```bash
 cd examples/sagemaker-marketplace/cdk
 npm install
-npx cdk deploy \
-  --parameters ModelPackageArn=arn:aws:sagemaker:<region>:<account-id>:model-package/<name> \
-  --parameters Region=<region>
+npx cdk deploy --profile "$DEPLOY_PROFILE" \
+  --parameters ModelPackageArn="$MODEL_PACKAGE_ARN" \
+  --parameters Region="$DEPLOY_REGION"
 ```
 
-If CDK reports that the account/region is not bootstrapped, run `npx cdk bootstrap` once and retry.
-
-`CDK_DEFAULT_ACCOUNT` / `CDK_DEFAULT_REGION` are set automatically from your AWS credentials/profile —
-confirm they match the region your `ModelPackageArn` was issued for. Outputs are printed after deploy
-completes, or re-fetch them any time with:
+Check that the account and region shown by CDK match your target. If the environment needs bootstrapping,
+run `npx cdk bootstrap --profile "$DEPLOY_PROFILE"` and retry. Re-fetch the deployment outputs with:
 
 ```bash
 aws cloudformation describe-stacks \
   --stack-name SageMakerMarketplaceEndpointStack \
-  --region <region> \
+  --profile "$DEPLOY_PROFILE" \
+  --region "$DEPLOY_REGION" \
   --query "Stacks[0].Outputs"
 ```
 
@@ -147,16 +159,19 @@ return embeddings; this path has less coverage, so prefer the template.
 
 This is separate from the endpoint's execution role above — it's the identity **you or your CI** use to
 call the endpoint from `miru setup` / indexing / search. You need an AWS identity that can call
-`sagemaker:InvokeEndpoint` on the endpoint ARN from step 2. The simplest path for a laptop / CI user is a
+`sagemaker:InvokeEndpoint` on the endpoint ARN from step 2. The invoking credentials must resolve to
+an identity in the endpoint's AWS account. SageMaker Runtime uses the caller's account and the
+endpoint name to select the endpoint. Miru takes the runtime region from the endpoint ARN. The simplest path for a laptop / CI user is a
 **least-privilege IAM user** scoped to that one endpoint, installed as a named profile.
 Organizations using IAM Identity Center should use the [federated access guide](self-hosted-sagemaker-identity-center.md) instead. It avoids long-lived IAM users and access keys.
 
-From a checkout of this repo, with the [AWS CLI](https://docs.aws.amazon.com/cli/) available and **admin**
-credentials in your current shell:
+For the IAM user path, use a checkout of this repo with Bun, dependencies installed via `bun install`,
+and AWS CLI v2. Run the provisioning command with admin credentials for the endpoint account.
+Set `ENDPOINT_ARN` to the `EndpointArn` output:
 
 ```bash
 bun run sagemaker:create-invoke-user -- \
-  --endpoint-arn arn:aws:sagemaker:<region>:<account-id>:endpoint/<name> \
+  --endpoint-arn "$ENDPOINT_ARN" \
   --profile miru
 ```
 
@@ -171,11 +186,20 @@ Optional flags: `--user-name <name>`, `--profile <name>` (alias: `--arn` for the
 Prefer SSO / IAM roles in production if your org requires it — the runbook script is the easy start with
 long-lived keys. Rotate or delete keys when someone leaves.
 
-Smoke-test invoke (optional):
+### Smoke-test with the developer profile
+
+Once the endpoint is `InService`, run these commands from the repository checkout with Bun and
+dependencies installed. Set `ENDPOINT_ARN` to the stack output and use the same profile you will
+configure in Miru. For an SSO profile, run `aws sso login --profile miru` first.
 
 ```bash
-bun run sagemaker:auth-check -- --arn arn:aws:sagemaker:<region>:<account-id>:endpoint/<name>
+aws sts get-caller-identity --profile miru
+AWS_PROFILE=miru bun run sagemaker:auth-check -- --arn "$ENDPOINT_ARN"
 ```
+
+Use a shell without exported AWS access keys and confirm the caller account matches the endpoint ARN.
+Expect `OK` with one embedding and a positive dimension count. This checks a single invocation.
+Verify indexing and search in your chosen Miru client after configuration.
 
 ## 4. Point Miru at the endpoint
 
@@ -200,7 +224,7 @@ Use this when running Miru from a terminal or installing an IDE integration thro
 
 ```bash
 miru setup --sagemaker \
-  --arn arn:aws:sagemaker:<region>:<account-id>:endpoint/<name> \
+  --arn "$ENDPOINT_ARN" \
   --profile miru
 ```
 

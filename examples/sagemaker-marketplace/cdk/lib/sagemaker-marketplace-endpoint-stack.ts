@@ -23,7 +23,8 @@ export class SageMakerMarketplaceEndpointStack extends Stack {
     const endpointName = new CfnParameter(this, "EndpointName", {
       type: "String",
       default: "ds1-endpoint",
-      description: "Name for the SageMaker endpoint",
+      maxLength: 37,
+      description: "Name for the SageMaker endpoint (up to 37 characters to fit the IAM role name)",
     });
 
     const instanceType = new CfnParameter(this, "InstanceType", {
@@ -114,7 +115,7 @@ export class SageMakerMarketplaceEndpointStack extends Stack {
     endpoint.addResourceDependency(endpointConfig);
 
     new CfnOutput(this, "ExecutionRoleArn", {
-      description: "IAM role ARN used by the SageMaker endpoint (needed for Miru configuration)",
+      description: "SageMaker service execution role ARN (informational only)",
       value: executionRole.attrArn,
     });
     new CfnOutput(this, "EndpointArn", {

@@ -172,6 +172,7 @@ async function main(): Promise<void> {
   console.log(`  miru setup --sagemaker --arn ${args.endpointArn} --profile ${args.profile}`);
   console.log("");
   console.log("Optional smoke test:");
+  console.log("  Set AWS_PROFILE to the installed profile, then run:");
   console.log(`  bun run sagemaker:auth-check -- --arn ${args.endpointArn}`);
 }
 

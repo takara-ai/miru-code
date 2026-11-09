@@ -2,13 +2,13 @@
 
 Use this page if your users are managed in Entra ID, Okta or another IdP and federated into AWS through IAM Identity Center. It replaces the invoke-only IAM user step of the [self-hosted SageMaker guide](self-hosted-sagemaker.md) - no IAM users or static access keys are created.
 
-Prerequisite: the endpoint is deployed (step 1 of that guide) and you have its ARN.
+Prerequisite: the endpoint is deployed (step 2 of that guide) and you have its ARN.
 
 ## How it fits together
 
 | Identity | Where it lives | What it does |
 | -------- | -------------- | ------------ |
-| SageMaker execution role | Endpoint account | Lets the SageMaker service pull the container and write logs. No people use it. Created in step 1. |
+| SageMaker execution role | Endpoint account | Assumed by SageMaker to run the endpoint. Created in step 2. |
 | `MiruInvoke` permission set | Identity Center | Grants `sagemaker:InvokeEndpoint` on one endpoint and nothing else. Assigned to a group. |
 | Developer | Your IdP | Logs in with `aws sso login`, receives short-lived credentials for `MiruInvoke`, runs Miru. |
 

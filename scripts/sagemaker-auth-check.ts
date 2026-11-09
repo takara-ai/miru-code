@@ -91,6 +91,9 @@ try {
 
   const first = response.data[0]?.embedding;
   const dims = first ? embeddingDimensions(first) : 0;
+  if (response.data.length !== 1 || !Number.isInteger(dims) || dims <= 0) {
+    throw new Error("Expected one non-empty embedding for the sample input.");
+  }
 
   console.log(`OK — ${response.data.length} embedding(s), ${dims} dims, ${elapsed}ms`);
   process.exit(0);
@@ -104,9 +107,6 @@ try {
     console.error("");
     console.error("Check that the exported AWS credentials belong to an identity with");
     console.error(`sagemaker:InvokeEndpoint on ${arn}.`);
-  } else if (status === 424) {
-    console.error("");
-    console.error("The endpoint responded, but the deployed model isn't an embedding model.");
   }
   process.exit(1);
 }

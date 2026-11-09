@@ -10,7 +10,8 @@ Parameters:
   EndpointName:
     Type: String
     Default: ds1-endpoint
-    Description: Name for the SageMaker endpoint
+    MaxLength: 37
+    Description: Name for the SageMaker endpoint (up to 37 characters to fit the IAM role name)
   InstanceType:
     Type: String
     Default: ml.c5.xlarge
@@ -91,7 +92,7 @@ Resources:
 
 Outputs:
   ExecutionRoleArn:
-    Description: IAM role ARN used by the SageMaker endpoint (needed for Miru configuration)
+    Description: SageMaker service execution role ARN (informational only)
     Value: !GetAtt SageMakerExecutionRole.Arn
   EndpointArn:
     Description: SageMaker endpoint ARN (needed for Miru configuration)
