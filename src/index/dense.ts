@@ -22,10 +22,10 @@ export class VectorIndex implements SemanticIndex {
   private readonly dim: number;
   private vectorsCache: Float32Array[] | null = null;
 
-  constructor(vectors: Float32Array[]) {
+  constructor(vectors: Float32Array[], emptyDimensions = 0) {
     if (vectors.length === 0) {
       this.count = 0;
-      this.dim = 0;
+      this.dim = emptyDimensions;
       this.data = new Float32Array(0);
       return;
     }

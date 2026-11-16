@@ -1,9 +1,7 @@
 import { watch } from "node:fs";
-import { relative, resolve } from "node:path";
+import { resolve } from "node:path";
 import { isCredentialsError } from "../auth/errors.ts";
-import { walkFiles } from "../index/file-walker.ts";
-import { getExtensions } from "../index/files.ts";
-import { normalizeRelativePath, relativePathFromRoot } from "../index/incremental.ts";
+import { findChangedFiles, relativePathFromRoot } from "../index/incremental.ts";
 import { MiruIndex } from "../miru-index.ts";
 import { type ContentType, defaultContentTypes } from "../types.ts";
 import {
@@ -101,7 +99,7 @@ export class IndexCache {
     this.fromSource =
       dependencies.fromSource ??
       ((source, content, model, ref) =>
-        MiruIndex.fromCachedSource(source, content, model, ref, undefined, true));
+        MiruIndex.fromCachedSource(source, content, model, ref, undefined, "watch"));
     this.watchSource = dependencies.watch ?? watch;
   }
 
@@ -349,42 +347,14 @@ export class IndexCache {
       return;
     }
 
-    const storedMtimes = index.getStoredFileMtimes();
     const entry = this.entries.get(cacheKey);
     if (!entry || entry.index !== index) return;
 
     try {
-      await Promise.all(
-        [...storedMtimes].map(async ([filePath, storedMtime]) => {
-          try {
-            const currentStat = await Bun.file(resolve(root, filePath)).stat();
-            const currentMtime = Math.floor(currentStat.mtime?.getTime() ?? 0);
-
-            if (this.entries.get(cacheKey) === entry && currentMtime !== storedMtime) {
-              entry.pendingPaths.add(normalizeRelativePath(filePath));
-            }
-          } catch {
-            if (this.entries.get(cacheKey) === entry)
-              entry.pendingPaths.add(normalizeRelativePath(filePath));
-          }
-        }),
-      );
-
-      // Files created on disk while this index wasn't loaded (or never indexed
-      // before) have no entry in `storedMtimes` and are otherwise invisible to
-      // the mtime comparison above; a directory walk is the only way to find them.
-      const extensions = getExtensions(index.contentTypes);
-      for await (const absolutePath of walkFiles(root, extensions)) {
-        if (this.entries.get(cacheKey) !== entry) return;
-        const relativePath = normalizeRelativePath(relative(root, absolutePath));
-        if (!storedMtimes.has(relativePath)) {
-          entry.pendingPaths.add(relativePath);
-        }
-      }
-
-      if (this.entries.get(cacheKey) === entry && entry.pendingPaths.size > 0) {
-        await this.flushFileUpdates(cacheKey, source, index);
-      }
+      const changed = await findChangedFiles(root, index.contentTypes, index.getStoredFileMtimes());
+      if (this.entries.get(cacheKey) !== entry) return;
+      for (const path of changed) entry.pendingPaths.add(path);
+      if (entry.pendingPaths.size > 0) await this.flushFileUpdates(cacheKey, source, index);
     } catch {}
   }
 

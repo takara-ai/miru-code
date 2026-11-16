@@ -12,7 +12,11 @@ import type { BM25Index } from "./index/bm25.ts";
 import { withIndexCacheLock } from "./index/cache-lock.ts";
 import { buildChunkSelector } from "./index/chunk-selector.ts";
 import { createIndexFromPath } from "./index/create.ts";
-import { applyIncrementalFileChanges, normalizeRelativePath } from "./index/incremental.ts";
+import {
+  applyIncrementalFileChanges,
+  findChangedFiles,
+  normalizeRelativePath,
+} from "./index/incremental.ts";
 import type { SemanticIndex } from "./index/semantic-index.ts";
 import { cleanIndexFiles, saveIndexSnapshot } from "./index/snapshot.ts";
 import {
@@ -237,7 +241,7 @@ export class MiruIndex {
     embeddingModel?: string,
     ref?: string | null,
     dependencies?: Partial<FactoryDependencies>,
-    reconcileMissingFiles = false,
+    localRefresh: "immediate" | "watch" = "immediate",
   ): Promise<MiruIndex> {
     if (isGitUrl(source)) {
       return MiruIndex.fromGit(source, content, embeddingModel, ref, dependencies);
@@ -251,7 +255,7 @@ export class MiruIndex {
       content,
       deps,
       () => MiruIndex.buildFromPath(resolved, model, content, deps, resolved),
-      reconcileMissingFiles,
+      localRefresh,
     );
   }
 
@@ -295,30 +299,31 @@ export class MiruIndex {
     content: ContentType[],
     deps: FactoryDependencies,
     build: () => Promise<MiruIndex>,
-    reconcileMissingFiles = false,
+    localRefresh?: "immediate" | "watch",
   ): Promise<MiruIndex> {
-    const cached = await MiruIndex.loadSourceCache(
-      source,
-      model,
-      content,
-      deps,
-      reconcileMissingFiles,
-    );
-    if (cached) return cached;
+    const read = () => MiruIndex.loadSourceCache(source, model, content, deps, !!localRefresh);
+    const changedFiles = (index: MiruIndex) =>
+      localRefresh === "immediate" && index.root
+        ? findChangedFiles(index.root, index.contentTypes, index.getStoredFileMtimes())
+        : [];
+
+    const cached = await read();
+    if (cached && (await changedFiles(cached)).length === 0) return cached;
 
     const path = deps.findIndexCachePath(source);
     return withIndexCacheLock(path, async () => {
-      const reopened = await MiruIndex.loadSourceCache(
-        source,
-        model,
-        content,
-        deps,
-        reconcileMissingFiles,
-      );
-      if (reopened) return reopened;
-
-      await cleanIndexFiles(path, false).catch(() => {});
-      const index = await build();
+      // A foreground refresh or background checkpoint may have won the lock.
+      const reopened = await read();
+      let index: MiruIndex;
+      if (reopened) {
+        const changed = await changedFiles(reopened);
+        if (changed.length === 0) return reopened;
+        await reopened.applyFileChanges(changed);
+        index = reopened;
+      } else {
+        await cleanIndexFiles(path, false).catch(() => {});
+        index = await build();
+      }
       if (deps.saveBuiltIndex) await deps.saveBuiltIndex(index, path);
       else await index.saveSnapshot(path, true);
       return index;
@@ -387,7 +392,14 @@ export class MiruIndex {
   ): MiruIndex {
     const content = (metadata.content_type as ContentType[]) ?? defaultContentTypes();
     const root = metadata.root_path ? String(metadata.root_path) : null;
-    const storedFileMtimes = (metadata.file_mtimes as Record<string, number>) ?? {};
+    const storedFileMtimes = { ...(metadata.file_mtimes as Record<string, number> | undefined) };
+    if (Array.isArray(metadata.file_paths)) {
+      for (const path of metadata.file_paths) {
+        if (typeof path === "string" && !Object.hasOwn(storedFileMtimes, path)) {
+          Object.defineProperty(storedFileMtimes, path, { value: 0, enumerable: true });
+        }
+      }
+    }
 
     return new MiruIndex({
       embeddings: deps.getEmbeddingBackend(model),

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -262,5 +262,66 @@ describe("validated cache bundles", () => {
     });
     expect((await load()).loadedFromDisk).toBe(true);
     expect(await Bun.file(orphan).exists()).toBe(false);
+  });
+
+  test("CLI cache loads recover edits that MCP has not checkpointed", async () => {
+    const { source, indexPath } = await seed("interrupted-checkpoint");
+    await rm(indexPath, { recursive: true, force: true });
+    await mkdir(source);
+    const changed = join(source, "changed.ts");
+    const deleted = join(source, "deleted.ts");
+    const unchanged = join(source, "unchanged.ts");
+    const added = join(source, "added.ts");
+    await writeFile(changed, "export const oldToken = 1;\n");
+    await utimes(changed, 1000, 1000);
+    await writeFile(deleted, "export const deletedToken = 2;\n");
+    await writeFile(unchanged, "export const unchangedToken = 3;\n");
+
+    const embedded: string[] = [];
+    const embeddings = {
+      model: MODEL,
+      dimensions: 256,
+      async embedDocuments(texts: string[]) {
+        embedded.push(...texts);
+        return texts.map(() => new Float32Array(256));
+      },
+      embedQuery: async () => new Float32Array(256),
+    };
+    const dependencies = { getEmbeddingBackend: () => embeddings };
+    const open = (mode?: "immediate" | "watch") =>
+      MiruIndex.fromCachedSource(source, ["code"], MODEL, undefined, dependencies, mode);
+    await open();
+    embedded.length = 0;
+    await writeFile(changed, "export const updatedToken = 4;\n");
+    await writeFile(added, "export const addedToken = 5;\n");
+    await rm(deleted);
+
+    // The watcher can see the changes before the background checkpoint publishes them.
+    const watching = await open("watch");
+    await watching.applyFileChanges(["changed.ts", "deleted.ts", "added.ts"]);
+    expect(watching.locateLiteral("updatedToken").n).toBe(1);
+    expect(
+      (await loadCachedIndex(indexPath)).chunks.some((chunk) => chunk.content.includes("oldToken")),
+    ).toBe(true);
+    embedded.length = 0;
+
+    const indexes = await Promise.all([open(), open()]);
+    for (const index of indexes) {
+      expect(index.locateLiteral("oldToken").n).toBe(0);
+      expect(index.locateLiteral("deletedToken").n).toBe(0);
+      expect(index.locateLiteral("updatedToken").n).toBe(1);
+      expect(index.locateLiteral("addedToken").n).toBe(1);
+      expect(index.locateLiteral("unchangedToken").n).toBe(1);
+    }
+    expect(embedded.map((text) => text.trim()).sort()).toEqual([
+      "export const addedToken = 5;",
+      "export const updatedToken = 4;",
+    ]);
+
+    const persisted = await MiruIndex.loadFromDisk(indexPath, MODEL, dependencies);
+    expect(persisted.locateLiteral("updatedToken").n).toBe(1);
+    await Promise.all([rm(changed), rm(added), rm(unchanged)]);
+    expect((await open()).chunks).toHaveLength(0);
+    expect((await open()).chunks).toHaveLength(0);
   });
 });

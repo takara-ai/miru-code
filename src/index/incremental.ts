@@ -1,8 +1,11 @@
+import { stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { chunkSource } from "../chunking/chunking.ts";
+import { mapPool, resolveWorkerConcurrency } from "../concurrency.ts";
 import type { EmbeddingBackend } from "../embeddings/openai.ts";
 import type { Chunk, ContentType } from "../types.ts";
 import type { BM25Index } from "./bm25.ts";
+import { walkFiles } from "./file-walker.ts";
 import { detectLanguage, getExtensions, getFileStatus, readFileText } from "./files.ts";
 import type { SemanticIndex } from "./semantic-index.ts";
 import { buildBm25FromChunks, patchBm25 } from "./sparse.ts";
@@ -11,6 +14,29 @@ import { vectorAt } from "./vectors.ts";
 
 export function normalizeRelativePath(path: string): string {
   return path.replace(/\\/g, "/").replace(/^\.\/+/, "");
+}
+
+/** Find edits, deletions and additions since the local index was saved. */
+export async function findChangedFiles(
+  root: string,
+  content: ContentType[],
+  storedMtimes: ReadonlyMap<string, number>,
+): Promise<string[]> {
+  const changed = new Set<string>();
+  await mapPool([...storedMtimes], resolveWorkerConcurrency(), async ([path, mtime]) => {
+    const current = await stat(resolve(root, path)).catch(() => null);
+    if (!current?.isFile() || Math.floor(current.mtimeMs) !== mtime) {
+      changed.add(normalizeRelativePath(path));
+    }
+  });
+
+  for await (const absolutePath of walkFiles(root, getExtensions(content))) {
+    const path = normalizeRelativePath(relative(root, absolutePath));
+    if (storedMtimes.has(path)) continue;
+    const status = await getFileStatus(absolutePath).catch(() => null);
+    if (status === "valid") changed.add(path);
+  }
+  return [...changed];
 }
 
 async function chunksForFile(root: string, relativePath: string): Promise<Chunk[]> {
@@ -137,10 +163,6 @@ export async function applyIncrementalFileChanges(options: {
   const chunks = [...keptChunks, ...addedChunks];
   const vectors = [...keptVectors, ...addedVectors];
 
-  if (chunks.length === 0) {
-    throw new Error(`No indexed chunks remain under ${root}.`);
-  }
-
   if (vectors.length !== chunks.length) {
     throw new Error(`Vector count ${vectors.length} does not match chunk count ${chunks.length}.`);
   }
@@ -148,7 +170,7 @@ export async function applyIncrementalFileChanges(options: {
   return {
     chunks,
     bm25: baseBm25 ? patchBm25(baseBm25, removedDocs, addedChunks) : buildBm25FromChunks(chunks),
-    semantic: buildSemanticIndex(vectors),
+    semantic: buildSemanticIndex(vectors, options.semanticIndex.dimensions),
   };
 }
 
