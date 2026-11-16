@@ -19,6 +19,9 @@ const LEGACY_FILES = new Set(["bm25_index.json", "chunks.json", "metadata.json",
 const compress = promisify(gzip);
 const decompress = promisify(gunzip);
 const READ_BLOCK_BYTES = 64 * 1024 * 1024;
+const WINDOWS_RENAME_RETRY_MS = 25;
+const WINDOWS_RENAME_TIMEOUT_MS = 5_000;
+const WINDOWS_SHARING_ERRORS = new Set(["EPERM", "EACCES", "EBUSY"]);
 
 export interface IndexBundle {
   bm25: BM25Index;
@@ -84,6 +87,32 @@ function checkChunkCount(chunks: number, bm25: number, vectors: number): void {
   }
 }
 
+async function publishSnapshot(
+  temporary: string,
+  destination: string,
+  publish: typeof rename,
+): Promise<void> {
+  const deadline = performance.now() + WINDOWS_RENAME_TIMEOUT_MS;
+  while (true) {
+    try {
+      await publish(temporary, destination);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      // Windows may deny replacement until an existing reader closes its handle.
+      if (
+        process.platform !== "win32" ||
+        !code ||
+        !WINDOWS_SHARING_ERRORS.has(code) ||
+        performance.now() >= deadline
+      ) {
+        throw error;
+      }
+      await Bun.sleep(WINDOWS_RENAME_RETRY_MS);
+    }
+  }
+}
+
 /** Publish one complete bundle. A failed write leaves any previous snapshot in place. */
 export async function saveIndexSnapshot(
   root: string,
@@ -116,7 +145,7 @@ export async function saveIndexSnapshot(
     } finally {
       await file.close();
     }
-    await publish(temporary, destination);
+    await publishSnapshot(temporary, destination, publish);
   } catch (error) {
     await rm(temporary, { force: true }).catch(() => {});
     throw error;

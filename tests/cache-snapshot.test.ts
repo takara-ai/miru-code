@@ -49,6 +49,7 @@ test("overlapping publications expose only complete snapshots and preserve in-fl
   const firstPrepared = Promise.withResolvers<void>();
   const publishFirst = Promise.withResolvers<void>();
   const originalOpened = Promise.withResolvers<void>();
+  const secondAttempted = Promise.withResolvers<void>();
   const resumeRead = Promise.withResolvers<void>();
   try {
     await saveIndexSnapshot(root, original);
@@ -62,17 +63,33 @@ test("overlapping publications expose only complete snapshots and preserve in-fl
       await publishFirst.promise;
       await rename(temporary, destination);
     });
+    let secondSave: Promise<void> | undefined;
     try {
       await Promise.all([firstPrepared.promise, originalOpened.promise]);
       expectBundle(await loadCachedIndex(root), original);
-      await saveIndexSnapshot(root, second);
+      secondSave = saveIndexSnapshot(root, second, async (temporary, destination) => {
+        try {
+          await rename(temporary, destination);
+        } finally {
+          secondAttempted.resolve();
+        }
+      });
+      if (process.platform === "win32") {
+        // The first rename may fail while the held reader is open. Releasing it
+        // after that attempt allows the same publication to retry safely.
+        await Promise.race([secondAttempted.promise, secondSave]);
+        resumeRead.resolve();
+      }
+      await secondSave;
       expectBundle(await loadCachedIndex(root), second);
       resumeRead.resolve();
       expectBundle(await reader, original);
     } finally {
       resumeRead.resolve();
+      // Let the second writer finish before publishing the first writer's snapshot.
+      await Promise.allSettled([reader, secondSave]);
       publishFirst.resolve();
-      await Promise.all([reader, writer]);
+      await writer;
     }
 
     expectBundle(await loadCachedIndex(root), first);
