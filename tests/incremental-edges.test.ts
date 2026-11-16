@@ -101,16 +101,6 @@ describe("incremental indexing edge cases", () => {
           relativePaths: ["src/a.ts"],
         }),
       ).rejects.toThrow("Vector count");
-      await expect(
-        applyIncrementalFileChanges({
-          root,
-          content: ["code"],
-          embeddings: embedding,
-          chunks: [old],
-          semanticIndex: new VectorIndex([new Float32Array([1, 0])]),
-          relativePaths: ["old.ts"],
-        }),
-      ).rejects.toThrow("No indexed chunks remain");
     } finally {
       await rm(root, { recursive: true, force: true });
     }

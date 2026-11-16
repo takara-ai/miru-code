@@ -137,10 +137,6 @@ export async function applyIncrementalFileChanges(options: {
   const chunks = [...keptChunks, ...addedChunks];
   const vectors = [...keptVectors, ...addedVectors];
 
-  if (chunks.length === 0) {
-    throw new Error(`No indexed chunks remain under ${root}.`);
-  }
-
   if (vectors.length !== chunks.length) {
     throw new Error(`Vector count ${vectors.length} does not match chunk count ${chunks.length}.`);
   }
@@ -148,7 +144,7 @@ export async function applyIncrementalFileChanges(options: {
   return {
     chunks,
     bm25: baseBm25 ? patchBm25(baseBm25, removedDocs, addedChunks) : buildBm25FromChunks(chunks),
-    semantic: buildSemanticIndex(vectors),
+    semantic: buildSemanticIndex(vectors, options.semanticIndex.dimensions),
   };
 }
 
