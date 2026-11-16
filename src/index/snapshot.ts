@@ -1,15 +1,23 @@
 import { randomUUID } from "node:crypto";
-import { type FileHandle, mkdir, open, rename, rm } from "node:fs/promises";
+import { type FileHandle, mkdir, open, readdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { promisify } from "node:util";
+import { gunzip, gzip } from "node:zlib";
 import { type Chunk, chunkFromDict } from "../types.ts";
 import { BM25Index } from "./bm25.ts";
+import { withIndexCacheLock } from "./cache-lock.ts";
 import { VectorIndex } from "./dense.ts";
 import { QuantizedVectorIndex } from "./quantize.ts";
 import type { SemanticIndex } from "./semantic-index.ts";
 import { type SemanticStorage, semanticStorageOf } from "./vector-storage.ts";
 
 const SNAPSHOT_FILE = "snapshot.bin";
-const MAGIC = Buffer.from("MIRU_IDX_1\n");
+const LEGACY_MAGIC = Buffer.from("MIRU_IDX_1\n");
+const MAGIC = Buffer.from("MIRU_IDX_2\n");
+const TEMPORARY_SNAPSHOT = /^\.snapshot\.bin-[0-9a-f-]{36}$/;
+const LEGACY_FILES = new Set(["bm25_index.json", "chunks.json", "metadata.json", "semantic_index"]);
+const compress = promisify(gzip);
+const decompress = promisify(gunzip);
 const READ_BLOCK_BYTES = 64 * 1024 * 1024;
 
 export interface IndexBundle {
@@ -27,12 +35,43 @@ interface VectorShape {
 
 type AcceptSnapshot = (metadata: Record<string, unknown>, shape: VectorShape) => Promise<boolean>;
 
-async function writeJson(file: FileHandle, value: unknown): Promise<void> {
+async function writeJson(file: FileHandle, value: unknown, compressed = false): Promise<void> {
   const json = JSON.stringify(value);
+  const data = compressed ? await compress(json, { level: 1 }) : Buffer.from(json);
   const length = Buffer.alloc(4);
-  length.writeUInt32LE(Buffer.byteLength(json));
+  length.writeUInt32LE(data.byteLength);
   await file.writeFile(length);
-  await file.writeFile(json);
+  await file.writeFile(data);
+}
+
+async function obsoleteIndexFiles(root: string, hasSnapshot: boolean): Promise<string[]> {
+  try {
+    const files = await readdir(root);
+    return files.filter(
+      (file) => TEMPORARY_SNAPSHOT.test(file) || (hasSnapshot && LEGACY_FILES.has(file)),
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+}
+
+/** Call with the per-cache writer lock held. Preserve legacy files until publication succeeds. */
+export async function cleanIndexFiles(root: string, hasSnapshot: boolean): Promise<void> {
+  const paths = await obsoleteIndexFiles(root, hasSnapshot);
+  await Promise.all(paths.map((path) => rm(join(root, path), { recursive: true, force: true })));
+}
+
+/** A cache hit can reclaim files from a writer that died before completing cleanup. */
+export async function cleanAfterCacheHit(root: string, hasSnapshot: boolean): Promise<void> {
+  if (!(await obsoleteIndexFiles(root, hasSnapshot)).length) return;
+  await withIndexCacheLock(
+    root,
+    async () => {
+      await cleanIndexFiles(root, await Bun.file(join(root, SNAPSHOT_FILE)).exists());
+    },
+    false,
+  );
 }
 
 function bytesOf(view: ArrayBufferView): Uint8Array {
@@ -61,9 +100,9 @@ export async function saveIndexSnapshot(
       const storage = semanticStorageOf(semantic);
       await file.writeFile(MAGIC);
       await writeJson(file, { storage, count: semantic.size, dimensions: semantic.dimensions });
-      await writeJson(file, { ...metadata, vector_storage: storage });
-      await writeJson(file, bm25.toJSON());
-      await writeJson(file, chunks);
+      await writeJson(file, { ...metadata, vector_storage: storage }, true);
+      await writeJson(file, bm25.toJSON(), true);
+      await writeJson(file, chunks, true);
       if (semantic instanceof QuantizedVectorIndex) {
         const { codes, scales } = semantic.persistedBuffers();
         await file.writeFile(bytesOf(codes));
@@ -151,20 +190,25 @@ export async function loadIndexSnapshot(
       return values;
     }
 
-    async function readJson(): Promise<unknown> {
+    async function readJson(compressed = false): Promise<unknown> {
       const length = (await readBytes(4)).readUInt32LE();
-      return JSON.parse((await readBytes(length)).toString("utf8"));
+      const data = await readBytes(length);
+      return JSON.parse((compressed ? await decompress(data) : data).toString("utf8"));
     }
 
-    if (!(await readBytes(MAGIC.length)).equals(MAGIC)) {
+    const header = await readBytes(MAGIC.length);
+    const compressed = header.equals(MAGIC);
+    if (!compressed && !header.equals(LEGACY_MAGIC)) {
       throw new Error("Invalid index snapshot signature");
     }
     const shape = vectorShape(await readJson());
-    const metadata = (await readJson()) as Record<string, unknown>;
+    const metadata = (await readJson(compressed)) as Record<string, unknown>;
     if (accept && !(await accept(metadata, shape))) return null;
 
-    const bm25 = BM25Index.fromJSON((await readJson()) as Parameters<typeof BM25Index.fromJSON>[0]);
-    const chunks = ((await readJson()) as Record<string, unknown>[]).map(chunkFromDict);
+    const bm25 = BM25Index.fromJSON(
+      (await readJson(compressed)) as Parameters<typeof BM25Index.fromJSON>[0],
+    );
+    const chunks = ((await readJson(compressed)) as Record<string, unknown>[]).map(chunkFromDict);
     const { count, dimensions, storage } = shape;
     checkChunkCount(chunks.length, bm25.size, count);
     const values = count * dimensions;

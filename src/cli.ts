@@ -109,8 +109,7 @@ async function runSearch(
   await ensureCredentials({ interactive: true });
 
   const index = await withSpinner("Indexing and searching", async () => {
-    const built = await MiruIndex.fromSource(path, content);
-    await built.saveToCache(path);
+    const built = await MiruIndex.fromCachedSource(path, content);
     const results = await built.search({
       query,
       topK: residualSearchResultCount(query, built.embeddingModel, built.supportsCodeRanking),
@@ -133,7 +132,7 @@ async function runExpand(
   await ensureCredentials({ interactive: true });
 
   const payload = await withSpinner("Expanding chunks", async () => {
-    const built = await MiruIndex.fromSource(path, content);
+    const built = await MiruIndex.fromCachedSource(path, content);
     const repoRoot = localRepoRoot(path);
     const { anchor, chunks: expanded } = expandChunksAtLine(
       built.chunks,
@@ -143,7 +142,6 @@ async function runExpand(
       before,
       after,
     );
-    await built.saveToCache(path);
     return formatExpandResults(filePath, line, anchor, expanded, {
       repoRoot,
       before,
@@ -179,13 +177,12 @@ async function runFindRelated(
   await ensureCredentials({ interactive: true });
 
   const { results, label } = await withSpinner("Finding related chunks", async () => {
-    const built = await MiruIndex.fromSource(path, content);
+    const built = await MiruIndex.fromCachedSource(path, content);
     const chunk = resolveChunk(built.chunks, filePath, line);
     if (!chunk) {
       throw new RelatedChunkNotFoundError(filePath, line);
     }
     const hits = await built.findRelated(chunk, SEARCH_RESULT_COUNT);
-    await built.saveToCache(path);
     return {
       results: hits,
       label: formatRelatedHeader(filePath, line),
@@ -213,8 +210,7 @@ async function runLocate(
   const mode = options.mode ?? DEFAULT_LITERAL_MODE;
 
   const payload = await withSpinner("Locating literal", async () => {
-    const built = await MiruIndex.fromSource(path, content);
-    await built.saveToCache(path);
+    const built = await MiruIndex.fromCachedSource(path, content);
     return formatLiteralLocate(built.locateLiteral(literal, options));
   });
 

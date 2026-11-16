@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -9,6 +9,7 @@ import {
   loadValidatedCache,
   resolveCacheFolder,
 } from "../src/cache.ts";
+import { withIndexCacheLock } from "../src/index/cache-lock.ts";
 import { persistencePaths, saveIndexBundle } from "../src/index/persistence.ts";
 import { QuantizedVectorIndex } from "../src/index/quantize.ts";
 import { buildBm25FromChunks } from "../src/index/sparse.ts";
@@ -82,7 +83,10 @@ describe("validated cache bundles", () => {
   test("resolves an override root, accepts compatible bundles, and hydrates them", async () => {
     const { source, indexPath } = await seed("valid");
     expect(resolveCacheFolder()).toBe(currentCacheHome());
+    const interruptedWrite = join(indexPath, ".snapshot.bin-00000000-0000-0000-0000-000000000001");
+    await writeFile(interruptedWrite, "abandoned migration");
     expect(await loadValidatedCache(source, MODEL, ["code"])).not.toBeNull();
+    expect(await Bun.file(interruptedWrite).exists()).toBe(false);
     const cached = await loadCachedIndex(indexPath);
     expect(cached.chunks).toEqual([]);
     expect(cached.metadata.embedding_model).toBe(MODEL);
@@ -200,6 +204,7 @@ describe("validated cache bundles", () => {
       expect(index.locateLiteral("rebuiltToken").n).toBe(1);
 
       await index.saveToCache(source);
+      expect(await readdir(paths.root)).toEqual(["snapshot.bin"]);
       const reopened = await MiruIndex.fromPath(source, ["code"], MODEL, dependencies);
       expect(reopened.loadedFromDisk).toBe(true);
       expect(reopened.locateLiteral("rebuiltToken").n).toBe(1);
@@ -215,4 +220,47 @@ describe("validated cache bundles", () => {
       );
     },
   );
+
+  test("rejects a mixed legacy bundle whose index counts disagree", async () => {
+    const { source, paths } = await seed("mixed-legacy");
+    await writeFile(paths.chunks, '[{"file_path":"extra.ts"}]');
+    await expect(loadCachedIndex(paths.root)).rejects.toThrow(
+      "does not have a BM25 entry and vector",
+    );
+    expect(await loadValidatedCache(source, MODEL, ["code"])).toBeNull();
+  });
+
+  test("concurrent cached-source builds reuse one index and reclaim abandoned temporary files", async () => {
+    const { source, paths } = await seed("concurrent-source");
+    await rm(paths.root, { recursive: true, force: true });
+    await mkdir(source);
+    await writeFile(join(source, "source.ts"), "export const sharedToken = 42;\n");
+    let batches = 0;
+    const embeddings = {
+      model: MODEL,
+      dimensions: 256,
+      async embedDocuments(texts: string[]) {
+        batches++;
+        await Bun.sleep(50);
+        return texts.map(() => new Float32Array(256));
+      },
+      embedQuery: async () => new Float32Array(256),
+    };
+    const load = () =>
+      MiruIndex.fromCachedSource(source, ["code"], MODEL, undefined, {
+        getEmbeddingBackend: () => embeddings,
+      });
+    const indexes = await Promise.all([load(), load(), load()]);
+    expect(indexes.map((index) => index.locateLiteral("sharedToken").n)).toEqual([1, 1, 1]);
+    expect(batches).toBe(1);
+
+    const orphan = join(paths.root, ".snapshot.bin-00000000-0000-0000-0000-000000000000");
+    await writeFile(orphan, "temporary");
+    await withIndexCacheLock(paths.root, async () => {
+      expect((await load()).loadedFromDisk).toBe(true);
+      expect(await Bun.file(orphan).exists()).toBe(true);
+    });
+    expect((await load()).loadedFromDisk).toBe(true);
+    expect(await Bun.file(orphan).exists()).toBe(false);
+  });
 });

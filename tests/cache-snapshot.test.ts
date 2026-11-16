@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, readdir, rename, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadCachedIndex } from "../src/cache.ts";
@@ -93,6 +93,37 @@ test("a failed snapshot publication preserves the previous index and removes its
       }),
     ).rejects.toThrow("publish failed");
 
+    expectBundle(await loadCachedIndex(root), original);
+    expect(await readdir(root)).toEqual(["snapshot.bin"]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("validates snapshot headers and refuses to publish inconsistent indexes", async () => {
+  const root = await mkdtemp(join(tmpdir(), "miru-cache-snapshot-"));
+  try {
+    const path = join(root, "snapshot.bin");
+    await writeFile(path, "INVALID_HDR");
+    await expect(loadCachedIndex(root)).rejects.toThrow("Invalid index snapshot signature");
+    const invalidShape = Buffer.from([2, 0, 0, 0, 123, 125]);
+    await writeFile(path, Buffer.concat([Buffer.from("MIRU_IDX_2\n"), invalidShape]));
+    await expect(loadCachedIndex(root)).rejects.toThrow("Invalid snapshot vector shape");
+
+    const original = bundle("original", 1, "int8");
+    await saveIndexSnapshot(root, original);
+    await expect(saveIndexSnapshot(root, { ...original, chunks: [] })).rejects.toThrow(
+      "does not have a BM25 entry and vector",
+    );
+    const invalidVectors = {
+      size: original.semantic.size,
+      dimensions: original.semantic.dimensions,
+      memoryBytes: () => 0,
+      query: () => ({ indices: [], distances: [] }),
+    };
+    await expect(
+      saveIndexSnapshot(root, { ...original, semantic: invalidVectors }),
+    ).rejects.toThrow("Unsupported semantic index type");
     expectBundle(await loadCachedIndex(root), original);
     expect(await readdir(root)).toEqual(["snapshot.bin"]);
   } finally {

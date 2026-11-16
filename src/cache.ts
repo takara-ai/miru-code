@@ -9,8 +9,9 @@
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveEmbeddingDimensions } from "./embeddings/openai.ts";
+import { withIndexCacheLock } from "./index/cache-lock.ts";
 import { loadBm25, loadSemantic, pathsExist, persistencePaths } from "./index/persistence.ts";
-import { type IndexBundle, loadIndexSnapshot } from "./index/snapshot.ts";
+import { cleanAfterCacheHit, type IndexBundle, loadIndexSnapshot } from "./index/snapshot.ts";
 import { resolveSemanticStorage, semanticStorageFromMetadata } from "./index/vector-storage.ts";
 import type { ContentType } from "./types.ts";
 import { chunkFromDict } from "./types.ts";
@@ -97,6 +98,7 @@ export async function loadValidatedCache(
   path: string,
   model: string,
   content: ContentType[],
+  reconcileMissingFiles = false,
 ): Promise<IndexBundle | null> {
   try {
     return await readCacheBundle(findIndexCachePath(path), async (metadata, shape) => {
@@ -108,8 +110,10 @@ export async function loadValidatedCache(
       const rootPath = metadata.root_path as string | null;
       if (rootPath) {
         await Bun.file(rootPath).stat();
-        for (const rel of metadata.file_paths as string[]) {
-          await Bun.file(join(rootPath, rel)).stat();
+        if (!reconcileMissingFiles) {
+          for (const rel of metadata.file_paths as string[]) {
+            await Bun.file(join(rootPath, rel)).stat();
+          }
         }
       }
       return true;
@@ -131,7 +135,10 @@ async function readCacheBundle(
   accept?: Parameters<typeof loadIndexSnapshot>[1],
 ): Promise<IndexBundle | null> {
   const snapshot = await loadIndexSnapshot(indexPath, accept);
-  if (snapshot !== undefined) return snapshot;
+  if (snapshot !== undefined) {
+    if (snapshot && accept) await cleanAfterCacheHit(indexPath, true).catch(() => {});
+    return snapshot;
+  }
 
   // Older Miru releases stored the same components in separate files.
   const paths = persistencePaths(indexPath);
@@ -154,11 +161,12 @@ async function readCacheBundle(
   if (bm25.size !== chunks.length || semantic.size !== chunks.length) {
     throw new Error("Index bundle does not have a BM25 entry and vector for every chunk");
   }
+  if (accept) await cleanAfterCacheHit(indexPath, false).catch(() => {});
   return { bm25, semantic, chunks, metadata };
 }
 
 /** Remove the cached index bundle for a source (same key as `findIndexCachePath`). */
 export async function clearCache(path: string): Promise<void> {
   const indexPath = findIndexCachePath(path);
-  await rm(indexPath, { recursive: true, force: true });
+  await withIndexCacheLock(indexPath, () => rm(indexPath, { recursive: true, force: true }));
 }

@@ -122,7 +122,7 @@ describe("MiruIndex factories", () => {
   test("builds remote indexes, saves them, and always removes temporary clones", async () => {
     const cloneDir = await mkdtemp(join(tmpdir(), "miru-index-clone-"));
     const trace: string[] = [];
-    const index = await MiruIndex.fromGit(
+    const index = await MiruIndex.fromSource(
       "https://example.test/org/repo",
       ["code"],
       "offline",
@@ -147,7 +147,7 @@ describe("MiruIndex factories", () => {
     );
     expect(index.root).toBeNull();
     expect(index.chunks).toEqual([chunk]);
-    expect(trace[0]).toContain(":main");
+    expect(trace).toContain("https://example.test/org/repo:main");
     expect(trace.at(-1)).toBe("/tmp/index-cache");
     expect(await Bun.file(cloneDir).exists()).toBe(false);
   });
@@ -158,21 +158,27 @@ describe("MiruIndex factories", () => {
     const output = join(root, "bundle");
     await mkdir(cloneDir);
     try {
-      await MiruIndex.fromGit("https://example.test/default-saver", ["code"], "offline", null, {
-        loadValidatedCache: async () => null,
-        cloneGitRepository: async () => cloneDir,
-        getEmbeddingBackend: () => embeddings,
-        createIndexFromPath: (async () => ({
-          bm25: BM25Index.fromJSON({
-            docs: [["answer"]],
-            docLengths: [1],
-            docFreq: [["answer", 1]],
-          }),
-          semantic: new VectorIndex([new Float32Array([1, 0])]),
-          chunks: [chunk],
-        })) as never,
-        findIndexCachePath: () => output,
-      });
+      await MiruIndex.fromCachedSource(
+        "https://example.test/default-saver",
+        ["code"],
+        "offline",
+        null,
+        {
+          loadValidatedCache: async () => null,
+          cloneGitRepository: async () => cloneDir,
+          getEmbeddingBackend: () => embeddings,
+          createIndexFromPath: (async () => ({
+            bm25: BM25Index.fromJSON({
+              docs: [["answer"]],
+              docLengths: [1],
+              docFreq: [["answer", 1]],
+            }),
+            semantic: new VectorIndex([new Float32Array([1, 0])]),
+            chunks: [chunk],
+          })) as never,
+          findIndexCachePath: () => output,
+        },
+      );
       const reopened = await MiruIndex.loadFromDisk(output, "offline", {
         getEmbeddingBackend: () => embeddings,
       });

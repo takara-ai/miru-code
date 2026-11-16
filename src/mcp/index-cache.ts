@@ -14,6 +14,7 @@ import {
 } from "../utils.ts";
 
 const CACHE_MAX_SIZE = 10;
+const CHECKPOINT_DELAY_MS = 500;
 
 /** Directory names we skip for MCP fs.watch update triggers (aligned with file-walker). */
 const WATCH_IGNORED_DIR_NAMES = new Set([
@@ -46,6 +47,9 @@ type CacheEntry = {
   flushQueued: boolean;
   flushing: boolean;
   updateChain: Promise<void>;
+  checkpointTimer: ReturnType<typeof setTimeout> | null;
+  checkpointing: boolean;
+  checkpointPending: boolean;
   /** Dead-credentials failure from a background re-embed; `get()` throws it until a retry clears it. */
   lastError: Error | null;
 };
@@ -94,7 +98,10 @@ export class IndexCache {
   ) {
     this.content = content;
     this.defaultRef = defaultRef;
-    this.fromSource = dependencies.fromSource ?? MiruIndex.fromSource;
+    this.fromSource =
+      dependencies.fromSource ??
+      ((source, content, model, ref) =>
+        MiruIndex.fromCachedSource(source, content, model, ref, undefined, true));
     this.watchSource = dependencies.watch ?? watch;
   }
 
@@ -115,6 +122,9 @@ export class IndexCache {
         flushQueued: false,
         flushing: false,
         updateChain: Promise.resolve(),
+        checkpointTimer: null,
+        checkpointing: false,
+        checkpointPending: false,
         lastError: null,
       };
       this.entries.set(cacheKey, entry);
@@ -127,6 +137,9 @@ export class IndexCache {
     this.entries.delete(cacheKey);
     if (entry) {
       entry.pendingPaths.clear();
+      if (entry.checkpointTimer) clearTimeout(entry.checkpointTimer);
+      entry.checkpointTimer = null;
+      entry.checkpointPending = false;
       entry.index = null;
       entry.task = null;
       entry.lastError = null;
@@ -150,10 +163,6 @@ export class IndexCache {
     const entry = this.ensureEntry(cacheKey, source);
     const task = (async () => {
       const index = await this.fromSource(source, this.content, undefined, ref);
-      if (this.entries.get(cacheKey) !== entry) return index;
-      if (!isGitUrl(source)) {
-        await index.saveToCache(resolve(source));
-      }
       if (this.entries.get(cacheKey) !== entry) return index;
       // Publish before stale reconciliation so flushFileUpdates can use
       // entry.index instead of awaiting this same task (self-deadlock).
@@ -290,14 +299,7 @@ export class IndexCache {
       }
       if (this.entries.get(cacheKey) !== entry) return false;
       entry.lastError = null;
-      if (!isGitUrl(source)) {
-        try {
-          await index.saveToCache(resolve(source), { force: true });
-        } catch {
-          // The in-memory index is already current. A cache write failure must
-          // not requeue the change and repeatedly re-embed the same file.
-        }
-      }
+      this.queueCheckpoint(cacheKey, entry, index);
       return true;
     };
 
@@ -312,6 +314,25 @@ export class IndexCache {
         this.scheduleFlush(cacheKey, source, entry);
     });
     return entry.updateChain;
+  }
+
+  private queueCheckpoint(cacheKey: string, entry: CacheEntry, index: MiruIndex): void {
+    if (isGitUrl(entry.source) || this.entries.get(cacheKey) !== entry) return;
+    entry.checkpointPending = true;
+    if (entry.checkpointTimer || entry.checkpointing) return;
+
+    entry.checkpointTimer = setTimeout(() => {
+      entry.checkpointTimer = null;
+      entry.checkpointPending = false;
+      entry.checkpointing = true;
+      void index
+        .saveToCache(resolve(entry.source), { force: true })
+        .catch(() => {})
+        .finally(() => {
+          entry.checkpointing = false;
+          if (entry.checkpointPending) this.queueCheckpoint(cacheKey, entry, index);
+        });
+    }, CHECKPOINT_DELAY_MS);
   }
 
   private async checkAndQueueStaleFiles(

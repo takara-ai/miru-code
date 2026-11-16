@@ -1,4 +1,5 @@
-import { relative, resolve } from "node:path";
+import { stat } from "node:fs/promises";
+import { join, relative, resolve } from "node:path";
 import { chunkSource } from "../chunking/chunking.ts";
 import { ensureParserInit } from "../chunking/grammars.ts";
 import { resolveWorkerConcurrency } from "../concurrency.ts";
@@ -18,7 +19,7 @@ import { type Chunk, type ContentType, defaultContentTypes } from "../types.ts";
 import { BM25Index } from "./bm25.ts";
 import { loadRootEntryChunks } from "./entry-chunks.ts";
 import { walkFiles } from "./file-walker.ts";
-import { detectLanguage, getExtensions, getFileStatus, readFileText } from "./files.ts";
+import { detectLanguage, getExtensions, inspectFile, readFileText } from "./files.ts";
 import type { SemanticIndex } from "./semantic-index.ts";
 import { addChunkToBm25 } from "./sparse.ts";
 import { buildSemanticIndex } from "./vector-storage.ts";
@@ -44,7 +45,12 @@ export async function createIndexFromPath(
   embeddings: EmbeddingBackend,
   content: ContentType[] = defaultContentTypes(),
   displayRoot?: string,
-): Promise<{ bm25: BM25Index; semantic: SemanticIndex; chunks: Chunk[] }> {
+): Promise<{
+  bm25: BM25Index;
+  semantic: SemanticIndex;
+  chunks: Chunk[];
+  fileMtimes: Record<string, number>;
+}> {
   const profile = process.env.MIRU_PROFILE === "1";
   const started = performance.now();
   let fileProcessMs = 0;
@@ -70,6 +76,7 @@ export async function createIndexFromPath(
   const maxEmbedChars = resolveMaxEmbedChars();
   const maxIndexFiles = resolveMaxIndexFiles();
   const emittedChunks: Chunk[] = [];
+  const fileMtimes: Record<string, number> = Object.create(null);
   const windowVectorsByChunk: Float32Array[][] = [];
   const pendingWindows: EmbeddingWindowJob[] = [];
   const embedInFlight = new Set<Promise<void>>();
@@ -82,14 +89,16 @@ export async function createIndexFromPath(
     const t = performance.now();
     const language = detectLanguage(filePath);
     try {
-      const status = await getFileStatus(filePath);
+      const { status, mtime } = await inspectFile(filePath);
       if (status !== "valid") {
         emptyFileTasks++;
         return [] as Chunk[];
       }
       const source = await readFileText(filePath);
       const chunkPath = displayRoot ? relative(root, filePath).replace(/\\/g, "/") : filePath;
-      return await chunkSource(source, chunkPath, language);
+      const chunks = await chunkSource(source, chunkPath, language);
+      if (chunks.length) fileMtimes[chunkPath] = mtime;
+      return chunks;
     } catch {
       fileErrors++;
       return [];
@@ -197,10 +206,13 @@ export async function createIndexFromPath(
   }
 
   if (searchImprovementsEnabled()) {
+    const entryStat = await stat(join(resolved, "package.json")).catch(() => null);
     const entryChunks = await loadRootEntryChunks(resolved, displayRoot ? root : undefined);
-    if (entryChunks.length > 0) {
-      enqueueChunks(entryChunks);
+    for (const chunk of entryChunks) {
+      const mtime = Math.floor(entryStat?.mtimeMs ?? 0);
+      fileMtimes[chunk.file_path] = Math.min(mtime, fileMtimes[chunk.file_path] ?? mtime);
     }
+    enqueueChunks(entryChunks);
   }
 
   const embedsDrainedAt = performance.now();
@@ -274,5 +286,5 @@ export async function createIndexFromPath(
     );
   }
 
-  return { bm25, semantic, chunks };
+  return { bm25, semantic, chunks, fileMtimes };
 }

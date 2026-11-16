@@ -76,6 +76,8 @@ describe("IndexCache", () => {
     process.env.MIRU_MCP_WATCH = "0";
     const applied: string[][] = [];
     let saved = 0;
+    const started = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
     const fakeIndex = {
       root,
       loadedFromDisk: true,
@@ -90,6 +92,8 @@ describe("IndexCache", () => {
       },
       async saveToCache() {
         saved++;
+        started.resolve();
+        await release.promise;
       },
     } as unknown as MiruIndex;
     const cache = new IndexCache(["code"], null, { fromSource: async () => fakeIndex });
@@ -99,8 +103,13 @@ describe("IndexCache", () => {
       expect(applied[0]).toEqual(
         expect.arrayContaining(["src/changed.ts", "src/deleted.ts", "src/new.ts"]),
       );
-      expect(saved).toBe(2); // initial build plus reconciled update
+      expect(saved).toBe(0);
+      await started.promise;
+      // A slow cache write cannot block live requests.
+      expect(await cache.get(root)).toBe(fakeIndex);
+      expect(saved).toBe(1);
     } finally {
+      release.resolve();
       cache.close();
       await rm(root, { recursive: true, force: true });
       if (oldWatch === undefined) delete process.env.MIRU_MCP_WATCH;
