@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.15.2](https://github.com/takara-ai/miru-code/compare/v1.15.1...v1.15.2) (2026-11-16)
+
+
+### Bug Fixes
+
+* **cache:** recover corrupt indexes and publish snapshots atomically ([#88](https://github.com/takara-ai/miru-code/issues/88)) ([2b7f593](https://github.com/takara-ai/miru-code/commit/2b7f5936cece1d12fb43128e88b6fa083372d29e))
+* **cache:** retry snapshot replacement on Windows ([#89](https://github.com/takara-ai/miru-code/issues/89)) ([06a2a0a](https://github.com/takara-ai/miru-code/commit/06a2a0a6bed4468be3c0b1ab6cb265d9a989e842))
+* **index:** clear stale results when the last source file is removed ([#87](https://github.com/takara-ai/miru-code/issues/87)) ([b9e8665](https://github.com/takara-ai/miru-code/commit/b9e8665278f663e483119e04ca8f76616be899d5))
+* **sagemaker:** clarify setup and verify smoke-test responses ([6ded884](https://github.com/takara-ai/miru-code/commit/6ded884298a7c875aff4c034d8149d0222fee95a))
+
 ## [1.15.1](https://github.com/takara-ai/miru-code/compare/v1.15.0...v1.15.1) (2026-10-27)
 
 
