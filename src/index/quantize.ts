@@ -36,10 +36,10 @@ export class QuantizedVectorIndex implements SemanticIndex {
   private readonly count: number;
   private readonly dim: number;
 
-  constructor(vectors: Float32Array[]) {
+  constructor(vectors: Float32Array[], emptyDimensions = 0) {
     if (vectors.length === 0) {
       this.count = 0;
-      this.dim = 0;
+      this.dim = emptyDimensions;
       this.codes = new Int8Array(0);
       this.scales = new Float32Array(0);
       return;

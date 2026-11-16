@@ -3,6 +3,7 @@ import { watch } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { loadCachedIndex } from "../src/cache.ts";
 import { EmbeddingApiError, type EmbeddingBackend } from "../src/embeddings/openai.ts";
 import { createIndexFromPath } from "../src/index/create.ts";
 import { IndexCache } from "../src/mcp/index-cache.ts";
@@ -145,6 +146,52 @@ async function recursiveWatchAvailable(root: string): Promise<boolean> {
 }
 
 describe("incremental integration", () => {
+  test("clears, persists, and repopulates an index when its last source file is removed", async () => {
+    const root = await mkdtemp(join(tmpdir(), "miru-empty-index-"));
+    const path = join(root, "source.ts");
+    const bundle = join(root, "bundle");
+    try {
+      await writeFile(path, "export const removedToken = 42;\n");
+      const embeddings = trackingEmbeddings();
+      const built = await createIndexFromPath(root, embeddings, ["code"], root);
+      const index = new MiruIndex({
+        embeddings,
+        bm25Index: built.bm25,
+        semanticIndex: built.semantic,
+        chunks: built.chunks,
+        embeddingModel: embeddings.model,
+        root,
+        content: ["code"],
+      });
+
+      await rm(path);
+      embeddings.resetEmbedCount();
+      await index.applyFileChanges(["source.ts"]);
+      expect(index.locateLiteral("removedToken").n).toBe(0);
+      expect(await index.search({ query: "removedToken" })).toEqual([]);
+      expect(embeddings.documentEmbedCount).toBe(0);
+
+      await index.save(bundle);
+      const saved = await loadCachedIndex(bundle);
+      expect(saved.bm25.size).toBe(0);
+      expect(saved.semantic.size).toBe(0);
+      expect(saved.semantic.dimensions).toBe(built.semantic.dimensions);
+      expect(saved.chunks).toEqual([]);
+
+      const reopened = await MiruIndex.loadFromDisk(bundle, embeddings.model, {
+        getEmbeddingBackend: () => embeddings,
+      });
+      await writeFile(path, "export const restoredToken = 43;\n");
+      await reopened.applyFileChanges(["source.ts"]);
+      expect(reopened.locateLiteral("restoredToken").n).toBe(1);
+      expect((await reopened.search({ query: "restoredToken" }))[0]?.chunk.file_path).toBe(
+        "source.ts",
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("MiruIndex.applyFileChanges updates search results without re-embedding unchanged files", async () => {
     const root = await buildTempRepo();
     try {

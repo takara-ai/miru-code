@@ -18,11 +18,11 @@ export function semanticStorageFromMetadata(metadata: Record<string, unknown>): 
   return metadata.vector_storage === "float32" ? "float32" : "int8";
 }
 
-export function buildSemanticIndex(vectors: Float32Array[]): SemanticIndex {
+export function buildSemanticIndex(vectors: Float32Array[], emptyDimensions = 0): SemanticIndex {
   if (resolveSemanticStorage() === "int8") {
-    return new QuantizedVectorIndex(vectors);
+    return new QuantizedVectorIndex(vectors, emptyDimensions);
   }
-  return new VectorIndex(vectors);
+  return new VectorIndex(vectors, emptyDimensions);
 }
 
 export function semanticStorageOf(index: SemanticIndex): SemanticStorage {
