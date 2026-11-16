@@ -118,16 +118,19 @@ export async function readFileText(filePath: string): Promise<string> {
 }
 
 export async function getFileStatus(filePath: string): Promise<FileStatus> {
+  return (await inspectFile(filePath)).status;
+}
+
+/** Stat before reading: the recorded mtime cannot describe a later edit. */
+export async function inspectFile(
+  filePath: string,
+): Promise<{ status: FileStatus; mtime: number }> {
   const file = Bun.file(filePath);
   const stat = await file.stat();
-  if (stat.size > MAX_FILE_BYTES) {
-    return "too_large";
+  const mtime = Math.floor(stat.mtime?.getTime() ?? 0);
+  if (stat.size > MAX_FILE_BYTES) return { status: "too_large", mtime };
+  if (stat.size < EMPTY_FILE_BYTES && !(await file.text()).trim()) {
+    return { status: "empty", mtime };
   }
-  if (stat.size < EMPTY_FILE_BYTES) {
-    const text = await file.text();
-    if (!text.trim()) {
-      return "empty";
-    }
-  }
-  return "valid";
+  return { status: "valid", mtime };
 }

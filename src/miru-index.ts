@@ -1,6 +1,6 @@
-import { mkdir, rm } from "node:fs/promises";
+import { rm, stat } from "node:fs/promises";
 import { resolve } from "node:path";
-import { findIndexCachePath, getValidatedCache, loadCachedIndex } from "./cache.ts";
+import { findIndexCachePath, loadCachedIndex, loadValidatedCache } from "./cache.ts";
 import {
   type EmbeddingBackend,
   getEmbeddingBackend,
@@ -9,11 +9,16 @@ import {
 } from "./embeddings/openai.ts";
 import { cloneGitRepository } from "./git.ts";
 import type { BM25Index } from "./index/bm25.ts";
+import { withIndexCacheLock } from "./index/cache-lock.ts";
 import { buildChunkSelector } from "./index/chunk-selector.ts";
 import { createIndexFromPath } from "./index/create.ts";
-import { applyIncrementalFileChanges, normalizeRelativePath } from "./index/incremental.ts";
-import { persistencePaths, saveIndexBundle } from "./index/persistence.ts";
+import {
+  applyIncrementalFileChanges,
+  findChangedFiles,
+  normalizeRelativePath,
+} from "./index/incremental.ts";
 import type { SemanticIndex } from "./index/semantic-index.ts";
+import { cleanIndexFiles, saveIndexSnapshot } from "./index/snapshot.ts";
 import {
   filterChunksByGlob,
   type LiteralLocateOptions,
@@ -22,31 +27,30 @@ import {
 } from "./literal.ts";
 import { hybridSearch, searchSemanticOnly } from "./search.ts";
 import type { Chunk, ContentType, SearchResult } from "./types.ts";
-import { chunkKey, chunkToDict, defaultContentTypes } from "./types.ts";
+import { chunkKey, defaultContentTypes } from "./types.ts";
 import { computeSourceCacheKey, isGitUrl } from "./utils.ts";
 import { indexCacheEpoch } from "./version.ts";
 
 interface FactoryDependencies {
-  getValidatedCache: typeof getValidatedCache;
+  loadValidatedCache: typeof loadValidatedCache;
   resolveEmbeddingModel: typeof resolveEmbeddingModel;
   getEmbeddingBackend: (model: string) => EmbeddingBackend;
   createIndexFromPath: typeof createIndexFromPath;
   cloneGitRepository: typeof cloneGitRepository;
   findIndexCachePath: typeof findIndexCachePath;
   loadCachedIndex: typeof loadCachedIndex;
-  saveBuiltIndex: (index: MiruIndex, path: string) => Promise<void>;
+  saveBuiltIndex?: (index: MiruIndex, path: string) => Promise<void>;
 }
 
 function factoryDependencies(overrides: Partial<FactoryDependencies> = {}): FactoryDependencies {
   return {
-    getValidatedCache,
+    loadValidatedCache,
     resolveEmbeddingModel,
     getEmbeddingBackend,
     createIndexFromPath,
     cloneGitRepository,
     findIndexCachePath,
     loadCachedIndex,
-    saveBuiltIndex: (index, path) => index.save(path),
     ...overrides,
   };
 }
@@ -206,35 +210,14 @@ export class MiruIndex {
     const deps = factoryDependencies(dependencies);
     const cacheKey = computeSourceCacheKey(url, ref);
     const model = embeddingModel ?? deps.resolveEmbeddingModel();
-    const cached = await deps.getValidatedCache(cacheKey, model, content);
-    if (cached) {
-      return MiruIndex.loadFromDisk(cached, model, deps);
-    }
-
-    const cloneDir = await deps.cloneGitRepository(url, ref);
-    try {
-      const embeddings = deps.getEmbeddingBackend(model);
-      const { bm25, semantic, chunks } = await deps.createIndexFromPath(
-        cloneDir,
-        embeddings,
-        content,
-        cloneDir,
-      );
-      const index = new MiruIndex({
-        embeddings,
-        bm25Index: bm25,
-        semanticIndex: semantic,
-        chunks,
-        embeddingModel: model,
-        // No durable local root — clone is deleted; incremental updates unavailable.
-        root: null,
-        content,
-      });
-      await deps.saveBuiltIndex(index, deps.findIndexCachePath(cacheKey));
-      return index;
-    } finally {
-      await rm(cloneDir, { recursive: true, force: true });
-    }
+    return MiruIndex.loadOrBuildCached(cacheKey, model, content, deps, async () => {
+      const cloneDir = await deps.cloneGitRepository(url, ref);
+      try {
+        return await MiruIndex.buildFromPath(cloneDir, model, content, deps, null);
+      } finally {
+        await rm(cloneDir, { recursive: true, force: true });
+      }
+    });
   }
 
   /** Resolve a local path or git URL and delegate to `fromPath` or `fromGit`. */
@@ -251,6 +234,31 @@ export class MiruIndex {
     return MiruIndex.fromPath(source, content, embeddingModel, dependencies);
   }
 
+  /** CLI and MCP entry point that persists local builds before releasing the cache lock. */
+  static async fromCachedSource(
+    source: string,
+    content: ContentType[] = defaultContentTypes(),
+    embeddingModel?: string,
+    ref?: string | null,
+    dependencies?: Partial<FactoryDependencies>,
+    localRefresh: "immediate" | "watch" = "immediate",
+  ): Promise<MiruIndex> {
+    if (isGitUrl(source)) {
+      return MiruIndex.fromGit(source, content, embeddingModel, ref, dependencies);
+    }
+    const deps = factoryDependencies(dependencies);
+    const resolved = await MiruIndex.resolveLocalSource(source);
+    const model = embeddingModel ?? deps.resolveEmbeddingModel();
+    return MiruIndex.loadOrBuildCached(
+      resolved,
+      model,
+      content,
+      deps,
+      () => MiruIndex.buildFromPath(resolved, model, content, deps, resolved),
+      localRefresh,
+    );
+  }
+
   /**
    * Index a directory on disk, reusing a validated cache hit when available.
    *
@@ -265,31 +273,76 @@ export class MiruIndex {
     dependencies?: Partial<FactoryDependencies>,
   ): Promise<MiruIndex> {
     const deps = factoryDependencies(dependencies);
+    const resolved = await MiruIndex.resolveLocalSource(path);
+    const model = embeddingModel ?? deps.resolveEmbeddingModel();
+    return (
+      (await MiruIndex.loadSourceCache(resolved, model, content, deps)) ??
+      MiruIndex.buildFromPath(resolved, model, content, deps, resolved)
+    );
+  }
+
+  private static async resolveLocalSource(path: string): Promise<string> {
     const resolved = resolve(path);
+    let stat: Awaited<ReturnType<ReturnType<typeof Bun.file>["stat"]>>;
     try {
-      const st = await Bun.file(resolved).stat();
-      if (!st.isDirectory()) {
-        throw new Error(`Path is not a directory: ${path}`);
-      }
-    } catch (err) {
-      if (err instanceof Error && err.message.startsWith("Path is not a directory")) {
-        throw err;
-      }
+      stat = await Bun.file(resolved).stat();
+    } catch {
       throw new Error(`Path does not exist: ${path}`);
     }
+    if (!stat.isDirectory()) throw new Error(`Path is not a directory: ${path}`);
+    return resolved;
+  }
 
-    const model = embeddingModel ?? deps.resolveEmbeddingModel();
-    const cached = await deps.getValidatedCache(resolved, model, content);
-    if (cached) {
-      return MiruIndex.loadFromDisk(cached, model, deps);
-    }
+  private static async loadOrBuildCached(
+    source: string,
+    model: string,
+    content: ContentType[],
+    deps: FactoryDependencies,
+    build: () => Promise<MiruIndex>,
+    localRefresh?: "immediate" | "watch",
+  ): Promise<MiruIndex> {
+    const read = () => MiruIndex.loadSourceCache(source, model, content, deps, !!localRefresh);
+    const changedFiles = (index: MiruIndex) =>
+      localRefresh === "immediate" && index.root
+        ? findChangedFiles(index.root, index.contentTypes, index.getStoredFileMtimes())
+        : [];
 
+    const cached = await read();
+    if (cached && (await changedFiles(cached)).length === 0) return cached;
+
+    const path = deps.findIndexCachePath(source);
+    return withIndexCacheLock(path, async () => {
+      // A foreground refresh or background checkpoint may have won the lock.
+      const reopened = await read();
+      let index: MiruIndex;
+      if (reopened) {
+        const changed = await changedFiles(reopened);
+        if (changed.length === 0) return reopened;
+        await reopened.applyFileChanges(changed);
+        index = reopened;
+      } else {
+        await cleanIndexFiles(path, false).catch(() => {});
+        index = await build();
+      }
+      if (deps.saveBuiltIndex) await deps.saveBuiltIndex(index, path);
+      else await index.saveSnapshot(path, true);
+      return index;
+    });
+  }
+
+  private static async buildFromPath(
+    path: string,
+    model: string,
+    content: ContentType[],
+    deps: FactoryDependencies,
+    root: string | null,
+  ): Promise<MiruIndex> {
     const embeddings = deps.getEmbeddingBackend(model);
-    const { bm25, semantic, chunks } = await deps.createIndexFromPath(
-      resolved,
+    const { bm25, semantic, chunks, fileMtimes } = await deps.createIndexFromPath(
+      path,
       embeddings,
       content,
-      resolved,
+      path,
     );
 
     return new MiruIndex({
@@ -298,8 +351,9 @@ export class MiruIndex {
       semanticIndex: semantic,
       chunks,
       embeddingModel: model,
-      root: resolved,
+      root,
       content,
+      storedFileMtimes: root ? fileMtimes : undefined,
     });
   }
 
@@ -316,10 +370,36 @@ export class MiruIndex {
   ): Promise<MiruIndex> {
     const deps = factoryDependencies(dependencies);
     const model = embeddingModel ?? deps.resolveEmbeddingModel();
-    const { bm25, semantic, chunks, metadata } = await deps.loadCachedIndex(path);
+    const bundle = await deps.loadCachedIndex(path);
+    return MiruIndex.hydrate(bundle, model, deps);
+  }
+
+  private static async loadSourceCache(
+    source: string,
+    model: string,
+    content: ContentType[],
+    deps: FactoryDependencies,
+    reconcileMissingFiles = false,
+  ): Promise<MiruIndex | null> {
+    const bundle = await deps.loadValidatedCache(source, model, content, reconcileMissingFiles);
+    return bundle ? MiruIndex.hydrate(bundle, model, deps) : null;
+  }
+
+  private static hydrate(
+    { bm25, semantic, chunks, metadata }: Awaited<ReturnType<typeof loadCachedIndex>>,
+    model: string,
+    deps: FactoryDependencies,
+  ): MiruIndex {
     const content = (metadata.content_type as ContentType[]) ?? defaultContentTypes();
     const root = metadata.root_path ? String(metadata.root_path) : null;
-    const storedFileMtimes = (metadata.file_mtimes as Record<string, number>) ?? {};
+    const storedFileMtimes = { ...(metadata.file_mtimes as Record<string, number> | undefined) };
+    if (Array.isArray(metadata.file_paths)) {
+      for (const path of metadata.file_paths) {
+        if (typeof path === "string" && !Object.hasOwn(storedFileMtimes, path)) {
+          Object.defineProperty(storedFileMtimes, path, { value: 0, enumerable: true });
+        }
+      }
+    }
 
     return new MiruIndex({
       embeddings: deps.getEmbeddingBackend(model),
@@ -340,27 +420,28 @@ export class MiruIndex {
    * Metadata includes `index_epoch` for invalidation when Miru's on-disk format
    * changes, plus embedding model/dimensions for cache validation on reload.
    */
-  async save(path: string): Promise<void> {
-    const paths = persistencePaths(path);
-    await mkdir(paths.root, { recursive: true });
+  async save(path: string, options: { managedCache?: boolean } = {}): Promise<void> {
+    await withIndexCacheLock(path, () => this.saveSnapshot(path, options.managedCache ?? false));
+  }
+
+  private async saveSnapshot(path: string, managedCache: boolean): Promise<void> {
+    const { bm25Index: bm25, semanticIndex: semantic, chunksInternal: chunks } = this;
+    const filePaths = [...this.fileMapping.keys()].sort();
 
     const fileMtimes: Record<string, number> = {};
-    if (this._root) {
-      for (const filePath of this.fileMapping.keys()) {
-        try {
-          const stat = await Bun.file(resolve(this._root, filePath)).stat();
-          fileMtimes[filePath] = Math.floor(stat.mtime?.getTime() ?? 0);
-        } catch {
-          fileMtimes[filePath] = 0;
-        }
+    const root = this._root;
+    if (root) {
+      for (const filePath of filePaths) {
+        fileMtimes[filePath] =
+          this.storedFileMtimes.get(filePath) ?? (await MiruIndex.readFileMtime(root, filePath));
       }
     }
 
-    await saveIndexBundle({
-      paths,
-      bm25: this.bm25Index,
-      semantic: this.semanticIndex,
-      chunks: this.chunks.map(chunkToDict),
+    await cleanIndexFiles(path, false).catch(() => {});
+    await saveIndexSnapshot(path, {
+      bm25,
+      semantic,
+      chunks,
       metadata: {
         index_epoch: indexCacheEpoch(),
         root_path: this._root,
@@ -370,29 +451,22 @@ export class MiruIndex {
           this.embeddings.dimensions || resolveEmbeddingDimensions(this.embeddingModel),
         embedding_provider: "openai",
         content_type: this.content,
-        file_paths: [...this.fileMapping.keys()].sort(),
+        file_paths: filePaths,
         file_mtimes: fileMtimes,
       },
     });
-    this.storedFileMtimes = new Map(Object.entries(fileMtimes));
+    if (managedCache) await cleanIndexFiles(path, true).catch(() => {});
+    if (this.chunksInternal === chunks) {
+      this.storedFileMtimes = new Map(Object.entries(fileMtimes));
+    }
   }
 
-  private async updateStoredFileMtimes(relativePaths: readonly string[]): Promise<void> {
-    if (!this._root || relativePaths.length === 0) {
-      return;
+  private static async readFileMtime(root: string, path: string): Promise<number> {
+    try {
+      return Math.floor((await stat(resolve(root, path))).mtimeMs);
+    } catch {
+      return 0;
     }
-
-    const root = this._root;
-    await Promise.all(
-      [...new Set(relativePaths.map(normalizeRelativePath))].map(async (filePath) => {
-        try {
-          const stat = await Bun.file(resolve(root, filePath)).stat();
-          this.storedFileMtimes.set(filePath, Math.floor(stat.mtime?.getTime() ?? 0));
-        } catch {
-          this.storedFileMtimes.delete(filePath);
-        }
-      }),
-    );
   }
 
   /**
@@ -403,7 +477,7 @@ export class MiruIndex {
    */
   async saveToCache(sourcePath: string, options: { force?: boolean } = {}): Promise<void> {
     if (!this.loadedFromDiskFlag || options.force) {
-      await this.save(findIndexCachePath(sourcePath));
+      await this.save(findIndexCachePath(sourcePath), { managedCache: true });
     }
   }
 
@@ -421,8 +495,15 @@ export class MiruIndex {
       return;
     }
 
+    // Capture mtimes before reading source so a later edit is still visible on restart.
+    const root = this._root;
+    const mtimes = await Promise.all(
+      [...new Set(relativePaths.map(normalizeRelativePath))].map(
+        async (path) => [path, await MiruIndex.readFileMtime(root, path)] as const,
+      ),
+    );
     const updated = await applyIncrementalFileChanges({
-      root: this._root,
+      root,
       content: this.content,
       embeddings: this.embeddings,
       chunks: this.chunksInternal,
@@ -436,7 +517,10 @@ export class MiruIndex {
     this.semanticIndex = updated.semantic;
     this.loadedFromDiskFlag = false;
     this.rebuildMappings();
-    await this.updateStoredFileMtimes(relativePaths);
+    for (const [path, mtime] of mtimes) {
+      if (this.fileMapping.has(path)) this.storedFileMtimes.set(path, mtime);
+      else this.storedFileMtimes.delete(path);
+    }
   }
 
   private getSelector(

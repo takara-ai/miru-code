@@ -115,6 +115,10 @@ export class VectorIndex implements SemanticIndex {
     };
   }
 
+  persistedBuffer(): Float32Array {
+    return this.data;
+  }
+
   async save(dir: string): Promise<void> {
     await Bun.write(`${dir}/vectors.bin`, this.data);
     await Bun.write(

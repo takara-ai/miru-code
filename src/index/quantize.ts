@@ -158,6 +158,10 @@ export class QuantizedVectorIndex implements SemanticIndex {
     };
   }
 
+  persistedBuffers(): { codes: Int8Array; scales: Float32Array } {
+    return { codes: this.codes, scales: this.scales };
+  }
+
   async save(dir: string): Promise<void> {
     await Bun.write(`${dir}/codes.bin`, this.codes);
     await Bun.write(`${dir}/scales.bin`, this.scales);

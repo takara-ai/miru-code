@@ -34,7 +34,7 @@ describe("MiruIndex factories", () => {
       await mkdir(join(root, "src"));
       const calls: unknown[][] = [];
       const index = await MiruIndex.fromPath(root, ["code"], "offline", {
-        getValidatedCache: async (path, model, content) => {
+        loadValidatedCache: async (path, model, content) => {
           calls.push([path, model, content]);
           return null;
         },
@@ -63,7 +63,7 @@ describe("MiruIndex factories", () => {
     const root = await mkdtemp(join(tmpdir(), "miru-index-source-"));
     try {
       const index = await MiruIndex.fromSource(root, ["code"], "offline", undefined, {
-        getValidatedCache: async () => null,
+        loadValidatedCache: async () => null,
         getEmbeddingBackend: () => embeddings,
         createIndexFromPath: (async () => build) as never,
       });
@@ -84,7 +84,7 @@ describe("MiruIndex factories", () => {
         metadata: { root_path: root, content_type: ["docs"], file_mtimes: { "src/a.ts": 123 } },
       });
       const dependencies = {
-        getValidatedCache: async () => "/cache/bundle",
+        loadValidatedCache: loadCachedIndex,
         loadCachedIndex: loadCachedIndex as never,
         getEmbeddingBackend: () => embeddings,
       };
@@ -122,13 +122,13 @@ describe("MiruIndex factories", () => {
   test("builds remote indexes, saves them, and always removes temporary clones", async () => {
     const cloneDir = await mkdtemp(join(tmpdir(), "miru-index-clone-"));
     const trace: string[] = [];
-    const index = await MiruIndex.fromGit(
+    const index = await MiruIndex.fromSource(
       "https://example.test/org/repo",
       ["code"],
       "offline",
       "main",
       {
-        getValidatedCache: async () => null,
+        loadValidatedCache: async () => null,
         cloneGitRepository: async (url, ref) => {
           trace.push(`${url}:${ref}`);
           return cloneDir;
@@ -147,7 +147,7 @@ describe("MiruIndex factories", () => {
     );
     expect(index.root).toBeNull();
     expect(index.chunks).toEqual([chunk]);
-    expect(trace[0]).toContain(":main");
+    expect(trace).toContain("https://example.test/org/repo:main");
     expect(trace.at(-1)).toBe("/tmp/index-cache");
     expect(await Bun.file(cloneDir).exists()).toBe(false);
   });
@@ -158,18 +158,31 @@ describe("MiruIndex factories", () => {
     const output = join(root, "bundle");
     await mkdir(cloneDir);
     try {
-      await MiruIndex.fromGit("https://example.test/default-saver", ["code"], "offline", null, {
-        getValidatedCache: async () => null,
-        cloneGitRepository: async () => cloneDir,
+      await MiruIndex.fromCachedSource(
+        "https://example.test/default-saver",
+        ["code"],
+        "offline",
+        null,
+        {
+          loadValidatedCache: async () => null,
+          cloneGitRepository: async () => cloneDir,
+          getEmbeddingBackend: () => embeddings,
+          createIndexFromPath: (async () => ({
+            bm25: BM25Index.fromJSON({
+              docs: [["answer"]],
+              docLengths: [1],
+              docFreq: [["answer", 1]],
+            }),
+            semantic: new VectorIndex([new Float32Array([1, 0])]),
+            chunks: [chunk],
+          })) as never,
+          findIndexCachePath: () => output,
+        },
+      );
+      const reopened = await MiruIndex.loadFromDisk(output, "offline", {
         getEmbeddingBackend: () => embeddings,
-        createIndexFromPath: (async () => ({
-          bm25: new BM25Index(),
-          semantic: new VectorIndex([new Float32Array([1, 0])]),
-          chunks: [chunk],
-        })) as never,
-        findIndexCachePath: () => output,
       });
-      expect(await Bun.file(join(output, "metadata.json")).exists()).toBe(true);
+      expect(reopened.chunks).toEqual([chunk]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -179,7 +192,7 @@ describe("MiruIndex factories", () => {
     const cloneDir = await mkdtemp(join(tmpdir(), "miru-index-clone-fail-"));
     await expect(
       MiruIndex.fromGit("https://example.test/org/repo", ["code"], "offline", null, {
-        getValidatedCache: async () => null,
+        loadValidatedCache: async () => null,
         cloneGitRepository: async () => cloneDir,
         getEmbeddingBackend: () => embeddings,
         createIndexFromPath: (async () => {

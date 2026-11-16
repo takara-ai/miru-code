@@ -1,17 +1,20 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   clearCache,
   findIndexCachePath,
-  getValidatedCache,
   loadCachedIndex,
+  loadValidatedCache,
   resolveCacheFolder,
 } from "../src/cache.ts";
-import { BM25Index } from "../src/index/bm25.ts";
+import { withIndexCacheLock } from "../src/index/cache-lock.ts";
 import { persistencePaths, saveIndexBundle } from "../src/index/persistence.ts";
-import { buildSemanticIndex, resolveSemanticStorage } from "../src/index/vector-storage.ts";
+import { QuantizedVectorIndex } from "../src/index/quantize.ts";
+import { buildBm25FromChunks } from "../src/index/sparse.ts";
+import { resolveSemanticStorage } from "../src/index/vector-storage.ts";
+import { MiruIndex } from "../src/miru-index.ts";
 import { indexCacheEpoch } from "../src/version.ts";
 
 const MODEL = "ds1-miru-int8";
@@ -42,10 +45,15 @@ async function seed(
   const paths = persistencePaths(indexPath);
   await mkdir(paths.root, { recursive: true });
   const storage = resolveSemanticStorage();
-  const semantic = buildSemanticIndex([new Float32Array(256)]);
+  const semantic = QuantizedVectorIndex.fromPersisted(
+    new Int8Array(0),
+    new Float32Array(0),
+    0,
+    256,
+  );
   await saveIndexBundle({
     paths,
-    bm25: new BM25Index(),
+    bm25: buildBm25FromChunks([]),
     semantic,
     chunks: [],
     metadata: {
@@ -75,7 +83,10 @@ describe("validated cache bundles", () => {
   test("resolves an override root, accepts compatible bundles, and hydrates them", async () => {
     const { source, indexPath } = await seed("valid");
     expect(resolveCacheFolder()).toBe(currentCacheHome());
-    expect(await getValidatedCache(source, MODEL, ["code"])).toBe(indexPath);
+    const interruptedWrite = join(indexPath, ".snapshot.bin-00000000-0000-0000-0000-000000000001");
+    await writeFile(interruptedWrite, "abandoned migration");
+    expect(await loadValidatedCache(source, MODEL, ["code"])).not.toBeNull();
+    expect(await Bun.file(interruptedWrite).exists()).toBe(false);
     const cached = await loadCachedIndex(indexPath);
     expect(cached.chunks).toEqual([]);
     expect(cached.metadata.embedding_model).toBe(MODEL);
@@ -125,37 +136,37 @@ describe("validated cache bundles", () => {
 
   test("rejects metadata model, dimensions, storage, content, and shape mismatches", async () => {
     const model = await seed("model");
-    expect(await getValidatedCache(model.source, "other-model", ["code"])).toBeNull();
+    expect(await loadValidatedCache(model.source, "other-model", ["code"])).toBeNull();
 
     const dimensions = await seed("dimensions");
     await patchMetadata(dimensions.paths.metadata, { embedding_dimensions: 12 });
-    expect(await getValidatedCache(dimensions.source, MODEL, ["code"])).toBeNull();
+    expect(await loadValidatedCache(dimensions.source, MODEL, ["code"])).toBeNull();
 
     const storage = await seed("storage");
     await patchMetadata(storage.paths.metadata, { vector_storage: "float32" });
-    expect(await getValidatedCache(storage.source, MODEL, ["code"])).toBeNull();
+    expect(await loadValidatedCache(storage.source, MODEL, ["code"])).toBeNull();
 
     const content = await seed("content");
-    expect(await getValidatedCache(content.source, MODEL, ["code", "docs"])).toBeNull();
-    expect(await getValidatedCache(content.source, MODEL, ["docs"])).toBeNull();
+    expect(await loadValidatedCache(content.source, MODEL, ["code", "docs"])).toBeNull();
+    expect(await loadValidatedCache(content.source, MODEL, ["docs"])).toBeNull();
 
     const invalidContent = await seed("invalid-content");
     await patchMetadata(invalidContent.paths.metadata, { content_type: 4 });
-    expect(await getValidatedCache(invalidContent.source, MODEL, ["code"])).toBeNull();
+    expect(await loadValidatedCache(invalidContent.source, MODEL, ["code"])).toBeNull();
 
     const semanticDims = await seed("semantic-dimensions");
     await Bun.write(
       join(semanticDims.paths.semanticIndex, "meta.json"),
       JSON.stringify({ storage: "int8", dimensions: 12, count: 0 }),
     );
-    expect(await getValidatedCache(semanticDims.source, MODEL, ["code"])).toBeNull();
+    expect(await loadValidatedCache(semanticDims.source, MODEL, ["code"])).toBeNull();
 
     const semanticStorage = await seed("semantic-storage");
     await Bun.write(
       join(semanticStorage.paths.semanticIndex, "meta.json"),
       JSON.stringify({ storage: "float32", dimensions: 256, count: 0 }),
     );
-    expect(await getValidatedCache(semanticStorage.source, MODEL, ["code"])).toBeNull();
+    expect(await loadValidatedCache(semanticStorage.source, MODEL, ["code"])).toBeNull();
   });
 
   test("rejects missing root paths and missing files listed in the cache", async () => {
@@ -163,12 +174,154 @@ describe("validated cache bundles", () => {
     await patchMetadata(missingRoot.paths.metadata, {
       root_path: join(currentCacheHome(), "absent-root"),
     });
-    expect(await getValidatedCache(missingRoot.source, MODEL, ["code"])).toBeNull();
+    expect(await loadValidatedCache(missingRoot.source, MODEL, ["code"])).toBeNull();
 
     const missingFile = await seed("missing-file");
     const repo = join(currentCacheHome(), "repo");
     await mkdir(repo, { recursive: true });
     await patchMetadata(missingFile.paths.metadata, { root_path: repo, file_paths: ["gone.ts"] });
-    expect(await getValidatedCache(missingFile.source, MODEL, ["code"])).toBeNull();
+    expect(await loadValidatedCache(missingFile.source, MODEL, ["code"])).toBeNull();
+  });
+
+  test.each(["metadata.json", "semantic_index/meta.json", "chunks.json", "bm25_index.json"])(
+    "rebuilds a local index when %s is truncated",
+    async (file) => {
+      const { source, paths } = await seed("damaged-bundle");
+      await mkdir(source);
+      await writeFile(join(source, "source.ts"), "export const rebuiltToken = 42;\n");
+      await writeFile(join(paths.root, file), "{");
+      const embeddings = {
+        model: MODEL,
+        dimensions: 256,
+        embedDocuments: async (texts: string[]) => texts.map(() => new Float32Array(256)),
+        embedQuery: async () => new Float32Array(256),
+      };
+      const dependencies = { getEmbeddingBackend: () => embeddings };
+
+      await expect(MiruIndex.loadFromDisk(paths.root, MODEL, dependencies)).rejects.toThrow();
+      const index = await MiruIndex.fromPath(source, ["code"], MODEL, dependencies);
+      expect(index.loadedFromDisk).toBe(false);
+      expect(index.locateLiteral("rebuiltToken").n).toBe(1);
+
+      await index.saveToCache(source);
+      expect(await readdir(paths.root)).toEqual(["snapshot.bin"]);
+      const reopened = await MiruIndex.fromPath(source, ["code"], MODEL, dependencies);
+      expect(reopened.loadedFromDisk).toBe(true);
+      expect(reopened.locateLiteral("rebuiltToken").n).toBe(1);
+
+      const snapshot = join(paths.root, "snapshot.bin");
+      const bytes = await readFile(snapshot);
+      await writeFile(snapshot, bytes.subarray(0, -1));
+      await expect(MiruIndex.loadFromDisk(paths.root, MODEL, dependencies)).rejects.toThrow(
+        "Truncated index snapshot",
+      );
+      expect((await MiruIndex.fromPath(source, ["code"], MODEL, dependencies)).loadedFromDisk).toBe(
+        false,
+      );
+    },
+  );
+
+  test("rejects a mixed legacy bundle whose index counts disagree", async () => {
+    const { source, paths } = await seed("mixed-legacy");
+    await writeFile(paths.chunks, '[{"file_path":"extra.ts"}]');
+    await expect(loadCachedIndex(paths.root)).rejects.toThrow(
+      "does not have a BM25 entry and vector",
+    );
+    expect(await loadValidatedCache(source, MODEL, ["code"])).toBeNull();
+  });
+
+  test("concurrent cached-source builds reuse one index and reclaim abandoned temporary files", async () => {
+    const { source, paths } = await seed("concurrent-source");
+    await rm(paths.root, { recursive: true, force: true });
+    await mkdir(source);
+    await writeFile(join(source, "source.ts"), "export const sharedToken = 42;\n");
+    let batches = 0;
+    const embeddings = {
+      model: MODEL,
+      dimensions: 256,
+      async embedDocuments(texts: string[]) {
+        batches++;
+        await Bun.sleep(50);
+        return texts.map(() => new Float32Array(256));
+      },
+      embedQuery: async () => new Float32Array(256),
+    };
+    const load = () =>
+      MiruIndex.fromCachedSource(source, ["code"], MODEL, undefined, {
+        getEmbeddingBackend: () => embeddings,
+      });
+    const indexes = await Promise.all([load(), load(), load()]);
+    expect(indexes.map((index) => index.locateLiteral("sharedToken").n)).toEqual([1, 1, 1]);
+    expect(batches).toBe(1);
+
+    const orphan = join(paths.root, ".snapshot.bin-00000000-0000-0000-0000-000000000000");
+    await writeFile(orphan, "temporary");
+    await withIndexCacheLock(paths.root, async () => {
+      expect((await load()).loadedFromDisk).toBe(true);
+      expect(await Bun.file(orphan).exists()).toBe(true);
+    });
+    expect((await load()).loadedFromDisk).toBe(true);
+    expect(await Bun.file(orphan).exists()).toBe(false);
+  });
+
+  test("CLI cache loads recover edits that MCP has not checkpointed", async () => {
+    const { source, indexPath } = await seed("interrupted-checkpoint");
+    await rm(indexPath, { recursive: true, force: true });
+    await mkdir(source);
+    const changed = join(source, "changed.ts");
+    const deleted = join(source, "deleted.ts");
+    const unchanged = join(source, "unchanged.ts");
+    const added = join(source, "added.ts");
+    await writeFile(changed, "export const oldToken = 1;\n");
+    await utimes(changed, 1000, 1000);
+    await writeFile(deleted, "export const deletedToken = 2;\n");
+    await writeFile(unchanged, "export const unchangedToken = 3;\n");
+
+    const embedded: string[] = [];
+    const embeddings = {
+      model: MODEL,
+      dimensions: 256,
+      async embedDocuments(texts: string[]) {
+        embedded.push(...texts);
+        return texts.map(() => new Float32Array(256));
+      },
+      embedQuery: async () => new Float32Array(256),
+    };
+    const dependencies = { getEmbeddingBackend: () => embeddings };
+    const open = (mode?: "immediate" | "watch") =>
+      MiruIndex.fromCachedSource(source, ["code"], MODEL, undefined, dependencies, mode);
+    await open();
+    embedded.length = 0;
+    await writeFile(changed, "export const updatedToken = 4;\n");
+    await writeFile(added, "export const addedToken = 5;\n");
+    await rm(deleted);
+
+    // The watcher can see the changes before the background checkpoint publishes them.
+    const watching = await open("watch");
+    await watching.applyFileChanges(["changed.ts", "deleted.ts", "added.ts"]);
+    expect(watching.locateLiteral("updatedToken").n).toBe(1);
+    expect(
+      (await loadCachedIndex(indexPath)).chunks.some((chunk) => chunk.content.includes("oldToken")),
+    ).toBe(true);
+    embedded.length = 0;
+
+    const indexes = await Promise.all([open(), open()]);
+    for (const index of indexes) {
+      expect(index.locateLiteral("oldToken").n).toBe(0);
+      expect(index.locateLiteral("deletedToken").n).toBe(0);
+      expect(index.locateLiteral("updatedToken").n).toBe(1);
+      expect(index.locateLiteral("addedToken").n).toBe(1);
+      expect(index.locateLiteral("unchangedToken").n).toBe(1);
+    }
+    expect(embedded.map((text) => text.trim()).sort()).toEqual([
+      "export const addedToken = 5;",
+      "export const updatedToken = 4;",
+    ]);
+
+    const persisted = await MiruIndex.loadFromDisk(indexPath, MODEL, dependencies);
+    expect(persisted.locateLiteral("updatedToken").n).toBe(1);
+    await Promise.all([rm(changed), rm(added), rm(unchanged)]);
+    expect((await open()).chunks).toHaveLength(0);
+    expect((await open()).chunks).toHaveLength(0);
   });
 });

@@ -3,21 +3,17 @@
  *
  * Each indexed source (local directory path or git URL + ref) maps to a SHA-256
  * subdirectory under the Miru cache folder. `MiruIndex.fromPath` / `fromGit` call
- * `getValidatedCache` before rebuilding; on hit they hydrate via `loadCachedIndex`.
+ * `loadValidatedCache` before rebuilding.
  */
 
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
-import { resolveEmbeddingDimensions, resolveEmbeddingModel } from "./embeddings/openai.ts";
-import {
-  loadBm25,
-  loadSemantic,
-  pathsExist,
-  persistencePaths,
-  semanticIndexMatchesStorage,
-} from "./index/persistence.ts";
+import { resolveEmbeddingDimensions } from "./embeddings/openai.ts";
+import { withIndexCacheLock } from "./index/cache-lock.ts";
+import { loadBm25, loadSemantic, pathsExist, persistencePaths } from "./index/persistence.ts";
+import { cleanAfterCacheHit, type IndexBundle, loadIndexSnapshot } from "./index/snapshot.ts";
 import { resolveSemanticStorage, semanticStorageFromMetadata } from "./index/vector-storage.ts";
-import type { Chunk, ContentType } from "./types.ts";
+import type { ContentType } from "./types.ts";
 import { chunkFromDict } from "./types.ts";
 import { computeSourceCacheKey } from "./utils.ts";
 import { indexCacheEpoch } from "./version.ts";
@@ -97,85 +93,80 @@ function metadataMatches(
   }
 }
 
-/**
- * Return a cache directory path when a complete, compatible bundle exists; otherwise `null`.
- *
- * Checks persisted files, metadata (epoch, model, content types, vector storage),
- * semantic index shape, and — for local indexes — that `root_path` and listed
- * `file_paths` still exist (needed for incremental `applyFileChanges`).
- *
- * Stale `index_epoch` entries are deleted; other mismatches are left on disk.
- */
-export async function getValidatedCache(
+/** Read and validate a single snapshot before hydrating it. Unusable cache data is a miss. */
+export async function loadValidatedCache(
   path: string,
-  embeddingModel: string | undefined,
+  model: string,
   content: ContentType[],
-): Promise<string | null> {
-  const indexPath = findIndexCachePath(path);
-  const paths = persistencePaths(indexPath);
-  const missing = await pathsExist(paths);
-  if (missing.length > 0) {
-    return null;
-  }
+  reconcileMissingFiles = false,
+): Promise<IndexBundle | null> {
+  try {
+    return await readCacheBundle(findIndexCachePath(path), async (metadata, shape) => {
+      if (!metadataMatches(metadata, model, content)) return false;
+      const expectedDims = resolveEmbeddingDimensions(model);
+      if (expectedDims != null && shape.dimensions !== expectedDims) return false;
+      if (shape.storage !== resolveSemanticStorage()) return false;
 
-  const model = embeddingModel ?? resolveEmbeddingModel();
-  const metadata = JSON.parse(await Bun.file(paths.metadata).text()) as Record<string, unknown>;
-  if (!metadataMatches(metadata, model, content)) {
-    if (metadata.index_epoch !== indexCacheEpoch()) {
-      await rm(indexPath, { recursive: true, force: true });
-    }
-    return null;
-  }
-
-  const semanticMeta = JSON.parse(await Bun.file(`${paths.semanticIndex}/meta.json`).text()) as {
-    dimensions: number;
-  };
-  const expectedDims = resolveEmbeddingDimensions(model);
-  if (expectedDims != null && semanticMeta.dimensions !== expectedDims) {
-    return null;
-  }
-  if (!(await semanticIndexMatchesStorage(paths.semanticIndex))) {
-    return null;
-  }
-
-  const rootPath = metadata.root_path as string | null;
-  if (rootPath) {
-    const filePaths = metadata.file_paths as string[];
-    try {
-      await Bun.file(rootPath).stat();
-      for (const rel of filePaths) {
-        try {
-          await Bun.file(join(rootPath, rel)).stat();
-        } catch {
-          return null;
+      const rootPath = metadata.root_path as string | null;
+      if (rootPath) {
+        await Bun.file(rootPath).stat();
+        if (!reconcileMissingFiles) {
+          for (const rel of metadata.file_paths as string[]) {
+            await Bun.file(join(rootPath, rel)).stat();
+          }
         }
       }
-    } catch {
-      return null;
-    }
+      return true;
+    });
+  } catch {
+    return null;
   }
-
-  return indexPath;
 }
 
-/** Load BM25, semantic vectors, chunks, and metadata from a validated cache path. */
-export async function loadCachedIndex(indexPath: string): Promise<{
-  bm25: Awaited<ReturnType<typeof loadBm25>>;
-  semantic: Awaited<ReturnType<typeof loadSemantic>>;
-  chunks: Chunk[];
-  metadata: Record<string, unknown>;
-}> {
+/** Explicit loads report disk and format errors to callers. */
+export async function loadCachedIndex(indexPath: string): Promise<IndexBundle> {
+  const bundle = await readCacheBundle(indexPath);
+  if (!bundle) throw new Error(`No complete index bundle at ${indexPath}`);
+  return bundle;
+}
+
+async function readCacheBundle(
+  indexPath: string,
+  accept?: Parameters<typeof loadIndexSnapshot>[1],
+): Promise<IndexBundle | null> {
+  const snapshot = await loadIndexSnapshot(indexPath, accept);
+  if (snapshot !== undefined) {
+    if (snapshot && accept) await cleanAfterCacheHit(indexPath, true).catch(() => {});
+    return snapshot;
+  }
+
+  // Older Miru releases stored the same components in separate files.
   const paths = persistencePaths(indexPath);
+  if (accept && (await pathsExist(paths)).length > 0) return null;
+  const metadata = JSON.parse(await Bun.file(paths.metadata).text()) as Record<string, unknown>;
+  if (accept) {
+    const shape = JSON.parse(await Bun.file(join(paths.semanticIndex, "meta.json")).text()) as {
+      dimensions: number;
+      count: number;
+      storage?: string;
+    };
+    const storage = shape.storage === "int8" ? "int8" : "float32";
+    if (!(await accept(metadata, { ...shape, storage }))) return null;
+  }
+
   const bm25 = await loadBm25(paths.bm25Index);
   const semantic = await loadSemantic(paths.semanticIndex);
   const chunkData = JSON.parse(await Bun.file(paths.chunks).text()) as Record<string, unknown>[];
   const chunks = chunkData.map(chunkFromDict);
-  const metadata = JSON.parse(await Bun.file(paths.metadata).text()) as Record<string, unknown>;
+  if (bm25.size !== chunks.length || semantic.size !== chunks.length) {
+    throw new Error("Index bundle does not have a BM25 entry and vector for every chunk");
+  }
+  if (accept) await cleanAfterCacheHit(indexPath, false).catch(() => {});
   return { bm25, semantic, chunks, metadata };
 }
 
 /** Remove the cached index bundle for a source (same key as `findIndexCachePath`). */
 export async function clearCache(path: string): Promise<void> {
   const indexPath = findIndexCachePath(path);
-  await rm(indexPath, { recursive: true, force: true });
+  await withIndexCacheLock(indexPath, () => rm(indexPath, { recursive: true, force: true }));
 }
