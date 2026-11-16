@@ -1,6 +1,6 @@
-import { mkdir, rm } from "node:fs/promises";
+import { rm } from "node:fs/promises";
 import { resolve } from "node:path";
-import { findIndexCachePath, getValidatedCache, loadCachedIndex } from "./cache.ts";
+import { findIndexCachePath, loadCachedIndex, loadValidatedCache } from "./cache.ts";
 import {
   type EmbeddingBackend,
   getEmbeddingBackend,
@@ -12,8 +12,8 @@ import type { BM25Index } from "./index/bm25.ts";
 import { buildChunkSelector } from "./index/chunk-selector.ts";
 import { createIndexFromPath } from "./index/create.ts";
 import { applyIncrementalFileChanges, normalizeRelativePath } from "./index/incremental.ts";
-import { persistencePaths, saveIndexBundle } from "./index/persistence.ts";
 import type { SemanticIndex } from "./index/semantic-index.ts";
+import { saveIndexSnapshot } from "./index/snapshot.ts";
 import {
   filterChunksByGlob,
   type LiteralLocateOptions,
@@ -22,12 +22,12 @@ import {
 } from "./literal.ts";
 import { hybridSearch, searchSemanticOnly } from "./search.ts";
 import type { Chunk, ContentType, SearchResult } from "./types.ts";
-import { chunkKey, chunkToDict, defaultContentTypes } from "./types.ts";
+import { chunkKey, defaultContentTypes } from "./types.ts";
 import { computeSourceCacheKey, isGitUrl } from "./utils.ts";
 import { indexCacheEpoch } from "./version.ts";
 
 interface FactoryDependencies {
-  getValidatedCache: typeof getValidatedCache;
+  loadValidatedCache: typeof loadValidatedCache;
   resolveEmbeddingModel: typeof resolveEmbeddingModel;
   getEmbeddingBackend: (model: string) => EmbeddingBackend;
   createIndexFromPath: typeof createIndexFromPath;
@@ -39,7 +39,7 @@ interface FactoryDependencies {
 
 function factoryDependencies(overrides: Partial<FactoryDependencies> = {}): FactoryDependencies {
   return {
-    getValidatedCache,
+    loadValidatedCache,
     resolveEmbeddingModel,
     getEmbeddingBackend,
     createIndexFromPath,
@@ -326,11 +326,7 @@ export class MiruIndex {
     content: ContentType[],
     deps: FactoryDependencies,
   ): Promise<MiruIndex | null> {
-    const path = await deps.getValidatedCache(source, model, content);
-    if (!path) {
-      return null;
-    }
-    const bundle = await deps.loadCachedIndex(path).catch(() => null);
+    const bundle = await deps.loadValidatedCache(source, model, content);
     return bundle ? MiruIndex.hydrate(bundle, model, deps) : null;
   }
 
@@ -363,12 +359,12 @@ export class MiruIndex {
    * changes, plus embedding model/dimensions for cache validation on reload.
    */
   async save(path: string): Promise<void> {
-    const paths = persistencePaths(path);
-    await mkdir(paths.root, { recursive: true });
+    const { bm25Index: bm25, semanticIndex: semantic, chunksInternal: chunks } = this;
+    const filePaths = [...this.fileMapping.keys()].sort();
 
     const fileMtimes: Record<string, number> = {};
     if (this._root) {
-      for (const filePath of this.fileMapping.keys()) {
+      for (const filePath of filePaths) {
         try {
           const stat = await Bun.file(resolve(this._root, filePath)).stat();
           fileMtimes[filePath] = Math.floor(stat.mtime?.getTime() ?? 0);
@@ -378,11 +374,10 @@ export class MiruIndex {
       }
     }
 
-    await saveIndexBundle({
-      paths,
-      bm25: this.bm25Index,
-      semantic: this.semanticIndex,
-      chunks: this.chunks.map(chunkToDict),
+    await saveIndexSnapshot(path, {
+      bm25,
+      semantic,
+      chunks,
       metadata: {
         index_epoch: indexCacheEpoch(),
         root_path: this._root,
@@ -392,11 +387,13 @@ export class MiruIndex {
           this.embeddings.dimensions || resolveEmbeddingDimensions(this.embeddingModel),
         embedding_provider: "openai",
         content_type: this.content,
-        file_paths: [...this.fileMapping.keys()].sort(),
+        file_paths: filePaths,
         file_mtimes: fileMtimes,
       },
     });
-    this.storedFileMtimes = new Map(Object.entries(fileMtimes));
+    if (this.chunksInternal === chunks) {
+      this.storedFileMtimes = new Map(Object.entries(fileMtimes));
+    }
   }
 
   private async updateStoredFileMtimes(relativePaths: readonly string[]): Promise<void> {

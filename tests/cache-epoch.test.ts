@@ -3,8 +3,10 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import packageJson from "../package.json";
-import { findIndexCachePath, getValidatedCache } from "../src/cache.ts";
-import { persistencePaths } from "../src/index/persistence.ts";
+import { findIndexCachePath, loadValidatedCache } from "../src/cache.ts";
+import { BM25Index } from "../src/index/bm25.ts";
+import { persistencePaths, saveIndexBundle } from "../src/index/persistence.ts";
+import { QuantizedVectorIndex } from "../src/index/quantize.ts";
 import { indexCacheEpoch } from "../src/version.ts";
 
 const EMBEDDING_MODEL = "ds1-miru-int8";
@@ -37,25 +39,20 @@ describe("index cache epoch", () => {
     const indexPath = findIndexCachePath(repo);
     const paths = persistencePaths(indexPath);
     await mkdir(paths.root, { recursive: true });
-    await writeFile(
-      paths.metadata,
-      `${JSON.stringify({
+    await saveIndexBundle({
+      paths,
+      bm25: new BM25Index(),
+      semantic: QuantizedVectorIndex.fromPersisted(new Int8Array(0), new Float32Array(0), 0, 256),
+      chunks: [],
+      metadata: {
         index_epoch: epoch,
         content_type: ["code"],
         embedding_model: EMBEDDING_MODEL,
         embedding_dimensions: 256,
-        vector_storage: "int8",
         root_path: resolve(repo),
         file_paths: ["sample.ts"],
-      })}\n`,
-    );
-    await writeFile(paths.chunks, "[]\n");
-    await writeFile(paths.bm25Index, '{"documents":[],"vocab":{},"avgdl":0}\n');
-    await mkdir(paths.semanticIndex, { recursive: true });
-    await writeFile(
-      join(paths.semanticIndex, "meta.json"),
-      `${JSON.stringify({ storage: "int8", dimensions: 256, count: 0 })}\n`,
-    );
+      },
+    });
     return repo;
   }
 
@@ -65,19 +62,19 @@ describe("index cache epoch", () => {
     expect(indexCacheEpoch()).toBe(expected);
   });
 
-  test("stale epoch cache is rejected and removed", async () => {
+  test("stale epoch cache is rejected without deleting cache files during a read", async () => {
     const repo = await seedStaleCache("0.6");
     const indexPath = findIndexCachePath(repo);
     expect(await Bun.file(join(indexPath, "metadata.json")).exists()).toBe(true);
 
-    const validated = await getValidatedCache(repo, EMBEDDING_MODEL, ["code"]);
+    const validated = await loadValidatedCache(repo, EMBEDDING_MODEL, ["code"]);
     expect(validated).toBeNull();
-    expect(await Bun.file(join(indexPath, "metadata.json")).exists()).toBe(false);
+    expect(await Bun.file(join(indexPath, "metadata.json")).exists()).toBe(true);
   });
 
   test("matching epoch cache is accepted", async () => {
     const repo = await seedStaleCache(indexCacheEpoch());
-    const validated = await getValidatedCache(repo, EMBEDDING_MODEL, ["code"]);
-    expect(validated).toBe(findIndexCachePath(repo));
+    const validated = await loadValidatedCache(repo, EMBEDDING_MODEL, ["code"]);
+    expect(validated?.metadata.index_epoch).toBe(indexCacheEpoch());
   });
 });

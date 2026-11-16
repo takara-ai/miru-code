@@ -5,13 +5,14 @@ import { join } from "node:path";
 import {
   clearCache,
   findIndexCachePath,
-  getValidatedCache,
   loadCachedIndex,
+  loadValidatedCache,
   resolveCacheFolder,
 } from "../src/cache.ts";
-import { BM25Index } from "../src/index/bm25.ts";
 import { persistencePaths, saveIndexBundle } from "../src/index/persistence.ts";
-import { buildSemanticIndex, resolveSemanticStorage } from "../src/index/vector-storage.ts";
+import { QuantizedVectorIndex } from "../src/index/quantize.ts";
+import { buildBm25FromChunks } from "../src/index/sparse.ts";
+import { resolveSemanticStorage } from "../src/index/vector-storage.ts";
 import { MiruIndex } from "../src/miru-index.ts";
 import { indexCacheEpoch } from "../src/version.ts";
 
@@ -43,10 +44,15 @@ async function seed(
   const paths = persistencePaths(indexPath);
   await mkdir(paths.root, { recursive: true });
   const storage = resolveSemanticStorage();
-  const semantic = buildSemanticIndex([new Float32Array(256)]);
+  const semantic = QuantizedVectorIndex.fromPersisted(
+    new Int8Array(0),
+    new Float32Array(0),
+    0,
+    256,
+  );
   await saveIndexBundle({
     paths,
-    bm25: new BM25Index(),
+    bm25: buildBm25FromChunks([]),
     semantic,
     chunks: [],
     metadata: {
@@ -76,7 +82,7 @@ describe("validated cache bundles", () => {
   test("resolves an override root, accepts compatible bundles, and hydrates them", async () => {
     const { source, indexPath } = await seed("valid");
     expect(resolveCacheFolder()).toBe(currentCacheHome());
-    expect(await getValidatedCache(source, MODEL, ["code"])).toBe(indexPath);
+    expect(await loadValidatedCache(source, MODEL, ["code"])).not.toBeNull();
     const cached = await loadCachedIndex(indexPath);
     expect(cached.chunks).toEqual([]);
     expect(cached.metadata.embedding_model).toBe(MODEL);
@@ -126,37 +132,37 @@ describe("validated cache bundles", () => {
 
   test("rejects metadata model, dimensions, storage, content, and shape mismatches", async () => {
     const model = await seed("model");
-    expect(await getValidatedCache(model.source, "other-model", ["code"])).toBeNull();
+    expect(await loadValidatedCache(model.source, "other-model", ["code"])).toBeNull();
 
     const dimensions = await seed("dimensions");
     await patchMetadata(dimensions.paths.metadata, { embedding_dimensions: 12 });
-    expect(await getValidatedCache(dimensions.source, MODEL, ["code"])).toBeNull();
+    expect(await loadValidatedCache(dimensions.source, MODEL, ["code"])).toBeNull();
 
     const storage = await seed("storage");
     await patchMetadata(storage.paths.metadata, { vector_storage: "float32" });
-    expect(await getValidatedCache(storage.source, MODEL, ["code"])).toBeNull();
+    expect(await loadValidatedCache(storage.source, MODEL, ["code"])).toBeNull();
 
     const content = await seed("content");
-    expect(await getValidatedCache(content.source, MODEL, ["code", "docs"])).toBeNull();
-    expect(await getValidatedCache(content.source, MODEL, ["docs"])).toBeNull();
+    expect(await loadValidatedCache(content.source, MODEL, ["code", "docs"])).toBeNull();
+    expect(await loadValidatedCache(content.source, MODEL, ["docs"])).toBeNull();
 
     const invalidContent = await seed("invalid-content");
     await patchMetadata(invalidContent.paths.metadata, { content_type: 4 });
-    expect(await getValidatedCache(invalidContent.source, MODEL, ["code"])).toBeNull();
+    expect(await loadValidatedCache(invalidContent.source, MODEL, ["code"])).toBeNull();
 
     const semanticDims = await seed("semantic-dimensions");
     await Bun.write(
       join(semanticDims.paths.semanticIndex, "meta.json"),
       JSON.stringify({ storage: "int8", dimensions: 12, count: 0 }),
     );
-    expect(await getValidatedCache(semanticDims.source, MODEL, ["code"])).toBeNull();
+    expect(await loadValidatedCache(semanticDims.source, MODEL, ["code"])).toBeNull();
 
     const semanticStorage = await seed("semantic-storage");
     await Bun.write(
       join(semanticStorage.paths.semanticIndex, "meta.json"),
       JSON.stringify({ storage: "float32", dimensions: 256, count: 0 }),
     );
-    expect(await getValidatedCache(semanticStorage.source, MODEL, ["code"])).toBeNull();
+    expect(await loadValidatedCache(semanticStorage.source, MODEL, ["code"])).toBeNull();
   });
 
   test("rejects missing root paths and missing files listed in the cache", async () => {
@@ -164,13 +170,13 @@ describe("validated cache bundles", () => {
     await patchMetadata(missingRoot.paths.metadata, {
       root_path: join(currentCacheHome(), "absent-root"),
     });
-    expect(await getValidatedCache(missingRoot.source, MODEL, ["code"])).toBeNull();
+    expect(await loadValidatedCache(missingRoot.source, MODEL, ["code"])).toBeNull();
 
     const missingFile = await seed("missing-file");
     const repo = join(currentCacheHome(), "repo");
     await mkdir(repo, { recursive: true });
     await patchMetadata(missingFile.paths.metadata, { root_path: repo, file_paths: ["gone.ts"] });
-    expect(await getValidatedCache(missingFile.source, MODEL, ["code"])).toBeNull();
+    expect(await loadValidatedCache(missingFile.source, MODEL, ["code"])).toBeNull();
   });
 
   test.each(["metadata.json", "semantic_index/meta.json", "chunks.json", "bm25_index.json"])(
@@ -197,6 +203,16 @@ describe("validated cache bundles", () => {
       const reopened = await MiruIndex.fromPath(source, ["code"], MODEL, dependencies);
       expect(reopened.loadedFromDisk).toBe(true);
       expect(reopened.locateLiteral("rebuiltToken").n).toBe(1);
+
+      const snapshot = join(paths.root, "snapshot.bin");
+      const bytes = await readFile(snapshot);
+      await writeFile(snapshot, bytes.subarray(0, -1));
+      await expect(MiruIndex.loadFromDisk(paths.root, MODEL, dependencies)).rejects.toThrow(
+        "Truncated index snapshot",
+      );
+      expect((await MiruIndex.fromPath(source, ["code"], MODEL, dependencies)).loadedFromDisk).toBe(
+        false,
+      );
     },
   );
 });

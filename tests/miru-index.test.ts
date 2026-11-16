@@ -189,7 +189,14 @@ test("saves MiruIndex bundles with current file mtimes", async () => {
       embedDocuments: async () => [],
       embedQuery: async () => new Float32Array([1]),
     },
-    bm25Index: new BM25Index(),
+    bm25Index: BM25Index.fromJSON({
+      docs: [["value"], ["missing"]],
+      docLengths: [1, 1],
+      docFreq: [
+        ["value", 1],
+        ["missing", 1],
+      ],
+    }),
     semanticIndex: new VectorIndex([new Float32Array([1]), new Float32Array([0])]),
     chunks: [
       {
