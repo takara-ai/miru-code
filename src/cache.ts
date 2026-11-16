@@ -98,7 +98,7 @@ function metadataMatches(
 }
 
 /**
- * Return a cache directory path when a complete, compatible bundle exists; otherwise `null`.
+ * Return a compatible cache directory path, or `null` when validation fails.
  *
  * Checks persisted files, metadata (epoch, model, content types, vector storage),
  * semantic index shape, and — for local indexes — that `root_path` and listed
@@ -119,40 +119,37 @@ export async function getValidatedCache(
   }
 
   const model = embeddingModel ?? resolveEmbeddingModel();
-  const metadata = JSON.parse(await Bun.file(paths.metadata).text()) as Record<string, unknown>;
-  if (!metadataMatches(metadata, model, content)) {
-    if (metadata.index_epoch !== indexCacheEpoch()) {
-      await rm(indexPath, { recursive: true, force: true });
-    }
-    return null;
-  }
-
-  const semanticMeta = JSON.parse(await Bun.file(`${paths.semanticIndex}/meta.json`).text()) as {
-    dimensions: number;
-  };
-  const expectedDims = resolveEmbeddingDimensions(model);
-  if (expectedDims != null && semanticMeta.dimensions !== expectedDims) {
-    return null;
-  }
-  if (!(await semanticIndexMatchesStorage(paths.semanticIndex))) {
-    return null;
-  }
-
-  const rootPath = metadata.root_path as string | null;
-  if (rootPath) {
-    const filePaths = metadata.file_paths as string[];
-    try {
-      await Bun.file(rootPath).stat();
-      for (const rel of filePaths) {
-        try {
-          await Bun.file(join(rootPath, rel)).stat();
-        } catch {
-          return null;
-        }
+  try {
+    const metadata = JSON.parse(await Bun.file(paths.metadata).text()) as Record<string, unknown>;
+    if (!metadataMatches(metadata, model, content)) {
+      if (metadata?.index_epoch !== indexCacheEpoch()) {
+        await rm(indexPath, { recursive: true, force: true });
       }
-    } catch {
       return null;
     }
+
+    const semanticMeta = JSON.parse(await Bun.file(`${paths.semanticIndex}/meta.json`).text()) as {
+      dimensions: number;
+    };
+    const expectedDims = resolveEmbeddingDimensions(model);
+    if (expectedDims != null && semanticMeta.dimensions !== expectedDims) {
+      return null;
+    }
+    if (!(await semanticIndexMatchesStorage(paths.semanticIndex))) {
+      return null;
+    }
+
+    const rootPath = metadata.root_path as string | null;
+    if (rootPath) {
+      const filePaths = metadata.file_paths as string[];
+      await Bun.file(rootPath).stat();
+      for (const rel of filePaths) {
+        await Bun.file(join(rootPath, rel)).stat();
+      }
+    }
+  } catch {
+    // A cache file can be missing or unreadable during validation after an interrupted write.
+    return null;
   }
 
   return indexPath;

@@ -206,9 +206,9 @@ export class MiruIndex {
     const deps = factoryDependencies(dependencies);
     const cacheKey = computeSourceCacheKey(url, ref);
     const model = embeddingModel ?? deps.resolveEmbeddingModel();
-    const cached = await deps.getValidatedCache(cacheKey, model, content);
+    const cached = await MiruIndex.loadSourceCache(cacheKey, model, content, deps);
     if (cached) {
-      return MiruIndex.loadFromDisk(cached, model, deps);
+      return cached;
     }
 
     const cloneDir = await deps.cloneGitRepository(url, ref);
@@ -279,9 +279,9 @@ export class MiruIndex {
     }
 
     const model = embeddingModel ?? deps.resolveEmbeddingModel();
-    const cached = await deps.getValidatedCache(resolved, model, content);
+    const cached = await MiruIndex.loadSourceCache(resolved, model, content, deps);
     if (cached) {
-      return MiruIndex.loadFromDisk(cached, model, deps);
+      return cached;
     }
 
     const embeddings = deps.getEmbeddingBackend(model);
@@ -316,7 +316,29 @@ export class MiruIndex {
   ): Promise<MiruIndex> {
     const deps = factoryDependencies(dependencies);
     const model = embeddingModel ?? deps.resolveEmbeddingModel();
-    const { bm25, semantic, chunks, metadata } = await deps.loadCachedIndex(path);
+    const bundle = await deps.loadCachedIndex(path);
+    return MiruIndex.hydrate(bundle, model, deps);
+  }
+
+  private static async loadSourceCache(
+    source: string,
+    model: string,
+    content: ContentType[],
+    deps: FactoryDependencies,
+  ): Promise<MiruIndex | null> {
+    const path = await deps.getValidatedCache(source, model, content);
+    if (!path) {
+      return null;
+    }
+    const bundle = await deps.loadCachedIndex(path).catch(() => null);
+    return bundle ? MiruIndex.hydrate(bundle, model, deps) : null;
+  }
+
+  private static hydrate(
+    { bm25, semantic, chunks, metadata }: Awaited<ReturnType<typeof loadCachedIndex>>,
+    model: string,
+    deps: FactoryDependencies,
+  ): MiruIndex {
     const content = (metadata.content_type as ContentType[]) ?? defaultContentTypes();
     const root = metadata.root_path ? String(metadata.root_path) : null;
     const storedFileMtimes = (metadata.file_mtimes as Record<string, number>) ?? {};

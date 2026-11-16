@@ -12,6 +12,7 @@ import {
 import { BM25Index } from "../src/index/bm25.ts";
 import { persistencePaths, saveIndexBundle } from "../src/index/persistence.ts";
 import { buildSemanticIndex, resolveSemanticStorage } from "../src/index/vector-storage.ts";
+import { MiruIndex } from "../src/miru-index.ts";
 import { indexCacheEpoch } from "../src/version.ts";
 
 const MODEL = "ds1-miru-int8";
@@ -171,4 +172,31 @@ describe("validated cache bundles", () => {
     await patchMetadata(missingFile.paths.metadata, { root_path: repo, file_paths: ["gone.ts"] });
     expect(await getValidatedCache(missingFile.source, MODEL, ["code"])).toBeNull();
   });
+
+  test.each(["metadata.json", "semantic_index/meta.json", "chunks.json", "bm25_index.json"])(
+    "rebuilds a local index when %s is truncated",
+    async (file) => {
+      const { source, paths } = await seed("damaged-bundle");
+      await mkdir(source);
+      await writeFile(join(source, "source.ts"), "export const rebuiltToken = 42;\n");
+      await writeFile(join(paths.root, file), "{");
+      const embeddings = {
+        model: MODEL,
+        dimensions: 256,
+        embedDocuments: async (texts: string[]) => texts.map(() => new Float32Array(256)),
+        embedQuery: async () => new Float32Array(256),
+      };
+      const dependencies = { getEmbeddingBackend: () => embeddings };
+
+      await expect(MiruIndex.loadFromDisk(paths.root, MODEL, dependencies)).rejects.toThrow();
+      const index = await MiruIndex.fromPath(source, ["code"], MODEL, dependencies);
+      expect(index.loadedFromDisk).toBe(false);
+      expect(index.locateLiteral("rebuiltToken").n).toBe(1);
+
+      await index.saveToCache(source);
+      const reopened = await MiruIndex.fromPath(source, ["code"], MODEL, dependencies);
+      expect(reopened.loadedFromDisk).toBe(true);
+      expect(reopened.locateLiteral("rebuiltToken").n).toBe(1);
+    },
+  );
 });
