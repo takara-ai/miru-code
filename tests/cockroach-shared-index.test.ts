@@ -299,16 +299,22 @@ test.skipIf(!databaseUrl)(
     SELECT tenant_id, repository_id, file_path, 0, 1, 1, 'typescript', 'export const demo = true;',
       to_tsvector('simple', 'demo'), ${vector}::VECTOR
     FROM miru_files WHERE tenant_id = ${reader.tenant} AND repository_id = ${repository}`;
+    const limit = 32;
     const plan = await runtimeDb<{ info: string }[]>`
-    EXPLAIN SELECT repository_id AS repository, file_path, start_line, end_line, language, content,
+    EXPLAIN WITH nearest AS MATERIALIZED (
+      SELECT repository_id, file_path, start_line, end_line, language, content, embedding
+      FROM miru_chunks@{FORCE_INDEX=miru_vector_idx}
+      WHERE tenant_id = ${reader.tenant} AND repository_id = ${repository}
+      ORDER BY embedding <=> ${vector}::VECTOR LIMIT ${limit}
+    )
+    SELECT repository_id AS repository, file_path, start_line, end_line, language, content,
       1 - (embedding <=> ${vector}::VECTOR) AS similarity
-    FROM miru_chunks@{FORCE_INDEX=miru_vector_idx}
-    WHERE tenant_id = ${reader.tenant} AND repository_id = ${repository} AND EXISTS (
+    FROM nearest WHERE EXISTS (
       SELECT 1 FROM miru_repository_grants
       WHERE tenant_id = ${reader.tenant} AND repository_id = ${repository} AND principal_id = ${reader.principal}
         AND (expires_at IS NULL OR expires_at > now())
     )
-    ORDER BY embedding <=> ${vector}::VECTOR LIMIT 32
+    ORDER BY similarity DESC
   `;
     expect(plan.map((row) => row.info).join("\n")).toContain("miru_vector_idx");
   },

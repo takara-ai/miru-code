@@ -292,12 +292,18 @@ export class SharedIndex {
               AND (expires_at IS NULL OR expires_at > now())
           )
         `;
+        // Keep the vector lookup on the indexed tenant and repository prefix.
         const semantic = await tx<Candidate[]>`
+          WITH nearest AS MATERIALIZED (
+            SELECT repository_id, file_path, start_line, end_line, language, content, embedding
+            FROM miru_chunks@{FORCE_INDEX=miru_vector_idx}
+            WHERE tenant_id = ${tenant} AND repository_id = ${repo}
+            ORDER BY embedding <=> ${vector}::VECTOR LIMIT ${CANDIDATES_PER_REPOSITORY}
+          )
           SELECT repository_id AS repository, file_path, start_line, end_line, language, content,
             1 - (embedding <=> ${vector}::VECTOR) AS similarity
-          FROM miru_chunks@{FORCE_INDEX=miru_vector_idx}
-          WHERE tenant_id = ${tenant} AND repository_id = ${repo} AND ${allowed}
-          ORDER BY embedding <=> ${vector}::VECTOR LIMIT ${CANDIDATES_PER_REPOSITORY}
+          FROM nearest WHERE ${allowed}
+          ORDER BY similarity DESC
         `;
         if (!terms) {
           groups.push(semantic);
