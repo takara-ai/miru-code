@@ -295,7 +295,7 @@ export class SharedIndex {
         const semantic = await tx<Candidate[]>`
           SELECT repository_id AS repository, file_path, start_line, end_line, language, content,
             1 - (embedding <=> ${vector}::VECTOR) AS similarity
-          FROM miru_chunks
+          FROM miru_chunks@{FORCE_INDEX=miru_vector_idx}
           WHERE tenant_id = ${tenant} AND repository_id = ${repo} AND ${allowed}
           ORDER BY embedding <=> ${vector}::VECTOR LIMIT ${CANDIDATES_PER_REPOSITORY}
         `;

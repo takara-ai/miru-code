@@ -294,16 +294,15 @@ test.skipIf(!databaseUrl)(
     VALUES (${reader.tenant}, ${repository}, ${reader.principal}, false)`;
     await db`INSERT INTO miru_files (tenant_id, repository_id, file_path, revision, content_hash)
     SELECT ${reader.tenant}, ${repository}, 'src/file-' || id || '.ts', 'v1', 'fixture'
-    FROM generate_series(1, 6000) AS series(id)`;
+    FROM generate_series(1, 4) AS series(id)`;
     await db`INSERT INTO miru_chunks
     SELECT tenant_id, repository_id, file_path, 0, 1, 1, 'typescript', 'export const demo = true;',
       to_tsvector('simple', 'demo'), ${vector}::VECTOR
     FROM miru_files WHERE tenant_id = ${reader.tenant} AND repository_id = ${repository}`;
-    await db`CREATE STATISTICS shared_index_plan_test FROM miru_chunks`;
     const plan = await runtimeDb<{ info: string }[]>`
     EXPLAIN SELECT repository_id AS repository, file_path, start_line, end_line, language, content,
       1 - (embedding <=> ${vector}::VECTOR) AS similarity
-    FROM miru_chunks
+    FROM miru_chunks@{FORCE_INDEX=miru_vector_idx}
     WHERE tenant_id = ${reader.tenant} AND repository_id = ${repository} AND EXISTS (
       SELECT 1 FROM miru_repository_grants
       WHERE tenant_id = ${reader.tenant} AND repository_id = ${repository} AND principal_id = ${reader.principal}
