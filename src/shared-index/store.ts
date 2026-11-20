@@ -1,20 +1,16 @@
-import { createHash } from "node:crypto";
 import type { SQL } from "bun";
-import { chunkSource } from "../chunking/chunking.ts";
 import type { EmbeddingBackend } from "../embeddings/openai.ts";
-import { detectLanguage } from "../index/files.ts";
-import { buildBm25FromChunks, enrichForBm25 } from "../index/sparse.ts";
-import { rankHybridCandidates } from "../search.ts";
+import { enrichForBm25 } from "../index/sparse.ts";
 import { tokenize } from "../tokens.ts";
-import { type Chunk, chunkKey } from "../types.ts";
 import {
-  type FileChange,
   type FileUpdate,
   type GitState,
   type GitSync,
   type Identity,
+  type PreparedChange,
+  type SharedCandidates,
   SharedIndexError,
-  type SharedResult,
+  sharedContentHash,
 } from "./protocol.ts";
 
 const DIMENSIONS = 256;
@@ -22,12 +18,8 @@ const CANDIDATES_PER_REPOSITORY = 32;
 const EMPTY_GIT_STATE: GitState = { completed: null, active: null };
 
 type FileState = { revision: string; content_hash: string | null };
-type Candidate = Chunk & { repository: string; similarity: number };
-type SearchQuery = { query: string; repositories: string[]; limit: number };
-
-function hash(text: string): string {
-  return createHash("sha256").update(text).digest("hex");
-}
+type Candidate = SharedCandidates["candidates"][number];
+type SearchQuery = { query: string; repositories: string[] };
 
 function vectorLiteral(vector: Float32Array): string {
   if (vector.length !== DIMENSIONS || !vector.every(Number.isFinite) || !vector.some(Boolean)) {
@@ -36,7 +28,11 @@ function vectorLiteral(vector: Float32Array): string {
   return JSON.stringify(Array.from(vector));
 }
 
-function contentState(existing: FileState | undefined, change: FileChange, hash: string | null) {
+function contentState(
+  existing: FileState | undefined,
+  change: PreparedChange,
+  hash: string | null,
+) {
   if (existing?.revision === change.revision) {
     if (existing.content_hash !== hash) {
       throw new SharedIndexError(409, "This file revision already has different content.");
@@ -147,7 +143,7 @@ export class SharedIndex {
     });
   }
 
-  private async checkWriteMode(db: SQL, tenant: string, change: FileChange) {
+  private async checkWriteMode(db: SQL, tenant: string, change: PreparedChange) {
     const state = await this.readGitState(db, tenant, change.repository);
     if (change.gitSync) {
       if (state?.active === change.revision) return;
@@ -165,10 +161,9 @@ export class SharedIndex {
     });
   }
 
-  async update(identity: Identity, change: FileChange): Promise<FileUpdate> {
+  async update(identity: Identity, change: PreparedChange): Promise<FileUpdate> {
     const { tenant } = identity;
-    const { repository, path, content, revision } = change;
-    const fileHash = content === null ? null : hash(content);
+    const { repository, path, fileHash, revision } = change;
     const current = await this.db.begin(async (tx) => {
       await this.writable(tx, identity, repository);
       await this.checkWriteMode(tx, tenant, change);
@@ -177,11 +172,14 @@ export class SharedIndex {
     const initialState = contentState(current, change, fileHash);
     if (initialState === "unchanged") return { state: "unchanged", embeddedChunks: 0 };
 
-    const chunks =
-      initialState === "replace" && content !== null
-        ? await chunkSource(content, path, detectLanguage(path))
-        : [];
-    const contentByHash = new Map(chunks.map((chunk) => [hash(chunk.content), chunk.content]));
+    const chunks = initialState === "replace" ? change.chunks : [];
+    const contentByHash = new Map<string, string>();
+    for (const chunk of chunks) {
+      if (chunk.start_line > chunk.end_line || sharedContentHash(chunk.content) !== chunk.hash) {
+        throw new SharedIndexError(400, "Invalid chunk range or content hash.");
+      }
+      contentByHash.set(chunk.hash, chunk.content);
+    }
     const cachedHashes = new Set<string>();
     if (contentByHash.size) {
       const hashes = [...contentByHash.keys()].join(",");
@@ -240,8 +238,8 @@ export class SharedIndex {
           end_line: chunk.end_line,
           language: chunk.language,
           content: chunk.content,
-          terms: tokenize(enrichForBm25(chunk)).join(" "),
-          content_hash: hash(chunk.content),
+          terms: tokenize(enrichForBm25({ ...chunk, file_path: path })).join(" "),
+          content_hash: chunk.hash,
         }));
         if (rows.length) {
           await tx`
@@ -275,72 +273,71 @@ export class SharedIndex {
 
   async search(
     identity: Identity,
-    { query, repositories, limit }: SearchQuery,
-  ): Promise<SharedResult[]> {
-    const { tenant } = identity;
-    if ((await this.readable(this.db, identity, repositories)).length === 0) return [];
+    { query, repositories }: SearchQuery,
+  ): Promise<SharedCandidates> {
+    const { tenant, principal } = identity;
+    const model = this.embeddings.model;
+    if ((await this.readable(this.db, identity, repositories)).length === 0) {
+      return { model, candidates: [] };
+    }
     const vector = vectorLiteral(await this.embeddings.embedQuery(query));
     const terms = [...new Set(tokenize(query))].slice(0, 32).join(" | ");
     const candidates = await this.db.begin(async (tx) => {
-      const rows: Candidate[] = [];
+      const groups: Candidate[][] = [];
       for (const { repository_id: repo } of await this.readable(tx, identity, repositories)) {
-        rows.push(
-          ...(await tx<Candidate[]>`
+        const allowed = tx`
+          EXISTS (
+            SELECT 1 FROM miru_repository_grants
+            WHERE tenant_id = ${tenant} AND repository_id = ${repo} AND principal_id = ${principal}
+              AND (expires_at IS NULL OR expires_at > now())
+          )
+        `;
+        const semantic = await tx<Candidate[]>`
           SELECT repository_id AS repository, file_path, start_line, end_line, language, content,
             1 - (embedding <=> ${vector}::VECTOR) AS similarity
           FROM miru_chunks
-          WHERE tenant_id = ${tenant} AND repository_id = ${repo}
+          WHERE tenant_id = ${tenant} AND repository_id = ${repo} AND ${allowed}
           ORDER BY embedding <=> ${vector}::VECTOR LIMIT ${CANDIDATES_PER_REPOSITORY}
-        `),
-        );
-        if (terms) {
-          rows.push(
-            ...(await tx<Candidate[]>`
-            SELECT repository_id AS repository, file_path, start_line, end_line, language, content,
-              1 - (embedding <=> ${vector}::VECTOR) AS similarity
-            FROM miru_chunks
-            WHERE tenant_id = ${tenant} AND repository_id = ${repo}
-              AND lexemes @@ to_tsquery('simple', ${terms})
-            ORDER BY ts_rank(lexemes, to_tsquery('simple', ${terms})) DESC, file_path, ordinal
-            LIMIT ${CANDIDATES_PER_REPOSITORY}
-          `),
-          );
+        `;
+        if (!terms) {
+          groups.push(semantic);
+          continue;
+        }
+        const lexical = await tx<Candidate[]>`
+          SELECT repository_id AS repository, file_path, start_line, end_line, language, content,
+            1 - (embedding <=> ${vector}::VECTOR) AS similarity
+          FROM miru_chunks
+          WHERE tenant_id = ${tenant} AND repository_id = ${repo} AND ${allowed}
+            AND lexemes @@ to_tsquery('simple', ${terms})
+          ORDER BY ts_rank(lexemes, to_tsquery('simple', ${terms})) DESC, file_path, ordinal
+          LIMIT ${CANDIDATES_PER_REPOSITORY}
+        `;
+        groups.push(semantic, lexical);
+      }
+      // Leave headroom for the Lambda proxy response envelope and escaped JSON.
+      const rows: Candidate[] = [];
+      const seen = new Set<string>();
+      let bytes = 0;
+      for (let i = 0; i < CANDIDATES_PER_REPOSITORY; i++) {
+        for (const group of groups) {
+          const row = group[i];
+          if (!row) continue;
+          const key = JSON.stringify([row.repository, row.file_path, row.start_line, row.end_line]);
+          if (seen.has(key)) continue;
+          const result = {
+            ...row,
+            start_line: Number(row.start_line),
+            end_line: Number(row.end_line),
+            similarity: Number(row.similarity),
+          };
+          bytes += Buffer.byteLength(JSON.stringify(JSON.stringify(result)));
+          if (bytes > 2_000_000) return rows;
+          seen.add(key);
+          rows.push(result);
         }
       }
       return rows;
     });
-
-    const originals = new Map<string, Candidate>();
-    const chunksByKey = new Map<string, Chunk>();
-    const semanticScores = new Map<string, number>();
-    for (const row of candidates) {
-      const chunk = {
-        file_path: `${encodeURIComponent(row.repository)}/${row.file_path}`,
-        start_line: Number(row.start_line),
-        end_line: Number(row.end_line),
-        language: row.language,
-        content: row.content,
-      };
-      const key = chunkKey(chunk);
-      if (chunksByKey.has(key)) continue;
-      originals.set(key, row);
-      chunksByKey.set(key, chunk);
-      semanticScores.set(key, Math.max(0, row.similarity));
-    }
-    const chunks = [...chunksByKey.values()];
-    const weights = buildBm25FromChunks(chunks).getScores(tokenize(query));
-    const bm25Scores = new Map(chunks.map((chunk, i) => [chunkKey(chunk), weights[i] ?? 0]));
-    return rankHybridCandidates(
-      { chunksByKey, semanticScores, bm25Scores, embeddingModel: this.embeddings.model },
-      { query, chunks, topK: limit },
-    ).map(({ chunk, score }) => {
-      const original = originals.get(chunkKey(chunk));
-      if (!original) throw new Error("Ranker returned an unknown shared index chunk.");
-      return {
-        repository: original.repository,
-        score,
-        chunk: { ...chunk, file_path: original.file_path },
-      };
-    });
+    return { model, candidates };
   }
 }

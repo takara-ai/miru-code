@@ -6,9 +6,10 @@ import {
   fileUpdateSchema,
   type GitSync,
   gitSyncStateSchema,
+  querySchema,
   SharedIndexError,
   type SharedQuery,
-  sharedResultsSchema,
+  sharedCandidatesSchema,
 } from "./protocol.ts";
 
 function bytes(data: string | ArrayBuffer | ArrayBufferView) {
@@ -133,12 +134,17 @@ export class SharedIndexClient {
     return parsed.data;
   }
 
-  search(query: SharedQuery) {
-    return this.request("search", query, sharedResultsSchema);
+  async search(input: SharedQuery) {
+    const { query, repositories, limit } = querySchema.parse(input);
+    const response = await this.request("search", { query, repositories }, sharedCandidatesSchema);
+    if (!response.candidates.length) return [];
+    const { rankSharedSearch } = await import("./client-processing.ts");
+    return rankSharedSearch(response, query, limit);
   }
 
-  update(change: FileChange) {
-    return this.request("file", change, fileUpdateSchema);
+  async update(change: FileChange) {
+    const { prepareSharedFile } = await import("./client-processing.ts");
+    return this.request("file", await prepareSharedFile(change), fileUpdateSchema);
   }
 
   revision(repository: string, path: string) {

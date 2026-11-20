@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { SQL } from "bun";
 import type { EmbeddingBackend } from "../src/embeddings/openai.ts";
 import { SharedIndexClient } from "../src/shared-index/client.ts";
-import type { SharedResult } from "../src/shared-index/protocol.ts";
+import { preparedChangeSchema, type SharedResult } from "../src/shared-index/protocol.ts";
 import { handleSharedIndexRequest, iamIdentities } from "../src/shared-index/router.ts";
 import { SharedIndex } from "../src/shared-index/store.ts";
 import { tokenize } from "../src/tokens.ts";
@@ -53,6 +53,59 @@ test("the shared client rejects malformed success responses", async () => {
     await expect(client.gitState(allowed)).rejects.toThrow(
       "Invalid response from the shared index",
     );
+  } finally {
+    await gateway.stop(true);
+  }
+});
+
+test("Miru sends hashed chunks and reranks database candidates on the client", async () => {
+  const content = "export function verifyOAuthToken() { return true; }";
+  const observed: unknown[] = [];
+  const gateway = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: async (request) => {
+      observed.push(await request.json());
+      if (new URL(request.url).pathname === "/v1/file") {
+        return Response.json({ state: "updated", embeddedChunks: 1 });
+      }
+      return Response.json({
+        model,
+        candidates: [
+          {
+            repository: allowed,
+            file_path: filename,
+            start_line: 1,
+            end_line: 1,
+            language: "typescript",
+            similarity: 0.8,
+            content,
+          },
+        ],
+      });
+    },
+  });
+  try {
+    const client = new SharedIndexClient(gateway.url.href, { token });
+    await client.update({
+      repository: allowed,
+      path: filename,
+      previousRevision: null,
+      revision: "v1",
+      content,
+    });
+    const request = preparedChangeSchema.parse(observed[0]);
+    const expectedHash = createHash("sha256").update(content).digest("hex");
+    expect(request.fileHash).toBe(expectedHash);
+    expect(request.chunks).toEqual([
+      { start_line: 1, end_line: 1, language: "typescript", content, hash: expectedHash },
+    ]);
+    const hits = await client.search({ query: "OAuth token", repositories: [allowed] });
+    expect(hits[0]).toMatchObject({
+      repository: allowed,
+      chunk: { file_path: filename },
+      score: expect.any(Number),
+    });
   } finally {
     await gateway.stop(true);
   }
@@ -227,6 +280,40 @@ test.skipIf(!databaseUrl)(
     expect(await readerClient.search(query)).toEqual([]);
   },
   15_000,
+);
+
+test.skipIf(!databaseUrl)(
+  "repository filtering retains the C-SPANN query plan",
+  async () => {
+    if (!db || !runtimeDb) throw new Error("Database not configured.");
+    const repository = "example/vector-plan";
+    const vector = `[1,${Array<string>(255).fill("0").join(",")}]`;
+    await db`INSERT INTO miru_repositories (tenant_id, repository_id, model_key)
+    VALUES (${reader.tenant}, ${repository}, ${model})`;
+    await db`INSERT INTO miru_repository_grants (tenant_id, repository_id, principal_id, can_write)
+    VALUES (${reader.tenant}, ${repository}, ${reader.principal}, false)`;
+    await db`INSERT INTO miru_files (tenant_id, repository_id, file_path, revision, content_hash)
+    SELECT ${reader.tenant}, ${repository}, 'src/file-' || id || '.ts', 'v1', 'fixture'
+    FROM generate_series(1, 6000) AS series(id)`;
+    await db`INSERT INTO miru_chunks
+    SELECT tenant_id, repository_id, file_path, 0, 1, 1, 'typescript', 'export const demo = true;',
+      to_tsvector('simple', 'demo'), ${vector}::VECTOR
+    FROM miru_files WHERE tenant_id = ${reader.tenant} AND repository_id = ${repository}`;
+    await db`CREATE STATISTICS shared_index_plan_test FROM miru_chunks`;
+    const plan = await runtimeDb<{ info: string }[]>`
+    EXPLAIN SELECT repository_id AS repository, file_path, start_line, end_line, language, content,
+      1 - (embedding <=> ${vector}::VECTOR) AS similarity
+    FROM miru_chunks
+    WHERE tenant_id = ${reader.tenant} AND repository_id = ${repository} AND EXISTS (
+      SELECT 1 FROM miru_repository_grants
+      WHERE tenant_id = ${reader.tenant} AND repository_id = ${repository} AND principal_id = ${reader.principal}
+        AND (expires_at IS NULL OR expires_at > now())
+    )
+    ORDER BY embedding <=> ${vector}::VECTOR LIMIT 32
+  `;
+    expect(plan.map((row) => row.info).join("\n")).toContain("miru_vector_idx");
+  },
+  30_000,
 );
 
 test.skipIf(!databaseUrl)(

@@ -1,6 +1,6 @@
 # Miru shared index on CockroachDB
 
-This opt-in integration is for the AWS BOX pilot. A CI writer sends tracked source files to the router. The router uses Miru's chunker and ds1-code SageMaker client, caches embeddings by repository and content hash, and writes files and chunks atomically to CockroachDB. CLI and MCP readers can search several permitted repositories in one call, with repository and line provenance. CockroachDB retrieves bounded vector and lexical candidates, then Miru applies BM25 and its hybrid ranker. Local Miru commands continue to work with their usual local index.
+This opt-in integration is for the AWS BOX pilot. A CI writer uses Miru to chunk and hash tracked source before sending it to the router. The router calls ds1-code on SageMaker for missing embeddings, caches them by repository and content hash, and writes files and chunks atomically to CockroachDB. The retrieval queries check repository grants in SQL. CockroachDB returns bounded vector and lexical candidates, and the Miru client applies BM25 and hybrid reranking before returning repository and line citations to CLI and MCP users. Local Miru commands continue to work with their usual local index.
 
 ## Verify on a development database
 

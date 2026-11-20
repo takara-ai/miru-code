@@ -1,18 +1,18 @@
 import { timingSafeEqual } from "node:crypto";
 import * as z from "zod";
 import {
-  changeSchema,
   gitStateSchema,
   gitSyncSchema,
   type Identity,
   identitySchema,
+  preparedChangeSchema,
   querySchema,
   revisionSchema,
   SharedIndexError,
 } from "./protocol.ts";
 import { databaseErrorCode, type SharedIndex } from "./store.ts";
 
-const MAX_BODY_BYTES = 800_000;
+export const MAX_BODY_BYTES = 2_000_000;
 const errorResponse = (status: number, error: string) =>
   Response.json({ error }, { status, headers: { "cache-control": "no-store" } });
 
@@ -52,7 +52,7 @@ export async function handleSharedIndexRequest(
         result = await index.search(identity, querySchema.parse(body));
         break;
       case "/v1/file": {
-        result = await index.update(identity, changeSchema.parse(body));
+        result = await index.update(identity, preparedChangeSchema.parse(body));
         break;
       }
       case "/v1/revision": {
