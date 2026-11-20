@@ -24,6 +24,8 @@ import {
 } from "../installer/search-policy.ts";
 import { formatLiteralLocate, hasRegexLiteral, listIndexedFiles } from "../literal.ts";
 import { residualSearchResultCount } from "../ranking/residual-ranker.ts";
+import { SharedIndexClient } from "../shared-index/client.ts";
+import { querySchema } from "../shared-index/protocol.ts";
 import type { ContentType } from "../types.ts";
 import {
   DEFAULT_EXPAND_AFTER,
@@ -124,6 +126,25 @@ export function createMcpServer(
   const shortChunkLines = () => (copilotClient() ? 12 : undefined);
 
   registerAuthTool(server, { onAuthenticated: () => cache.close() });
+
+  if (process.env.MIRU_SHARED_URL) {
+    server.registerTool(
+      "search_shared",
+      {
+        description: "Search a shared code index across repositories you have access to.",
+        inputSchema: querySchema.shape,
+      },
+      async (query) => {
+        try {
+          const client = SharedIndexClient.fromEnvironment();
+          if (!client) throw new Error("Shared index is not configured.");
+          return toolText(JSON.stringify(await client.search(query)));
+        } catch (error) {
+          return toolErrorText(error);
+        }
+      },
+    );
+  }
 
   server.registerTool(
     "search",

@@ -411,6 +411,7 @@ const COMMANDS: Record<string, Handler> = {
   benchmark: runBenchmarkCommand,
   init: runInitCommand,
   setup: runSetupCommand,
+  shared: async (args) => (await import("./shared-index/cli.ts")).runSharedIndexCli(args),
   clear: ([path]) => runClear(resolveSearchPath(path ?? process.cwd())),
 
   search: queryCommand(async (args, { content, json }) => {
