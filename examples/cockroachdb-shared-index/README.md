@@ -1,17 +1,17 @@
 # Miru shared index on CockroachDB
 
-The shared index is a separate Miru entry point for teams. A CI writer sends tracked source files to the router. The router uses Miru's chunker and ds1-code SageMaker client, caches embeddings by repository and content hash, and writes files and chunks atomically to CockroachDB. CLI and MCP readers can search several permitted repositories in one call, with repository and line provenance. CockroachDB retrieves bounded vector and lexical candidates, then Miru applies BM25 and its hybrid ranker. Local Miru commands continue to work with their usual local index.
+This opt-in integration is for the AWS BOX pilot. A CI writer sends tracked source files to the router. The router uses Miru's chunker and ds1-code SageMaker client, caches embeddings by repository and content hash, and writes files and chunks atomically to CockroachDB. CLI and MCP readers can search several permitted repositories in one call, with repository and line provenance. CockroachDB retrieves bounded vector and lexical candidates, then Miru applies BM25 and its hybrid ranker. Local Miru commands continue to work with their usual local index.
 
 ## Verify on a development database
 
-Use Bun 1.3.11 or later and a disposable CockroachDB v25.4 or later database. The schema requires the vector index cluster setting.
+Use Bun 1.4.5 or later and a disposable CockroachDB v25.4 or later database. The schema requires the vector index cluster setting.
 
 ```sh
 cockroach sql --url "$MIRU_TEST_CRDB_URL" --file examples/cockroachdb-shared-index/schema.sql
 bun test tests/cockroach-shared-index.test.ts
 ```
 
-The integration test uses deterministic fixture embeddings with an actual database and HTTP router. It checks cross-repository result ordering, restricted repositories, tenant isolation, reader/writer permissions, embedding reuse, competing updates, deletes and access revocation.
+The integration test uses deterministic fixture embeddings with an actual database and HTTP router. It checks cross-repository result ordering, restricted repositories, tenant isolation, reader/writer permissions, embedding reuse, competing updates, interrupted Git sync, deletes and access revocation.
 
 To run with an actual SageMaker endpoint on a developer machine, set `MIRU_SHARED_DATABASE_URL`, `MIRU_SHARED_MODEL_KEY`, `MIRU_SAGEMAKER_ENDPOINT_ARN` and `MIRU_SHARED_LOCAL_IDENTITIES`. The identity map keys are unique local bearer credentials at least 24 characters long. Values have the shape `{"tenant":"my-org","principal":"dev-alice"}`. Run `bun examples/cockroachdb-shared-index/local.ts`. Set `MIRU_SHARED_URL=http://127.0.0.1:8765` and `MIRU_SHARED_LOCAL_TOKEN` in the client. The local router binds to loopback.
 
@@ -52,11 +52,12 @@ Set `GITHUB_TOKEN` and `MIRU_SHARED_ACL_DATABASE_URL` in the worker's secret con
 
 ```sh
 miru shared sync-git my-org/api "$(git rev-parse HEAD)"
-miru shared sync-git my-org/api "$CURRENT_COMMIT" "$LAST_SUCCESSFUL_COMMIT"
 miru shared search "where is the OAuth token verified?" my-org/api my-org/worker
 ```
 
-Run ingestion on the canonical branch, with complete history. Bootstrap a fresh index from the canonical commit and then persist the last successful commit in CI. A partial sync can replay the same inputs. A deleted file keeps a revision tombstone, so a delayed write cannot resurrect it. To ingest content without a Git checkout, use `miru shared revision`, `miru shared put` and `miru shared delete`. The latter two require an expected previous revision, using `-` for a new file. Bootstrap from source to move from local Miru indexes.
+Run ingestion on the canonical branch with complete history. Bootstrap a fresh repository index from the canonical commit. CockroachDB stores the last completed commit and the active target. Retry an interrupted sync with its original target before moving forward. A replay of the completed target performs no writes. Stale targets and force-pushes are rejected. Binary blobs, symlinks and source files over 128 KB are omitted. If a previously indexed file becomes ineligible or disappears, the sync removes its chunks and retains its revision.
+
+For a separate, non-Git repository index, use `miru shared revision`, `miru shared put` and `miru shared delete`. Updates and deletes require the expected previous revision, using `-` for a new file.
 
 To search from an IDE, pass the same client configuration to the Miru MCP subprocess and use `search_shared` with `query` and a `repositories` array. The tool returns repository, path, line range, source text, and score. A headless agent can run the same CLI in an empty workspace.
 

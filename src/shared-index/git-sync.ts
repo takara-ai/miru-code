@@ -3,6 +3,7 @@ import { mapPool } from "../concurrency.ts";
 import { getExtensions } from "../index/files.ts";
 import { defaultContentTypes } from "../types.ts";
 import type { SharedIndexClient } from "./client.ts";
+import { gitCommitId, revisionSchema, SharedIndexError } from "./protocol.ts";
 
 async function git(args: string[]) {
   const child = Bun.spawn(["git", ...args], { stdout: "pipe", stderr: "pipe" });
@@ -20,8 +21,6 @@ async function readGit(args: string[]) {
   return new TextDecoder("utf-8", { fatal: true }).decode(result.bytes);
 }
 
-const validCommit = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
-
 export async function syncGit(
   client: SharedIndexClient,
   repository: string,
@@ -31,15 +30,36 @@ export async function syncGit(
   if ((await readGit(["rev-parse", "--show-prefix"])).trim()) {
     throw new Error("Run sync-git from the repository root.");
   }
-  if (![target, ...(base ? [base] : [])].every((sha) => validCommit.test(sha))) {
+  if (![target, ...(base ? [base] : [])].every((sha) => gitCommitId.safeParse(sha).success)) {
     throw new Error("Pass full Git commit object IDs for the target and optional base.");
   }
-  if (base && (await git(["merge-base", "--is-ancestor", base, target])).status !== 0) {
-    throw new Error("The base must be an ancestor of the target.");
+  if ((await readGit(["cat-file", "-t", target])).trim() !== "commit") {
+    throw new Error("The target must be a Git commit.");
+  }
+  const state = await client.gitState(repository);
+  if (!state.active && state.completed === target) {
+    return { files: 0, updated: 0, embeddedChunks: 0 };
+  }
+  if (state.active && state.active !== target) {
+    throw new Error(
+      `Resume the incomplete sync of ${state.active} before indexing another commit.`,
+    );
+  }
+  if (base && base !== state.completed)
+    throw new Error("The requested base is not the last indexed commit.");
+  const previous = state.completed;
+  if (previous && (await git(["merge-base", "--is-ancestor", previous, target])).status !== 0) {
+    throw new Error(
+      "The last indexed commit must be an ancestor of the target. Fetch the complete canonical history.",
+    );
   }
 
-  const paths = base
-    ? await readGit(["diff", "--no-renames", "--name-only", "-z", base, target, "--"])
+  // A path can look unchanged between the last completed and target commits
+  // only after the current batch completes; a partial batch resumes that exact target.
+  const sync = { repository, base: previous, target };
+
+  const paths = previous
+    ? await readGit(["diff", "--no-renames", "--name-only", "-z", previous, target, "--"])
     : await readGit(["ls-tree", "-rz", "--name-only", target, "--"]);
   const extensions = new Set(getExtensions(defaultContentTypes()));
   const sources = paths
@@ -49,16 +69,13 @@ export async function syncGit(
         extensions.has(extname(path).toLowerCase()) ||
         path.split("/").at(-1)?.toLowerCase() === "dockerfile",
     );
+  for (const path of sources) revisionSchema.parse({ repository, path });
+  const started = await client.gitSync({ ...sync, action: "begin" });
+  if (started.completed === target) return { files: 0, updated: 0, embeddedChunks: 0 };
+
   const updates = await mapPool(sources, 3, async (path) => {
     const { revision } = await client.revision(repository, path);
     if (revision === target) return { state: "unchanged", embeddedChunks: 0 };
-    if (
-      revision &&
-      (!validCommit.test(revision) ||
-        (await git(["merge-base", "--is-ancestor", revision, target])).status !== 0)
-    ) {
-      throw new Error(`Cannot replace ${path} at a newer or unrelated revision.`);
-    }
 
     const entry = await readGit(["--literal-pathspecs", "ls-tree", "-z", target, "--", path]);
     const blobMatch = /^(?:100644|100755) blob ([0-9a-f]+)\t/.exec(entry);
@@ -66,19 +83,37 @@ export async function syncGit(
     if (blobMatch?.[1]) {
       const blob = blobMatch[1];
       const size = Number(await readGit(["cat-file", "-s", blob]));
-      if (size > 128_000) throw new Error(`${path} exceeds the shared-index 128 KB file limit.`);
-      content = await readGit(["cat-file", "blob", blob]);
-    } else if (!revision) {
+      if (size <= 128_000) {
+        const { bytes, status, error } = await git(["cat-file", "blob", blob]);
+        if (status !== 0) throw new Error(error.trim() || "Could not read the Git blob.");
+        const text = new TextDecoder("utf-8", { fatal: false, ignoreBOM: true }).decode(bytes);
+        if (!text.includes("\0") && Buffer.from(text).equals(Buffer.from(bytes))) content = text;
+      }
+    }
+    if (content === null && !revision) {
       return { state: "unchanged", embeddedChunks: 0 };
     }
-    return client.update({
-      repository,
-      path,
-      previousRevision: revision,
-      revision: target,
-      content,
-    });
+    try {
+      return await client.update({
+        repository,
+        path,
+        previousRevision: revision,
+        revision: target,
+        content,
+        gitSync: true,
+      });
+    } catch (error) {
+      if (
+        error instanceof SharedIndexError &&
+        error.status === 409 &&
+        (await client.gitState(repository)).completed === target
+      ) {
+        return { state: "unchanged", embeddedChunks: 0 };
+      }
+      throw error;
+    }
   });
+  await client.gitSync({ ...sync, action: "finish" });
   return {
     files: sources.length,
     updated: updates.filter((update) => update.state === "updated").length,

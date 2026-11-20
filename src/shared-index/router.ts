@@ -2,6 +2,8 @@ import { timingSafeEqual } from "node:crypto";
 import * as z from "zod";
 import {
   changeSchema,
+  gitStateSchema,
+  gitSyncSchema,
   type Identity,
   identitySchema,
   querySchema,
@@ -58,6 +60,12 @@ export async function handleSharedIndexRequest(
         result = await index.revision(identity, repository, path);
         break;
       }
+      case "/v1/git-state":
+        result = await index.gitState(identity, gitStateSchema.parse(body).repository);
+        break;
+      case "/v1/git-sync":
+        result = await index.gitSync(identity, gitSyncSchema.parse(body));
+        break;
       default:
         return errorResponse(404, "Unknown shared index operation.");
     }

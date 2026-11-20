@@ -26,7 +26,10 @@ export async function runSharedIndexCli(args: string[]) {
     console.log(JSON.stringify(await client.revision(repository, path)));
     return;
   }
-  if ((action === "put" && params.length === 5) || (action === "delete" && params.length === 4)) {
+  if (
+    (action === "put" && params.length === 5 && params[4]) ||
+    (action === "delete" && params.length === 4)
+  ) {
     const [repository, path, previous, revision, source] = params;
     const file = source ? Bun.file(source) : undefined;
     if (file && (await file.stat()).size > 128_000)

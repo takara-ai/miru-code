@@ -1,6 +1,15 @@
 import { createHash, createHmac } from "node:crypto";
-import type { FileChange, FileUpdate, SharedQuery, SharedResult } from "./protocol.ts";
-import { SharedIndexError } from "./protocol.ts";
+import type * as z from "zod";
+import {
+  type FileChange,
+  fileRevisionSchema,
+  fileUpdateSchema,
+  type GitSync,
+  gitSyncStateSchema,
+  SharedIndexError,
+  type SharedQuery,
+  sharedResultsSchema,
+} from "./protocol.ts";
 
 function bytes(data: string | ArrayBuffer | ArrayBufferView) {
   if (typeof data === "string") return data;
@@ -97,7 +106,7 @@ export class SharedIndexClient {
     });
   }
 
-  private async request<T>(path: string, payload: unknown): Promise<T> {
+  private async request<T>(path: string, payload: unknown, schema: z.ZodType<T>): Promise<T> {
     const url = new URL(`v1/${path}`, this.endpoint);
     const body = JSON.stringify(payload);
     const headers: Record<string, string> = { "content-type": "application/json" };
@@ -119,18 +128,28 @@ export class SharedIndexClient {
         typeof message === "string" ? message : `Shared index request failed (${response.status}).`,
       );
     }
-    return result as T;
+    const parsed = schema.safeParse(result);
+    if (!parsed.success) throw new SharedIndexError(502, "Invalid response from the shared index.");
+    return parsed.data;
   }
 
   search(query: SharedQuery) {
-    return this.request<SharedResult[]>("search", query);
+    return this.request("search", query, sharedResultsSchema);
   }
 
   update(change: FileChange) {
-    return this.request<FileUpdate>("file", change);
+    return this.request("file", change, fileUpdateSchema);
   }
 
   revision(repository: string, path: string) {
-    return this.request<{ revision: string | null }>("revision", { repository, path });
+    return this.request("revision", { repository, path }, fileRevisionSchema);
+  }
+
+  gitState(repository: string) {
+    return this.request("git-state", { repository }, gitSyncStateSchema);
+  }
+
+  gitSync(sync: GitSync) {
+    return this.request("git-sync", sync, gitSyncStateSchema);
   }
 }

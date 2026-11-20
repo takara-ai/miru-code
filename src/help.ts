@@ -34,7 +34,8 @@ export function printMainHelp(): void {
 
   section("Commands");
   commandRow("search", "Hybrid search over a codebase");
-  commandRow("shared", "Search or update a shared CockroachDB index");
+  if (process.env.MIRU_SHARED_URL)
+    commandRow("shared", "Search or update a shared CockroachDB index");
   commandRow("locate", "Exact substring location in the index");
   commandRow("expand", "Adjacent chunks in the same file as a hit");
   commandRow("find-related", "Find chunks related to a file:line");

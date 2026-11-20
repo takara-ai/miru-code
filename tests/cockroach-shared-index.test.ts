@@ -42,6 +42,22 @@ test("IAM lookup accepts only an exact, configured principal ARN", () => {
   expect(identify("constructor")).toBeUndefined();
 });
 
+test("the shared client rejects malformed success responses", async () => {
+  const gateway = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: () => Response.json({ state: "updated" }),
+  });
+  try {
+    const client = new SharedIndexClient(gateway.url.href, { token });
+    await expect(client.gitState(allowed)).rejects.toThrow(
+      "Invalid response from the shared index",
+    );
+  } finally {
+    await gateway.stop(true);
+  }
+});
+
 let db: SQL | undefined;
 let runtimeDb: SQL | undefined;
 let server: ReturnType<typeof Bun.serve> | undefined;
@@ -102,6 +118,7 @@ afterAll(async () => {
   await db`DELETE FROM miru_chunks WHERE tenant_id = ANY(string_to_array(${tenants}, ','))`;
   await db`DELETE FROM miru_embeddings WHERE tenant_id = ANY(string_to_array(${tenants}, ','))`;
   await db`DELETE FROM miru_files WHERE tenant_id = ANY(string_to_array(${tenants}, ','))`;
+  await db`DELETE FROM miru_git_sync WHERE tenant_id = ANY(string_to_array(${tenants}, ','))`;
   await db`DELETE FROM miru_repository_grants WHERE tenant_id = ANY(string_to_array(${tenants}, ','))`;
   await db`DELETE FROM miru_repositories WHERE tenant_id = ANY(string_to_array(${tenants}, ','))`;
   if (runtimeDb !== db) await runtimeDb?.close();
@@ -291,13 +308,64 @@ test.skipIf(!databaseUrl)(
       });
       expect(results[0]?.chunk.content).toContain("enforceRateLimit");
 
+      expect(await ownerClient.gitState(repository)).toEqual({ completed: first, active: null });
+      expect(
+        JSON.parse(await run([process.execPath, cli, "shared", "sync-git", repository, first])),
+      ).toEqual({ files: 0, updated: 0, embeddedChunks: 0 });
+
       await run(["git", "rm", "-q", "--", "policy.ts"]);
       await run(["git", "commit", "-qm", "delete fixture"]);
       const second = await run(["git", "rev-parse", "HEAD"]);
+      await expect(readerClient.gitState(repository)).rejects.toThrow(
+        "Writable repository not found",
+      );
+      // Simulate a CI job that was interrupted after publishing its first file.
+      await ownerClient.gitSync({ action: "begin", repository, base: first, target: second });
+      await ownerClient.update({
+        repository,
+        path: "policy.ts",
+        previousRevision: first,
+        revision: second,
+        content: null,
+        gitSync: true,
+      });
+      await Bun.write(join(mirror, "final.ts"), "export const newRateLimit = () => 43;\n");
+      await run(["git", "add", "final.ts"]);
+      await run(["git", "commit", "-qm", "add final fixture"]);
+      const third = await run(["git", "rev-parse", "HEAD"]);
+      await expect(
+        run([process.execPath, cli, "shared", "sync-git", repository, third]),
+      ).rejects.toThrow("Resume the incomplete sync");
       expect(
         JSON.parse(
           await run([process.execPath, cli, "shared", "sync-git", repository, second, first]),
         ),
+      ).toEqual({ files: 1, updated: 0, embeddedChunks: 0 });
+      expect(
+        await readerClient.search({ query: "rate limit", repositories: [repository] }),
+      ).toEqual([]);
+      expect(
+        JSON.parse(await run([process.execPath, cli, "shared", "sync-git", repository, third])),
+      ).toEqual({ files: 1, updated: 1, embeddedChunks: 1 });
+      await expect(
+        run([process.execPath, cli, "shared", "sync-git", repository, first]),
+      ).rejects.toThrow("must be an ancestor");
+      await expect(
+        ownerClient.update({
+          repository,
+          path: "policy.ts",
+          previousRevision: second,
+          revision: second,
+          content: "stale file",
+          gitSync: true,
+        }),
+      ).rejects.toThrow("not the active Git sync");
+      await Bun.write(join(mirror, "final.ts"), " ".repeat(128_001));
+      await run(["git", "add", "final.ts"]);
+      await run(["git", "commit", "-qm", "oversize fixture"]);
+      const fourth = await run(["git", "rev-parse", "HEAD"]);
+      expect(
+        JSON.parse(await run([process.execPath, cli, "shared", "sync-git", repository, fourth])),
       ).toEqual({ files: 1, updated: 1, embeddedChunks: 0 });
       expect(
         await readerClient.search({ query: "rate limit", repositories: [repository] }),

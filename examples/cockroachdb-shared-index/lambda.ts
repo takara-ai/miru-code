@@ -6,7 +6,9 @@ import { openSharedIndex } from "../../src/shared-index/runtime.ts";
 const runtime = `http://${process.env.AWS_LAMBDA_RUNTIME_API}/2018-06-01/runtime`;
 const identity = iamIdentities(process.env.MIRU_SHARED_IAM_IDENTITIES ?? "{}");
 const eventSchema = z.object({
-  pathParameters: z.object({ operation: z.enum(["search", "file", "revision"]) }),
+  pathParameters: z.object({
+    operation: z.enum(["search", "file", "revision", "git-state", "git-sync"]),
+  }),
   httpMethod: z.literal("POST"),
   requestContext: z.object({ identity: z.object({ userArn: z.string().nullish() }) }),
   body: z.string().nullish(),

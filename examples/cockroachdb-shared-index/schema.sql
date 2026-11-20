@@ -30,6 +30,15 @@ CREATE TABLE IF NOT EXISTS miru_files (
   FOREIGN KEY (tenant_id, repository_id) REFERENCES miru_repositories
 );
 
+CREATE TABLE IF NOT EXISTS miru_git_sync (
+  tenant_id STRING NOT NULL,
+  repository_id STRING NOT NULL,
+  completed STRING,
+  active STRING,
+  PRIMARY KEY (tenant_id, repository_id),
+  FOREIGN KEY (tenant_id, repository_id) REFERENCES miru_repositories
+);
+
 CREATE TABLE IF NOT EXISTS miru_embeddings (
   tenant_id STRING NOT NULL,
   repository_id STRING NOT NULL,

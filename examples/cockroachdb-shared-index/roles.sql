@@ -4,6 +4,7 @@ CREATE ROLE IF NOT EXISTS miru_acl_sync;
 
 GRANT SELECT ON TABLE miru_repositories, miru_repository_grants TO miru_router;
 GRANT SELECT, INSERT, UPDATE ON TABLE miru_files TO miru_router;
+GRANT SELECT, INSERT, UPDATE ON TABLE miru_git_sync TO miru_router;
 GRANT SELECT, INSERT ON TABLE miru_embeddings TO miru_router;
 GRANT SELECT, INSERT, DELETE ON TABLE miru_chunks TO miru_router;
 
