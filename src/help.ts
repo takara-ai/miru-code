@@ -34,6 +34,8 @@ export function printMainHelp(): void {
 
   section("Commands");
   commandRow("search", "Hybrid search over a codebase");
+  if (process.env.MIRU_SHARED_URL)
+    commandRow("shared", "Search or update a shared CockroachDB index");
   commandRow("locate", "Exact substring location in the index");
   commandRow("expand", "Adjacent chunks in the same file as a hit");
   commandRow("find-related", "Find chunks related to a file:line");
@@ -103,6 +105,19 @@ export function printCommandHelp(command: string): void {
     case "env":
     case "environment":
       printEnvironmentHelp();
+      return;
+    case "shared":
+      commandHeader("shared", "Shared CockroachDB index.");
+      section("Usage");
+      writeStdout("  miru shared search <query> <repository> [repository ...]");
+      writeStdout("  miru shared sync-git <repository> <commit> [base-commit]");
+      writeStdout("  miru shared revision <repository> <path>");
+      writeStdout(
+        "  miru shared put <repository> <path> <previous-revision|-> <revision> <source-file>",
+      );
+      writeStdout("  miru shared delete <repository> <path> <previous-revision|-> <revision>");
+      hint("Set MIRU_SHARED_URL and MIRU_SHARED_REGION");
+      writeStdout("");
       return;
     case "search":
       commandHeader("search", "Hybrid semantic + keyword search.");
