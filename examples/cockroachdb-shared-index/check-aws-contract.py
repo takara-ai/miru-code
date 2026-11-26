@@ -50,7 +50,7 @@ try:
         assert len(objects) == 2, "Expected both child templates to be packaged"
         cloudformation = session.client("cloudformation", endpoint_url=endpoint)
         result = cloudformation.validate_template(TemplateBody=packaged.read_text())
-        assert "CAPABILITY_IAM" in result.get("Capabilities", []) or any(
+        assert any(
             p["ParameterKey"] == "ModelPackageArn" for p in result["Parameters"]
         )
 

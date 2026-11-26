@@ -33,7 +33,7 @@ Parameters:
   ModelEndpointName:
     Type: String
     AllowedPattern: '[a-zA-Z0-9](-*[a-zA-Z0-9])*'
-    MaxLength: 56
+    MaxLength: 37
     Description: Unique SageMaker endpoint name. The model stack appends suffixes to related names.
   ModelInstanceType:
     Type: String

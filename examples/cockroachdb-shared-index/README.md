@@ -36,7 +36,7 @@ aws cloudformation deploy \
   --region "$AWS_REGION" \
   --stack-name "$BOX_STACK" \
   --template-file /tmp/miru-box-packaged.yml \
-  --capabilities CAPABILITY_IAM \
+  --capabilities CAPABILITY_NAMED_IAM \
   --parameter-overrides \
     VpcId="$BOX_VPC_ID" PrivateSubnets="$BOX_PRIVATE_SUBNETS" \
     ClientSecurityGroupId="$BOX_CLIENT_SECURITY_GROUP" \
