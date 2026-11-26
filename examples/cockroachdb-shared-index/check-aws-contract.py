@@ -75,7 +75,7 @@ try:
         headers={"Content-Type": "application/json"},
     )
     with urlopen(request, timeout=10) as response:
-        assert response.status == 200
+        assert response.status == 201
     run(
         ["bun", "-e", """
 import { createSageMakerClient } from "./src/embeddings/sagemaker.ts";
