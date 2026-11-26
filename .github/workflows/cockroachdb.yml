@@ -30,17 +30,19 @@ jobs:
       - name: Install dependencies
         run: |
           bun install --frozen-lockfile
-          python3 -m venv "$RUNNER_TEMP/box-aws-check"
-          "$RUNNER_TEMP/box-aws-check/bin/pip" install 'cfn-lint==1.47.0' 'moto[server]==5.1.22'
+          python3 -m venv "$RUNNER_TEMP/box-cfn-lint"
+          "$RUNNER_TEMP/box-cfn-lint/bin/pip" install 'cfn-lint==1.47.0'
+          python3 -m venv "$RUNNER_TEMP/box-moto"
+          "$RUNNER_TEMP/box-moto/bin/pip" install 'moto[server]==5.1.22'
       - name: Lint CloudFormation and smoke test script
         run: |
-          "$RUNNER_TEMP/box-aws-check/bin/cfn-lint" -t \
+          "$RUNNER_TEMP/box-cfn-lint/bin/cfn-lint" -t \
             examples/cockroachdb-shared-index/pilot.yml \
             examples/cockroachdb-shared-index/router.yml \
             examples/sagemaker-marketplace/cloudformation/sagemaker-marketplace-endpoint.yml
           bash -n examples/cockroachdb-shared-index/smoke-pilot.sh
       - name: Verify nested template packaging and the SageMaker SDK call with Moto
-        run: '"$RUNNER_TEMP/box-aws-check/bin/python" examples/cockroachdb-shared-index/check-aws-contract.py'
+        run: '"$RUNNER_TEMP/box-moto/bin/python" examples/cockroachdb-shared-index/check-aws-contract.py'
 
   shared-index:
     runs-on: ubuntu-latest
