@@ -1,0 +1,161 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Private IAM-authenticated Miru router for CockroachDB and ds1-code
+Parameters:
+  RouterImageUri:
+    Type: String
+    Description: Same-region ECR image URI pinned to a digest
+    AllowedPattern: '.+@sha256:[0-9a-f]{64}'
+  PrivateSubnets:
+    Type: List<AWS::EC2::Subnet::Id>
+  RouterSecurityGroup:
+    Type: AWS::EC2::SecurityGroup::Id
+  ExecuteApiEndpointId:
+    Type: String
+    AllowedPattern: 'vpce-[0-9a-f]+'
+  DatabaseSecretArn:
+    Type: String
+    Description: Secret with a verify-full SQL URL, optionally as JSON with a custom CA
+  DatabaseSecretKmsKeyArn:
+    Type: String
+    Default: ''
+  SageMakerEndpointArn:
+    Type: String
+  ModelKey:
+    Type: String
+    MinLength: 1
+    Description: Immutable key used to provision all repositories for this model version
+  PrincipalMap:
+    Type: String
+    NoEcho: true
+    Description: Compact JSON mapping exact AWS caller ARNs to tenant and principal IDs
+Conditions:
+  CustomSecretKey: !Not [!Equals [!Ref DatabaseSecretKmsKeyArn, '']]
+Resources:
+  RouterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: MiruDataAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: sagemaker:InvokeEndpoint
+                Resource: !Ref SageMakerEndpointArn
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref DatabaseSecretArn
+              - !If
+                - CustomSecretKey
+                - Effect: Allow
+                  Action: kms:Decrypt
+                  Resource: !Ref DatabaseSecretKmsKeyArn
+                  Condition:
+                    StringEquals:
+                      kms:ViaService: !Sub secretsmanager.${AWS::Region}.${AWS::URLSuffix}
+                - !Ref AWS::NoValue
+  Router:
+    Type: AWS::Lambda::Function
+    Properties:
+      PackageType: Image
+      Architectures: [x86_64]
+      Code:
+        ImageUri: !Ref RouterImageUri
+      Role: !GetAtt RouterRole.Arn
+      Timeout: 28
+      MemorySize: 1024
+      ReservedConcurrentExecutions: 8
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnets
+        SecurityGroupIds: [!Ref RouterSecurityGroup]
+      Environment:
+        Variables:
+          MIRU_SHARED_DATABASE_SECRET_ARN: !Ref DatabaseSecretArn
+          MIRU_SHARED_MODEL_KEY: !Ref ModelKey
+          MIRU_SHARED_IAM_IDENTITIES: !Ref PrincipalMap
+          MIRU_SAGEMAKER_ENDPOINT_ARN: !Ref SageMakerEndpointArn
+  Api:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Ref AWS::StackName
+      EndpointConfiguration:
+        Types: [PRIVATE]
+        IpAddressType: dualstack
+        VpcEndpointIds: [!Ref ExecuteApiEndpointId]
+      Policy:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Deny
+            Principal: '*'
+            Action: execute-api:Invoke
+            Resource: 'execute-api:/*'
+            Condition:
+              StringNotEquals:
+                aws:SourceVpce: !Ref ExecuteApiEndpointId
+          - Effect: Allow
+            Principal:
+              AWS: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:root
+            Action: execute-api:Invoke
+            Resource: 'execute-api:/*'
+  VersionResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref Api
+      ParentId: !GetAtt Api.RootResourceId
+      PathPart: v1
+  OperationResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref Api
+      ParentId: !Ref VersionResource
+      PathPart: '{operation}'
+  OperationPost:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref Api
+      ResourceId: !Ref OperationResource
+      HttpMethod: POST
+      AuthorizationType: AWS_IAM
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${Router.Arn}/invocations
+  InvokeRouter:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      FunctionName: !Ref Router
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/pilot/POST/v1/*
+  DeploymentV1:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: [OperationPost, InvokeRouter]
+    Properties:
+      RestApiId: !Ref Api
+  PilotStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref Api
+      DeploymentId: !Ref DeploymentV1
+      StageName: pilot
+      MethodSettings:
+        - ResourcePath: '/*'
+          HttpMethod: '*'
+          DataTraceEnabled: false
+          MetricsEnabled: true
+          ThrottlingBurstLimit: 8
+          ThrottlingRateLimit: 8
+Outputs:
+  SharedIndexUrl:
+    Value: !Sub https://${Api}.execute-api.${AWS::Region}.${AWS::URLSuffix}/pilot
+  InvokeResource:
+    Value: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/pilot/POST/v1/*

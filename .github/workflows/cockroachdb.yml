@@ -1,0 +1,94 @@
+name: CockroachDB integration
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/cockroachdb.yml'
+      - 'src/**'
+      - 'examples/cockroachdb-shared-index/**'
+      - 'examples/sagemaker-marketplace/cloudformation/**'
+      - 'tests/cockroach-shared-index.test.ts'
+      - 'grammars/**'
+      - 'tokenizer/**'
+      - 'bun.lock'
+      - 'package.json'
+
+permissions:
+  contents: read
+
+jobs:
+  aws-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      AWS_EC2_METADATA_DISABLED: 'true'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.5'
+      - name: Install dependencies
+        run: |
+          bun install --frozen-lockfile
+          python3 -m venv "$RUNNER_TEMP/box-cfn-lint"
+          "$RUNNER_TEMP/box-cfn-lint/bin/pip" install 'cfn-lint==1.47.0'
+          python3 -m venv "$RUNNER_TEMP/box-moto"
+          "$RUNNER_TEMP/box-moto/bin/pip" install 'moto[server]==5.1.22'
+      - name: Lint CloudFormation and smoke test script
+        run: |
+          cfn_lint="$RUNNER_TEMP/box-cfn-lint/bin/cfn-lint"
+          # The parent deliberately starts with local TemplateURLs for aws cloudformation package.
+          "$cfn_lint" --ignore-checks W3002 -t examples/cockroachdb-shared-index/pilot.yml
+          "$cfn_lint" -t examples/cockroachdb-shared-index/router.yml
+          # The existing SageMaker template declares dependencies in addition to its intrinsic references.
+          "$cfn_lint" --ignore-checks W3005 -t examples/sagemaker-marketplace/cloudformation/sagemaker-marketplace-endpoint.yml
+          bash -n examples/cockroachdb-shared-index/smoke-pilot.sh
+      - name: Verify nested template packaging and the SageMaker SDK call with Moto
+        run: '"$RUNNER_TEMP/box-moto/bin/python" examples/cockroachdb-shared-index/check-aws-contract.py'
+
+  shared-index:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      AWS_EC2_METADATA_DISABLED: 'true'
+      MIRU_NO_UPDATE_CHECK: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.5'
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Start CockroachDB and apply test schema
+        run: |
+          docker run -d --name miru-crdb -p 127.0.0.1::26257 \
+            cockroachdb/cockroach:v25.4.4 start-single-node --insecure \
+            --store=type=mem,size=768MiB --cache=64MiB --max-sql-memory=128MiB
+          crdb() { docker exec -i miru-crdb cockroach sql --insecure "$@"; }
+          ready=false
+          for attempt in {1..30}; do
+            if crdb -e 'SELECT 1' >/dev/null 2>&1; then ready=true; break; fi
+            sleep 1
+          done
+          if [[ "$ready" != true ]]; then docker logs miru-crdb; exit 1; fi
+          crdb -e 'CREATE DATABASE miru_box'
+          crdb -d miru_box < examples/cockroachdb-shared-index/schema.sql
+          crdb -d miru_box < examples/cockroachdb-shared-index/roles.sql
+          crdb -d miru_box -e 'CREATE USER miru_router_test; GRANT miru_router TO miru_router_test'
+          endpoint=$(docker port miru-crdb 26257/tcp)
+          {
+            printf 'MIRU_TEST_CRDB_URL=postgresql://root@%s/miru_box?sslmode=disable\n' "$endpoint"
+            printf 'MIRU_TEST_CRDB_ROUTER_URL=postgresql://miru_router_test@%s/miru_box?sslmode=disable\n' "$endpoint"
+          } >> "$GITHUB_ENV"
+
+      - name: Verify shared indexing and retrieval
+        run: bun test tests/cockroach-shared-index.test.ts
+
+      - name: Build the pilot router image
+        run: docker build -f examples/cockroachdb-shared-index/Dockerfile .
+
+      - name: Stop CockroachDB
+        if: always()
+        run: docker rm -f miru-crdb
