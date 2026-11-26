@@ -1,0 +1,171 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Miru BOX pilot in an existing customer VPC with private CockroachDB BYOC
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  PrivateSubnets:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Private subnets in this VPC, one per Availability Zone, for Lambda and interface endpoints
+  ClientSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Security group for the Client VPN association and VPC-connected CI clients
+  DatabaseSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Security group attached to the internal CockroachDB load balancer
+  DatabasePort:
+    Type: Number
+    Default: 26257
+    MinValue: 1
+    MaxValue: 65535
+  DatabaseSecretArn:
+    Type: String
+    Description: Secrets Manager ARN holding the router's CockroachDB TLS connection configuration
+  DatabaseSecretKmsKeyArn:
+    Type: String
+    Default: ''
+  RouterImageUri:
+    Type: String
+    AllowedPattern: '.+@sha256:[0-9a-f]{64}'
+    Description: Same-region ECR image URI pinned to a digest
+  ModelPackageArn:
+    Type: String
+    Description: Subscribed ds1-code Marketplace model package ARN in this region
+  ModelEndpointName:
+    Type: String
+    AllowedPattern: '[a-zA-Z0-9](-*[a-zA-Z0-9])*'
+    MaxLength: 56
+    Description: Unique SageMaker endpoint name. The model stack appends suffixes to related names.
+  ModelInstanceType:
+    Type: String
+    Default: ml.c5.xlarge
+    Description: SageMaker instance type supported by the subscribed ds1-code model package
+  ModelKey:
+    Type: String
+    MinLength: 1
+    Description: Immutable embedding version used to provision repository rows
+  PrincipalMap:
+    Type: String
+    NoEcho: true
+    Description: JSON mapping exact IAM caller ARNs to Miru tenant and principal IDs
+Resources:
+  Model:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ../sagemaker-marketplace/cloudformation/sagemaker-marketplace-endpoint.yml
+      Parameters:
+        ModelPackageArn: !Ref ModelPackageArn
+        EndpointName: !Ref ModelEndpointName
+        InstanceType: !Ref ModelInstanceType
+        Region: !Ref AWS::Region
+
+  ApiEndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Miru private API access from approved clients
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !Ref ClientSecurityGroupId
+  ServiceEndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Miru runtime interface endpoints
+      VpcId: !Ref VpcId
+  RouterSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Miru Lambda access to SageMaker Runtime, Secrets Manager and CockroachDB
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          DestinationSecurityGroupId: !Ref ServiceEndpointSecurityGroup
+        - IpProtocol: tcp
+          FromPort: !Ref DatabasePort
+          ToPort: !Ref DatabasePort
+          DestinationSecurityGroupId: !Ref DatabaseSecurityGroupId
+  RouterToServiceEndpoints:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref ServiceEndpointSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      SourceSecurityGroupId: !Ref RouterSecurityGroup
+  RouterToDatabase:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref DatabaseSecurityGroupId
+      IpProtocol: tcp
+      FromPort: !Ref DatabasePort
+      ToPort: !Ref DatabasePort
+      SourceSecurityGroupId: !Ref RouterSecurityGroup
+
+  ExecuteApiEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcEndpointType: Interface
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.execute-api
+      SubnetIds: !Ref PrivateSubnets
+      SecurityGroupIds: [!Ref ApiEndpointSecurityGroup]
+      PrivateDnsEnabled: true
+  SageMakerRuntimeEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcEndpointType: Interface
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.sagemaker.runtime
+      SubnetIds: !Ref PrivateSubnets
+      SecurityGroupIds: [!Ref ServiceEndpointSecurityGroup]
+      PrivateDnsEnabled: true
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: '*'
+            Action: sagemaker:InvokeEndpoint
+            Resource: !GetAtt Model.Outputs.EndpointArn
+  SecretsManagerEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcEndpointType: Interface
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.secretsmanager
+      SubnetIds: !Ref PrivateSubnets
+      SecurityGroupIds: [!Ref ServiceEndpointSecurityGroup]
+      PrivateDnsEnabled: true
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: '*'
+            Action: secretsmanager:GetSecretValue
+            Resource: !Ref DatabaseSecretArn
+
+  Router:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: [SageMakerRuntimeEndpoint, SecretsManagerEndpoint, RouterToServiceEndpoints, RouterToDatabase]
+    Properties:
+      TemplateURL: router.yml
+      Parameters:
+        RouterImageUri: !Ref RouterImageUri
+        PrivateSubnets: !Join [',', !Ref PrivateSubnets]
+        RouterSecurityGroup: !Ref RouterSecurityGroup
+        ExecuteApiEndpointId: !Ref ExecuteApiEndpoint
+        DatabaseSecretArn: !Ref DatabaseSecretArn
+        DatabaseSecretKmsKeyArn: !Ref DatabaseSecretKmsKeyArn
+        SageMakerEndpointArn: !GetAtt Model.Outputs.EndpointArn
+        ModelKey: !Ref ModelKey
+        PrincipalMap: !Ref PrincipalMap
+
+Outputs:
+  SharedIndexUrl:
+    Value: !GetAtt Router.Outputs.SharedIndexUrl
+  InvokeResource:
+    Value: !GetAtt Router.Outputs.InvokeResource
+  SageMakerEndpointArn:
+    Value: !GetAtt Model.Outputs.EndpointArn

@@ -15,7 +15,53 @@ The integration test uses deterministic fixture embeddings with an actual databa
 
 To run with an actual SageMaker endpoint on a developer machine, set `MIRU_SHARED_DATABASE_URL`, `MIRU_SHARED_MODEL_KEY`, `MIRU_SAGEMAKER_ENDPOINT_ARN` and `MIRU_SHARED_LOCAL_IDENTITIES`. The identity map keys are unique local bearer credentials at least 24 characters long. Values have the shape `{"tenant":"my-org","principal":"dev-alice"}`. Run `bun examples/cockroachdb-shared-index/local.ts`. Set `MIRU_SHARED_URL=http://127.0.0.1:8765` and `MIRU_SHARED_LOCAL_TOKEN` in the client. The local router binds to loopback.
 
-## Deploy the router in a test AWS account
+## Deploy the BOX pilot with CloudFormation
+
+[`pilot.yml`](pilot.yml) is the parent stack. It deploys the existing SageMaker Marketplace and router templates as nested stacks, passes the model endpoint ARN to the router, and creates the private DNS interface endpoints for API Gateway, SageMaker Runtime and Secrets Manager. The router security group permits HTTPS to the service endpoints and SQL to the internal CockroachDB load balancer. The router's IAM role and the service endpoints restrict access to the model and database secret.
+
+Before deployment, provision the customer VPC, Client VPN and identity configuration, and CockroachDB BYOC as specified in the BOX architecture. Use an internal load balancer with a security group in this VPC. Configure VPC DNS hostnames and resolution, private subnets in separate Availability Zones, and a client security group on the VPN association and CI runners. Use a VPC without conflicting private DNS endpoints for the three services. In a VPC with existing interface endpoints, follow the standalone router instructions below. Enabling private DNS for execute-api makes the default public API Gateway hostnames unavailable from that VPC.
+
+Apply [schema.sql](schema.sql) and [roles.sql](roles.sql) as the database owner. Store the router role's `sslmode=verify-full` connection URL in Secrets Manager as a string, or as `{"url":"…","ca":"…"}` if a private CA is required. Use a database hostname covered by its certificate. Subscribe to the [ds1-code Marketplace package](../../docs/self-hosted-sagemaker.md) in the deployment region, and build and publish the router image by digest as shown below.
+
+From the repository root, package and deploy the parent stack with a same-region deployment bucket. Set the environment variables to the pilot account's values. Keep the local principal map file outside source control.
+
+```sh
+aws cloudformation package \
+  --region "$AWS_REGION" \
+  --template-file examples/cockroachdb-shared-index/pilot.yml \
+  --s3-bucket "$BOX_ARTIFACT_BUCKET" \
+  --output-template-file /tmp/miru-box-packaged.yml
+
+aws cloudformation deploy \
+  --region "$AWS_REGION" \
+  --stack-name "$BOX_STACK" \
+  --template-file /tmp/miru-box-packaged.yml \
+  --capabilities CAPABILITY_IAM \
+  --parameter-overrides \
+    VpcId="$BOX_VPC_ID" PrivateSubnets="$BOX_PRIVATE_SUBNETS" \
+    ClientSecurityGroupId="$BOX_CLIENT_SECURITY_GROUP" \
+    DatabaseSecurityGroupId="$BOX_DATABASE_SECURITY_GROUP" \
+    DatabaseSecretArn="$BOX_DATABASE_SECRET_ARN" \
+    DatabaseSecretKmsKeyArn="${BOX_DATABASE_SECRET_KMS_KEY_ARN:-}" \
+    RouterImageUri="$BOX_ROUTER_IMAGE_URI" \
+    ModelPackageArn="$BOX_MODEL_PACKAGE_ARN" ModelEndpointName="$BOX_MODEL_ENDPOINT_NAME" \
+    ModelKey="$BOX_MODEL_KEY" PrincipalMap="$(cat "$BOX_PRINCIPAL_MAP_FILE")"
+```
+
+Use a comma-separated list for `BOX_PRIVATE_SUBNETS`. Override `ModelInstanceType` for the subscribed model package if required. Grant the mapped identities `execute-api:Invoke` on the stack's `InvokeResource` output. The Lambda matches the precise caller ARN from the API Gateway IAM context. Restrict who can assume mapped sessions, and verify the ARN emitted by each pilot identity.
+
+### Run the AWS smoke test
+
+Provision a fresh disposable repository row with the stack's model key, a write grant for the CI principal and a read grant for a separate developer principal. From a machine or runner that can reach the private API, select the CI credentials, set `MIRU_SHARED_URL` to the stack's `SharedIndexUrl` output, and run:
+
+```sh
+MIRU_SHARED_REGION="$AWS_REGION" MIRU_SMOKE_READER_PROFILE=box-developer \
+  bash examples/cockroachdb-shared-index/smoke-pilot.sh example/box-smoke
+```
+
+The script indexes a synthetic Git file, checks that at least one embedding was generated, searches as the developer from an empty directory, verifies replay is a no-op, then deletes the file and checks search is empty. Use a new disposable repository ID for each run. The offline CI check packages the nested templates with Moto and verifies the Miru SageMaker SDK call against a fixture response. The deployed smoke test exercises AWS private networking, IAM and the real model.
+
+## Deploy the router with existing infrastructure
 
 1. Provision the existing [ds1-code SageMaker Marketplace endpoint](../../docs/self-hosted-sagemaker.md) and a private CockroachDB BYOC cluster. Follow your account's approved endpoint, VPN, security group, KMS, database backup and audit configuration. Put the runtime Lambda subnets, its security group and interface endpoints on routes to CockroachDB, SageMaker Runtime and Secrets Manager. Enable private DNS for the execute-api interface endpoint reachable by the laptop VPN and CI runner.
 2. Run [schema.sql](schema.sql) and [roles.sql](roles.sql) as a database administrator. Give `miru_router` to the Lambda DB login and `miru_acl_sync` to the permission sync login. Use a URL with `sslmode=verify-full`. Put the Lambda URL in Secrets Manager as a string, or store `{"url":"…","ca":"…"}` for a private CA.
