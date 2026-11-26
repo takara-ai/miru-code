@@ -35,24 +35,30 @@ try:
     s3 = session.client("s3", endpoint_url=endpoint)
     s3.create_bucket(Bucket=bucket)
     with TemporaryDirectory() as work:
-        packaged = Path(work, "pilot-packaged.yml")
+        packaged = Path(work, "pilot-packaged.json")
         run(
             [
                 "aws", "cloudformation", "package",
                 "--template-file", str(pilot),
                 "--s3-bucket", bucket,
                 "--output-template-file", str(packaged),
+                "--use-json",
             ],
             env=env,
             check=True,
         )
+        resources = json.loads(packaged.read_text())["Resources"]
         objects = s3.list_objects_v2(Bucket=bucket).get("Contents", [])
         assert len(objects) == 2, "Expected both child templates to be packaged"
-        cloudformation = session.client("cloudformation", endpoint_url=endpoint)
-        result = cloudformation.validate_template(TemplateBody=packaged.read_text())
-        assert any(
-            p["ParameterKey"] == "ModelPackageArn" for p in result["Parameters"]
-        )
+        for stack, resource_type in (
+            ("Model", b"AWS::SageMaker::Endpoint"),
+            ("Router", b"AWS::Lambda::Function"),
+        ):
+            url = resources[stack]["Properties"]["TemplateURL"]
+            matches = [obj["Key"] for obj in objects if url.endswith("/" + obj["Key"])]
+            assert len(matches) == 1, f"Missing packaged template for {stack}"
+            child = s3.get_object(Bucket=bucket, Key=matches[0])["Body"].read()
+            assert resource_type in child, f"Wrong child template for {stack}"
 
     fixture = [1] + [0] * 255
     body = json.dumps({
