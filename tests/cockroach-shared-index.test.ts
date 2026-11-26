@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,6 +17,7 @@ const model = "fixture-ds1-256";
 const writer = { tenant: randomUUID(), principal: "ci" };
 const reader = { tenant: writer.tenant, principal: "developer" };
 const guest = { tenant: randomUUID(), principal: reader.principal };
+const collaborator = { tenant: writer.tenant, principal: "collaborator" };
 const allowed = "example/api";
 const other = "example/worker";
 const restricted = "example/private";
@@ -24,6 +25,7 @@ const filename = "src/auth.ts";
 const token = "fixture-reader-credential-01";
 const writeToken = "fixture-writer-credential-01";
 const guestToken = "fixture-guest-credential-001";
+const collaboratorToken = "fixture-collaborator-credential";
 
 function fixtureVector(text: string): Float32Array {
   const vector = new Float32Array(256);
@@ -148,6 +150,7 @@ beforeAll(async () => {
     [`Bearer ${token}`, reader],
     [`Bearer ${writeToken}`, writer],
     [`Bearer ${guestToken}`, guest],
+    [`Bearer ${collaboratorToken}`, collaborator],
   ]);
   server = Bun.serve({
     hostname: "127.0.0.1",
@@ -465,6 +468,139 @@ test.skipIf(!databaseUrl)(
     } finally {
       await rm(mirror, { recursive: true, force: true });
       await rm(headless, { recursive: true, force: true });
+    }
+  },
+  20_000,
+);
+
+test.skipIf(!databaseUrl)(
+  "virtual developers index separate Git workspaces and query with independent grants",
+  async () => {
+    if (!db || !server) throw new Error("Database and test router are required.");
+    const authRepo = "example/virtual-auth";
+    const jobsRepo = "example/virtual-jobs";
+    const repositories = [authRepo, jobsRepo];
+    const sharedUrl = server.url.href;
+    const collaboratorClient = new SharedIndexClient(sharedUrl, { token: collaboratorToken });
+    for (const repository of repositories) {
+      const owner = repository === authRepo ? writer : collaborator;
+      const peer = repository === authRepo ? collaborator : writer;
+      await db`INSERT INTO miru_repositories (tenant_id, repository_id, model_key)
+        VALUES (${writer.tenant}, ${repository}, ${model})`;
+      await db`INSERT INTO miru_repository_grants (tenant_id, repository_id, principal_id, can_write)
+        VALUES (${writer.tenant}, ${repository}, ${owner.principal}, true),
+          (${writer.tenant}, ${repository}, ${peer.principal}, false)`;
+    }
+    await db`INSERT INTO miru_repository_grants (tenant_id, repository_id, principal_id)
+      VALUES (${reader.tenant}, ${authRepo}, ${reader.principal})`;
+
+    const work = await mkdtemp(join(tmpdir(), "miru-virtual-developers-"));
+    const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
+    async function init(directory: string) {
+      await mkdir(directory);
+      git(directory, "init", "-q", "--template=");
+      git(directory, "config", "user.name", "BOX virtual developer");
+      git(directory, "config", "user.email", "box-fixture@example.invalid");
+      git(directory, "config", "commit.gpgsign", "false");
+    }
+
+    function git(directory: string, ...args: string[]) {
+      const result = Bun.spawnSync(["git", ...args], { cwd: directory });
+      if (!result.success) throw new Error(result.stderr.toString());
+      return result.stdout.toString().trim();
+    }
+
+    async function commit(directory: string, path: string, content: string) {
+      await Bun.write(join(directory, path), content);
+      git(directory, "add", "--", path);
+      git(directory, "commit", "-qm", "Edit code");
+      return git(directory, "rev-parse", "HEAD");
+    }
+
+    async function sync(repository: string, head: string, cwd: string, credential: string) {
+      const child = Bun.spawn(
+        [process.execPath, cli, "shared", "sync-git", repository, head],
+        {
+          cwd,
+          env: {
+            ...process.env,
+            MIRU_NO_UPDATE_CHECK: "1",
+            MIRU_SHARED_URL: sharedUrl,
+            MIRU_SHARED_LOCAL_TOKEN: credential,
+          },
+          stdout: "pipe",
+          stderr: "pipe",
+        },
+      );
+      const [stdout, stderr, status] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ]);
+      if (status !== 0) throw new Error(stderr || stdout || `Process exited ${status}`);
+      return JSON.parse(stdout);
+    }
+
+    const authDir = join(work, "auth");
+    const jobsDir = join(work, "jobs");
+    try {
+      await Promise.all([init(authDir), init(jobsDir)]);
+      const authFile = "auth.ts";
+      const jobsFile = "jobs.ts";
+      const original = "export const validateSessionToken = () => 'old-token';";
+      const revised = "export const validateSessionToken = () => 'new-token';";
+      const jobs = "export const scheduleInvoiceJob = () => 'queued';";
+      const [authHead, jobsHead] = await Promise.all([
+        commit(authDir, authFile, original),
+        commit(jobsDir, jobsFile, jobs),
+      ]);
+      const firstWrites = await Promise.all([
+        sync(authRepo, authHead, authDir, writeToken),
+        sync(jobsRepo, jobsHead, jobsDir, collaboratorToken),
+      ]);
+      expect(firstWrites).toEqual([
+        { files: 1, updated: 1, embeddedChunks: 1 },
+        { files: 1, updated: 1, embeddedChunks: 1 },
+      ]);
+
+      const [authHits, jobsHits, denied] = await Promise.all([
+        collaboratorClient.search({ query: "validate session token", repositories }),
+        ownerClient.search({ query: "schedule invoice job", repositories }),
+        readerClient.search({ query: "schedule invoice job", repositories: [jobsRepo] }),
+      ]);
+      expect(authHits[0]).toMatchObject({
+        repository: authRepo,
+        chunk: { file_path: authFile, start_line: 1, content: original },
+      });
+      expect(jobsHits[0]).toMatchObject({
+        repository: jobsRepo,
+        chunk: { file_path: jobsFile, start_line: 1, content: jobs },
+      });
+      expect(denied).toEqual([]);
+      await expect(ownerClient.gitState(jobsRepo)).rejects.toThrow("Writable repository not found");
+
+      const newAuthHead = await commit(authDir, authFile, revised);
+      expect(await sync(authRepo, newAuthHead, authDir, writeToken)).toEqual({
+        files: 1,
+        updated: 1,
+        embeddedChunks: 1,
+      });
+      const updated = await readerClient.search({ query: "validate session token", repositories });
+      expect(updated.map((hit) => hit.chunk.content)).toEqual([revised]);
+
+      git(jobsDir, "rm", "-q", "--", jobsFile);
+      git(jobsDir, "commit", "-qm", "Delete code");
+      const removed = git(jobsDir, "rev-parse", "HEAD");
+      expect(await sync(jobsRepo, removed, jobsDir, collaboratorToken)).toEqual({
+        files: 1,
+        updated: 1,
+        embeddedChunks: 0,
+      });
+      expect(
+        await ownerClient.search({ query: "schedule invoice job", repositories: [jobsRepo] }),
+      ).toEqual([]);
+    } finally {
+      await rm(work, { recursive: true, force: true });
     }
   },
   20_000,
